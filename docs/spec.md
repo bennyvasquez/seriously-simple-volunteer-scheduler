@@ -200,7 +200,7 @@ When someone stops volunteering, a coordinator deactivates their account, which 
 
 ### The project itself
 
-- **SECURITY.md** in the repository says how to report a vulnerability privately and how fast to expect a reply.
+- **SECURITY.md** in the repository says how to report a vulnerability privately (security@encylia.com) and how fast to expect a reply.
 - **Automated dependency checks** (for example Dependabot) open pull requests for vulnerable packages.
 - **Release notes call out security fixes** so organizations running their own install know when to update.
 - **A security review before the first deployment goes live**, covering access rules (who sees what), action links and the login flow.
@@ -253,6 +253,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-04 | AlmaLinux, PHP, MariaDB, AGPL-3.0. |
 | 2026-10-04 | Email and text links do one action only; calendar feeds are resettable and show only the owner's shifts. |
 | 2026-10-04 | Contact details are visible only to leads, coordinators and admins. |
+| 2026-10-04 | Security reports go to security@encylia.com (SECURITY.md). |
 | 2026-10-04 | Generic product, one install per organization; the Lansing Makers Network is the first deployment. |
 
 ## 19. Open questions
@@ -261,5 +262,4 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 - Repository home: benny's account for now; whether and when it moves to an organization.
 - Text message provider and sender type.
 - Whether hours export needs a specific format for the first deployment.
-- Security contact for SECURITY.md (an address that reaches the maintainer privately).
 - Wireframes: a clickable prototype exists as a private design canvas; it needs to be shared with the volunteer committee and tested with three to five volunteers.
