@@ -1,4 +1,4 @@
-# Stupid Simple Volunteer Scheduler
+# Seriously Simple Volunteer Scheduler
 
 A self-hosted scheduler for organizations that run on volunteer shifts: makerspaces, food pantries, community centers, libraries, festivals, and anyone else with a front desk, a booth, or a rota to keep staffed.
 
