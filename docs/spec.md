@@ -127,7 +127,7 @@ A coordinator adds a closure for an area and a date range, with a reason. Affect
 - **Email is the baseline.** Chat only reaches people who are active there, so it can't be the only channel for anything that matters.
 - **Chat** goes through a generic outgoing-webhook layer, with Discord as the first adapter. Matrix, Zulip, Slack, and Mattermost all accept incoming webhooks, so switching chat platforms is a configuration change.
 - **Text messages** are built in phase 1 behind a provider interface and stay off until an organization configures a provider. US senders need carrier registration (10DLC or toll-free verification) before texting, which can take weeks. Phone numbers need a confirmation code and an explicit opt-in per notice type. Carrier email-to-text gateways are not an option; the major US carriers have shut them down or are shutting them down.
-- **Signed links:** links in emails and texts are signed for that recipient, single-use, and short-lived, and log the person straight in to the relevant screen. Links posted in chat are public, so they require a normal login first.
+- **Action links:** links in emails and texts are signed for that recipient, single-use, and short-lived (setting, default 7 days or until the shift starts, whichever comes first). Each link does exactly one thing, such as claiming one shift or confirming one change, and never opens a full session. A forwarded email therefore can't be used to get into someone's account. Links posted in chat are public, so they require a normal login first.
 - **Reminders:** a reminder before each shift (setting, default 24 hours).
 
 ## 11. Integrations
@@ -137,19 +137,73 @@ Each one is optional and off by default.
 - **Member directory sync.** A scheduled job reads people from an external membership system and creates invitations or deactivates accounts to match. The first adapter is Hello Club, which has an API with key-based access and a rate limit of about 30 requests per minute (per an unofficial guide; confirm against the vendor's docs).
 - **Hours export.** When a shift ends, the app sends the completed assignment (person, date, area, duration, regular or shadow) to a webhook, so a separate system can record volunteer hours without anyone typing them twice.
 - **Google Calendar, one way.** The app publishes shifts to organization-owned Google calendars (one per area, or one combined) through a Google service account. No volunteer has to connect a Google account. Two-way sync is out of scope; it needs per-user Google sign-in, which brings Google's app verification review and a lot of breakage.
-- **Personal calendar feeds.** Every volunteer gets a private iCal feed of their own shifts, with an "Add to my calendar" button on the home screen.
+- **Personal calendar feeds.** Every volunteer gets a private iCal feed of their own shifts, with an "Add to my calendar" button on the home screen. The feed address is a secret, so it shows only that person's shifts (no other volunteers' names) and has a "reset my calendar link" button that invalidates the old address.
 
 ## 12. Public calendar
 
 A public page lists events and areas marked public, with counts such as "needs 2 more volunteers". It never shows volunteer names. Members are sent to log in; everyone else is sent to the organization's "become a volunteer" page.
 
-## 13. Accounts and security
+## 13. Security and privacy
+
+Volunteers trust the organization with their contact details and their whereabouts. The app should hold as little as it needs, show it only to the people who need it, and be safe to run for organizations without a security team.
+
+### Accounts and access
 
 - **Invite-only.** Accounts exist only after a coordinator invites someone, directly or through member sync.
-- **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm; login and reset are rate-limited.
+- **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm (bcrypt or Argon2id); login, reset and invite endpoints are rate-limited.
 - **Two-factor authentication is required** for coordinators and admins, since they can see everyone's contact details.
-- **Change log** for clearance, role changes, and schedule edits.
-- **Data minimization:** the app stores name, email, optional phone, roles, skills, and schedule history. Nothing else is required.
+- **Action links in emails and texts do one thing only** (section 10) and never open a full session.
+- **Sessions** expire after inactivity, and a person can sign out of all devices from their profile.
+- **Change log** for clearance, role changes, account changes and schedule edits, showing who did what and when.
+
+### Who sees what
+
+| Information | Volunteers | Leads (their areas) | Coordinators and admins | Public |
+|---|---|---|---|---|
+| The schedule and first names on shifts | Yes | Yes | Yes | No |
+| Email addresses and phone numbers | Their own | Yes | Yes | No |
+| Notification settings | Their own | No | Admins only | No |
+| Clearance status and shadow history | Their own | Yes | Yes | No |
+| Open shifts and "needs N more" counts | Yes | Yes | Yes | Only areas and events marked public, never names |
+
+New volunteers who aren't cleared yet can see the full schedule. That includes when someone is working alone, so each deployment should decide whether that's acceptable; the invite-only model is the main protection.
+
+### Data we keep, and for how long
+
+- **Stored:** name, email, optional phone number, roles, skills, clearance status, notification settings, and schedule history. Nothing else is required.
+- **Phone numbers** are only stored after the person confirms them with a code, and are deleted when they turn text messages off.
+- **Inactive accounts** (no login and no shifts for a set period; setting, default 18 months) are flagged to coordinators for removal.
+- **Removal on request:** a coordinator can delete a person's account and contact details. Past schedule history keeps a placeholder name so staffing records still add up.
+- **Export on request:** a person can download the information the app holds about them.
+
+### Secrets and integrations
+
+- **No secrets in the repository.** API keys (member sync, Google service account, SMS provider), SMTP passwords and chat webhook addresses live only in the server's environment configuration. The repository ships an example config with placeholders.
+- **Chat webhook addresses are treated as secrets.** Anyone with one can post into that channel.
+- **Integrations get the least access they need:** read-only member sync where the provider allows it, and a Google service account that can only write to the organization's scheduling calendars.
+- **Outgoing messages never include phone numbers or email addresses** of other volunteers.
+
+### Running the server
+
+The install guide will cover, for AlmaLinux:
+
+- automatic security updates (dnf-automatic);
+- SELinux left in enforcing mode, with the policy the app needs documented;
+- firewalld allowing only HTTPS (and SSH for admins);
+- HTTPS everywhere, with certificates from Let's Encrypt and HTTP redirected;
+- nightly encrypted database backups stored off the server, plus a documented restore that's tested at least once before launch;
+- the database reachable only from the app.
+
+### People leaving
+
+When someone stops volunteering, a coordinator deactivates their account, which removes them from future shifts through the normal release flow. Leaving a lead or coordinator role removes that access immediately. Member sync, where configured, deactivates accounts for people who leave the organization.
+
+### The project itself
+
+- **SECURITY.md** in the repository says how to report a vulnerability privately and how fast to expect a reply.
+- **Automated dependency checks** (for example Dependabot) open pull requests for vulnerable packages.
+- **Release notes call out security fixes** so organizations running their own install know when to update.
+- **A security review before the first deployment goes live**, covering access rules (who sees what), action links and the login flow.
 
 ## 14. Settings
 
@@ -169,7 +223,7 @@ Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours expo
 ## 16. Phases
 
 **Phase 1: run the front desk.**
-Invite-only accounts with password and email-link login, 2FA for coordinators and admins. Roles. Areas. Weekly slots (every week and every other week) with regulars. One-time shifts. Overlapping shifts. Closures. Taking, releasing, and claim links. Cover requests and the full escalation ladder. Editing with "only this date" or "all following", followed by change notices. Shadow spots, clearance, the required-shadow setting, and moving back. Rotation sign-up. Email and chat notifications. SMS built but switched off. Per-person notification settings. The coordinator week view and "needs attention" list.
+Invite-only accounts with password and email-link login, 2FA for coordinators and admins. Roles. Areas. Weekly slots (every week and every other week) with regulars. One-time shifts. Overlapping shifts. Closures. Taking, releasing, and claim links. Cover requests and the full escalation ladder. Editing with "only this date" or "all following", followed by change notices. Shadow spots, clearance, the required-shadow setting, and moving back. Rotation sign-up. Email and chat notifications. SMS built but switched off. Per-person notification settings. The coordinator week view and "needs attention" list. The security and privacy requirements in section 13, including SECURITY.md and a security review before go-live.
 
 **Phase 2: visibility.**
 Events with organizers. Public calendar. Google Calendar publishing and personal iCal feeds. Member directory sync. SMS switched on once a provider is registered.
@@ -197,6 +251,8 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-04 | Google Calendar sync is one way. |
 | 2026-10-04 | Text messaging is built now and stays off until a provider is chosen. |
 | 2026-10-04 | AlmaLinux, PHP, MariaDB, AGPL-3.0. |
+| 2026-10-04 | Email and text links do one action only; calendar feeds are resettable and show only the owner's shifts. |
+| 2026-10-04 | Contact details are visible only to leads, coordinators and admins. |
 | 2026-10-04 | Generic product, one install per organization; the Lansing Makers Network is the first deployment. |
 
 ## 19. Open questions
@@ -205,4 +261,5 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 - Repository home: benny's account for now; whether and when it moves to an organization.
 - Text message provider and sender type.
 - Whether hours export needs a specific format for the first deployment.
+- Security contact for SECURITY.md (an address that reaches the maintainer privately).
 - Wireframes: a clickable prototype exists as a private design canvas; it needs to be shared with the volunteer committee and tested with three to five volunteers.
