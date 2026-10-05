@@ -1,6 +1,6 @@
 # Seriously Simple Volunteer Scheduler
 
-A self-hosted scheduler for organizations that run on volunteer shifts: makerspaces, food pantries, community centers, libraries, festivals, and anyone else with a front desk, a booth, or a rota to keep staffed.
+The Seriously Simple Volunteer Scheduler (SSVS) is a self-hosted scheduler for organizations that run on volunteer shifts: makerspaces, food pantries, community centers, libraries, festivals, and anyone else with a front desk, a booth, or a rota to keep staffed.
 
 Volunteers see their shifts, take open ones, and release the ones they can't make. When someone releases a shift, the app asks other volunteers to cover it right away and gets louder as the shift gets closer. Coordinators see the gaps at a glance instead of chasing people through six chat channels.
 

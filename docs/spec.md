@@ -1,4 +1,4 @@
-# Seriously Simple Volunteer Scheduler: product spec
+# Seriously Simple Volunteer Scheduler (SSVS): product spec
 
 Status: draft, October 2026. Owner: benny Vasquez.
 
