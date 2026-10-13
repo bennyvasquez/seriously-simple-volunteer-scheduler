@@ -6,7 +6,7 @@ Volunteers see their shifts, take open ones, and release the ones they can't mak
 
 ## Status
 
-Planning. Nothing is built yet. The spec is in [docs/spec.md](docs/spec.md).
+Planning. Nothing is built yet. The spec is in [docs/spec.md](docs/spec.md). Why it exists and what else we considered: [docs/background.md](docs/background.md).
 
 ## What it does
 
