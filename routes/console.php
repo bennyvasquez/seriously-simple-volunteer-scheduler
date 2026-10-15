@@ -8,5 +8,5 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Keep the generation window full. Safe to run more than once; existing shifts are never changed.
+// Keep the generation window full. Safe to run more than once; existing shifts are never changed. The 03:00 is UTC on purpose: the window comes from the organization's own date, so the run time doesn't matter.
 Schedule::command('ssvs:generate-shifts')->dailyAt('03:00')->withoutOverlapping();

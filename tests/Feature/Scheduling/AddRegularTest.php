@@ -101,6 +101,37 @@ class AddRegularTest extends TestCase
         $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($user));
     }
 
+    public function test_someone_already_shadowing_a_shift_can_become_its_regular(): void
+    {
+        $user = User::factory()->create();
+        Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail()
+            ->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Shadow]);
+
+        $this->addRegular($user, '2026-10-01');
+
+        $this->assertSame(1, $this->slot->regulars()->count());
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($user));
+        $this->assertSame(
+            AssignmentType::Shadow,
+            Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail()
+                ->assignments()->where('user_id', $user->id)->firstOrFail()->type,
+        );
+    }
+
+    public function test_someone_who_took_one_date_can_become_the_regular(): void
+    {
+        $this->slot->update(['headcount' => 2]);
+        Shift::query()->update(['headcount' => 2]);
+        $user = User::factory()->create();
+        $shift = Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail();
+        $shift->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Regular]);
+
+        $this->addRegular($user, '2026-10-01');
+
+        $this->assertSame(1, $shift->assignments()->where('user_id', $user->id)->count());
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($user));
+    }
+
     public function test_the_same_person_cannot_be_added_twice_for_overlapping_dates(): void
     {
         $this->slot->update(['headcount' => 2]);

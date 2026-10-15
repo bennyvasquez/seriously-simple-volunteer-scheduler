@@ -67,7 +67,7 @@ One person can hold several roles. Nobody sees schedule details until a coordina
 - **Every week or every other week.** An every-other-week slot has an anchor date. Two people can split one weekly slot by each holding alternate weeks.
 - **Overlapping shifts are allowed.** A day can have several shifts in the same area at overlapping times, each with its own headcount. Coordinators set the times; volunteers only claim shifts that exist.
 - **Headcount varies by slot.** Seasonal changes are handled by editing a slot from a date forward (section 8.4).
-- **Times are stored in the organization's local time** for slots, so a weekly shift doesn't move by an hour when daylight saving time changes. Dated shifts store the full date and time with time zone.
+- **Times are stored in the organization's local time** for slots, so a weekly shift doesn't move by an hour when daylight saving time changes. Dated shifts store their start and end in UTC, plus the local date.
 - **Exceptions are per date.** Releasing one date never changes the slot or the regular's other dates.
 - **Closures** cancel the shifts they cover and notify everyone on them.
 - **Rotation slots** are weekly slots with no regular, filled one date at a time. They use the same model; the only difference is a sign-up screen that lists upcoming dates and lets a volunteer take several at once.
@@ -271,6 +271,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-14 | Wireframes reviewed with LMN volunteers; the feedback was positive, so building starts. |
 | 2026-10-14 | Screens use Blade with minimal JavaScript; tests use PHPUnit against MariaDB. |
 | 2026-10-14 | One time zone per install. Volunteers work at the organization's own location, so every shift uses the organization's time zone and shift times follow the local clock through daylight saving changes (a 6 to 9pm shift stays 6 to 9pm). |
+| 2026-10-14 | Shifts are generated daily and existing shifts are never changed by generation; adding a regular also adds them to already-generated shifts that haven't started, still have room, and don't already include them. Dated shift times are stored in UTC. |
 
 ## 19. Open questions
 

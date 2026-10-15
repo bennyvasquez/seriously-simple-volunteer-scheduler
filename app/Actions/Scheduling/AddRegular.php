@@ -15,12 +15,15 @@ use InvalidArgumentException;
 /**
  * Makes someone a regular on a weekly slot (spec section 5) and adds them to the slot's shifts that were already generated. Generation only fills regulars into new shifts, so without this a new regular would be missing from the next few weeks.
  *
- * Shifts that have started, or that someone else already filled, are left alone.
+ * Shifts that have started, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone.
  */
 class AddRegular
 {
     public function handle(WeeklySlot $slot, User $user, string $startsOn, ?string $endsOn = null): SlotRegular
     {
+        $startsOn = CarbonImmutable::parse($startsOn)->toDateString();
+        $endsOn = $endsOn === null ? null : CarbonImmutable::parse($endsOn)->toDateString();
+
         if ($endsOn !== null && $endsOn < $startsOn) {
             throw new InvalidArgumentException('The end date has to be on or after the start date.');
         }
@@ -50,6 +53,7 @@ class AddRegular
                 ->where('local_date', '>=', $startsOn)
                 ->when($endsOn !== null, fn ($query) => $query->where('local_date', '<=', $endsOn))
                 ->where('starts_at', '>', CarbonImmutable::now())
+                ->whereDoesntHave('assignments', fn ($query) => $query->where('user_id', $user->id))
                 ->withCount(['assignments as filled' => fn ($query) => $query->where('type', AssignmentType::Regular)])
                 ->get()
                 ->filter(fn (Shift $shift) => $shift->filled < $shift->headcount);
