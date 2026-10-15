@@ -154,6 +154,7 @@ class AddRegularTest extends TestCase
         $this->addRegular(User::factory()->create(), '2026-10-01');
 
         $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Thursday 22 October 2026');
 
         $this->addRegular(User::factory()->create(), '2026-10-20');
     }
@@ -246,5 +247,22 @@ class AddRegularTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-15', $slot);
+    }
+
+    public function test_headcount_is_checked_for_a_slot_that_starts_later(): void
+    {
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1, 'valid_from' => '2027-01-07']);
+        app(AddRegular::class)->handle($slot, User::factory()->create(), '2026-10-15');
+
+        $this->expectException(DomainException::class);
+
+        app(AddRegular::class)->handle($slot, User::factory()->create(), '2026-10-15');
+    }
+
+    public function test_a_weekly_regular_does_not_keep_an_anchor_date(): void
+    {
+        $regular = app(AddRegular::class)->handle($this->slot, User::factory()->create(), '2026-10-01', null, SlotFrequency::Weekly, '2026-10-15');
+
+        $this->assertNull($regular->fresh()->anchor_date);
     }
 }

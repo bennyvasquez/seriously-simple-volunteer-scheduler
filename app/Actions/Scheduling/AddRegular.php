@@ -33,7 +33,8 @@ class AddRegular
     ): SlotRegular {
         $startsOn = CarbonImmutable::parse($startsOn)->toDateString();
         $endsOn = $endsOn === null ? null : CarbonImmutable::parse($endsOn)->toDateString();
-        $anchorDate = $anchorDate === null ? null : CarbonImmutable::parse($anchorDate)->toDateString();
+        // Only every-other-week regulars count weeks from an anchor.
+        $anchorDate = $anchorDate === null || $frequency === SlotFrequency::Weekly ? null : CarbonImmutable::parse($anchorDate)->toDateString();
 
         if ($endsOn !== null && $endsOn < $startsOn) {
             throw new InvalidArgumentException('The end date has to be on or after the start date.');
@@ -60,8 +61,10 @@ class AddRegular
                 throw new DomainException('This person is already a regular on this slot for some of those dates.');
             }
 
-            if ($this->wouldExceedHeadcount($slot, $regular, $overlapping)) {
-                throw new DomainException('This slot already has as many regulars as it needs on some of those dates.');
+            $fullOn = $this->firstFullDate($slot, $regular, $overlapping);
+
+            if ($fullOn !== null) {
+                throw new DomainException('This slot already has as many regulars as it needs, starting '.CarbonImmutable::parse($fullOn)->format('l j F Y').'.');
             }
 
             $regular->save();
@@ -87,15 +90,15 @@ class AddRegular
     }
 
     /**
-     * Checks each date the new regular would work. After the last start or end date among these regulars, who works when repeats every two weeks, so checking two weeks past it covers every later date.
+     * Returns the first date (Y-m-d) the new regular would work on which the slot already has its full headcount of regulars, or null. After the last start or end date among the slot and these regulars, who works when repeats every two weeks, so checking two weeks past it covers every later date.
      *
      * @param  Collection<int, SlotRegular>  $overlapping
      */
-    private function wouldExceedHeadcount(WeeklySlot $slot, SlotRegular $regular, Collection $overlapping): bool
+    private function firstFullDate(WeeklySlot $slot, SlotRegular $regular, Collection $overlapping): ?string
     {
         $lastChange = $overlapping
             ->flatMap(fn (SlotRegular $other) => [$other->starts_on, $other->ends_on])
-            ->push($regular->starts_on)
+            ->push($regular->starts_on, $slot->valid_from, $slot->valid_until)
             ->filter()
             ->map(fn (CarbonImmutable $date) => $date->toDateString())
             ->max();
@@ -114,10 +117,10 @@ class AddRegular
             }
 
             if ($overlapping->filter(fn (SlotRegular $other) => $other->activeOn($date))->count() >= $slot->headcount) {
-                return true;
+                return $date;
             }
         }
 
-        return false;
+        return null;
     }
 }
