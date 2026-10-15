@@ -269,6 +269,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-14 | No integration with Badgey (LMN's hours tool). The generic hours export stays in phase 3 for other organizations. |
 | 2026-10-14 | Wireframes reviewed with LMN volunteers; the feedback was positive, so building starts. |
 | 2026-10-14 | Screens use Blade with minimal JavaScript; tests use PHPUnit against MariaDB. |
+| 2026-10-14 | One time zone per install. Volunteers work at the organization's own location, so every shift uses the organization's time zone and shift times follow the local clock through daylight saving changes (a 6 to 9pm shift stays 6 to 9pm). |
 
 ## 19. Open questions
 
