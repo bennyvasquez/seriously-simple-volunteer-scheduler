@@ -63,6 +63,7 @@ One person can hold several roles. Nobody sees schedule details until a coordina
 ## 7. Scheduling model
 
 - **Weekly slots generate shifts** a set number of weeks ahead (setting, default 8). Each generated shift copies the slot's details and fills in its regulars.
+- **Generation runs daily** and never changes a shift that already exists, so per-date edits survive. It skips dates covered by a closure and shifts that have already started. Adding a regular also adds them to the slot's already-generated shifts that haven't started and still have room.
 - **Every week or every other week.** An every-other-week slot has an anchor date. Two people can split one weekly slot by each holding alternate weeks.
 - **Overlapping shifts are allowed.** A day can have several shifts in the same area at overlapping times, each with its own headcount. Coordinators set the times; volunteers only claim shifts that exist.
 - **Headcount varies by slot.** Seasonal changes are handled by editing a slot from a date forward (section 8.4).

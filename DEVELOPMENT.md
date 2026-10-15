@@ -23,6 +23,7 @@ Tests use a separate `ssvs_test` database, so they never touch your development 
 ## Useful commands
 
 - Generate shifts from weekly slots now, instead of waiting for the daily job: `docker compose exec app php artisan ssvs:generate-shifts`
+- Run the scheduler locally, so the daily jobs fire on their schedule: `docker compose exec app php artisan schedule:work`. A real server needs cron or a systemd timer that runs `php artisan schedule:run` every minute, or shifts stop being generated; the install guide will cover this.
 - Run Composer: `docker compose exec app composer <command>`
 
 ## Where things live
