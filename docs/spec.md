@@ -41,7 +41,7 @@ Volunteer-run organizations keep a shared calendar, a chat channel, and a lot of
 | Event | Optional. Something with a date or date range, a location, a description, and an organizer, such as a festival booth. An event holds one or more shifts. |
 | Weekly slot | A repeating shift template: area, weekday, start and end time, how many people it needs, how many shadow spots it offers, an optional required skill, and whether it repeats every week or every other week. |
 | Shift | One dated occurrence. Generated from a weekly slot, or created on its own (one-time shifts and event shifts). |
-| Regular | A person attached to a weekly slot, with a start date and an optional end date. Regulars are filled into each generated shift automatically. |
+| Regular | A person attached to a weekly slot, with a start date, an optional end date, and whether they work every week or every other week (with an anchor date). Regulars are filled into each generated shift they cover automatically. |
 | Assignment | A person on a specific shift. Type is regular or shadow. |
 | Shadow spot | An optional extra place on a shift for someone in training. It never counts toward the shift's headcount and never triggers cover requests. |
 | Skill | A qualification a lead grants, such as "Blacksmithing demos". A shift can require one. |
@@ -64,7 +64,7 @@ One person can hold several roles. Nobody sees schedule details until a coordina
 
 - **Weekly slots generate shifts** a set number of weeks ahead (setting, default 8). Each generated shift copies the slot's details and fills in its regulars.
 - **Generation runs daily** and never changes a shift that already exists, so per-date edits survive. It skips dates covered by a closure and shifts that have already started. Adding a regular also adds them to the slot's already-generated shifts that haven't started and still have room.
-- **Every week or every other week.** An every-other-week slot has an anchor date. Two people can split one weekly slot by each holding alternate weeks.
+- **Every week or every other week.** An every-other-week slot has an anchor date. On a weekly slot, each regular can also work every week or every other week, with their own anchor date, so two people can split one weekly slot by each holding alternate weeks. A slot's headcount is checked per date, so alternating regulars don't count against each other.
 - **Overlapping shifts are allowed.** A day can have several shifts in the same area at overlapping times, each with its own headcount. Coordinators set the times; volunteers only claim shifts that exist.
 - **Headcount varies by slot.** Seasonal changes are handled by editing a slot from a date forward (section 8.4).
 - **Times are stored in the organization's local time** for slots, so a weekly shift doesn't move by an hour when daylight saving time changes. Dated shifts store their start and end in UTC, plus the local date.
@@ -272,6 +272,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-14 | Screens use Blade with minimal JavaScript; tests use PHPUnit against MariaDB. |
 | 2026-10-14 | One time zone per install. Volunteers work at the organization's own location, so every shift uses the organization's time zone and shift times follow the local clock through daylight saving changes (a 6 to 9pm shift stays 6 to 9pm). |
 | 2026-10-14 | Shifts are generated daily and existing shifts are never changed by generation; adding a regular also adds them to already-generated shifts that haven't started, still have room, and don't already include them. Dated shift times are stored in UTC. |
+| 2026-10-14 | Alternate-week regulars live on one weekly slot: each regular has their own frequency and anchor date, rather than splitting the slot into two every-other-week slots. Coordinators think of "the Thursday desk shift" as one thing. |
 
 ## 19. Open questions
 
