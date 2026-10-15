@@ -135,6 +135,26 @@ class GenerateShiftsTest extends TestCase
         $this->assertSame(['2026-10-15', '2026-10-29'], $this->localDates());
     }
 
+    public function test_it_puts_alternating_regulars_on_their_own_weeks(): void
+    {
+        $this->organization->update(['weeks_ahead' => 4]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4]);
+        $first = User::factory()->create();
+        $second = User::factory()->create();
+        $slot->regulars()->create(['user_id' => $first->id, 'starts_on' => '2026-01-01', 'frequency' => 'every_other_week', 'anchor_date' => '2026-10-15']);
+        $slot->regulars()->create(['user_id' => $second->id, 'starts_on' => '2026-01-01', 'frequency' => 'every_other_week', 'anchor_date' => '2026-10-22']);
+
+        $this->generate();
+
+        $peopleOn = fn (string $date) => Shift::query()->whereDate('local_date', $date)->firstOrFail()
+            ->assignments()->pluck('user_id')->all();
+
+        $this->assertSame([$first->id], $peopleOn('2026-10-15'));
+        $this->assertSame([$second->id], $peopleOn('2026-10-22'));
+        $this->assertSame([$first->id], $peopleOn('2026-10-29'));
+        $this->assertSame([$second->id], $peopleOn('2026-11-05'));
+    }
+
     public function test_it_keeps_local_times_across_the_daylight_saving_change(): void
     {
         $this->organization->update(['weeks_ahead' => 3]);

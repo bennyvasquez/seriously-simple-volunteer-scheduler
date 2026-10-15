@@ -107,13 +107,7 @@ class WeeklySlot extends Model
             return false;
         }
 
-        if ($this->frequency === SlotFrequency::EveryOtherWeek) {
-            $weeksFromAnchor = intdiv((int) abs($this->anchor_date->diffInDays($day)), 7);
-
-            return $weeksFromAnchor % 2 === 0;
-        }
-
-        return true;
+        return $this->frequency->includes($localDate, $this->anchor_date);
     }
 
     /**

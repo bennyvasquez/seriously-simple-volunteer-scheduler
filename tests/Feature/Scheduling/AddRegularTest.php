@@ -5,6 +5,7 @@ namespace Tests\Feature\Scheduling;
 use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Enums\AssignmentType;
+use App\Enums\SlotFrequency;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
@@ -35,6 +36,11 @@ class AddRegularTest extends TestCase
     private function addRegular(User $user, string $startsOn, ?string $endsOn = null): void
     {
         app(AddRegular::class)->handle($this->slot, $user, $startsOn, $endsOn);
+    }
+
+    private function addAlternatingRegular(User $user, string $anchorDate, ?WeeklySlot $slot = null): void
+    {
+        app(AddRegular::class)->handle($slot ?? $this->slot, $user, '2026-10-01', null, SlotFrequency::EveryOtherWeek, $anchorDate);
     }
 
     /** @return list<string> */
@@ -169,5 +175,76 @@ class AddRegularTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         $this->addRegular(User::factory()->create(), '2026-10-22', '2026-10-15');
+    }
+
+    public function test_two_people_can_alternate_weeks_on_one_slot(): void
+    {
+        $first = User::factory()->create();
+        $second = User::factory()->create();
+
+        $this->addAlternatingRegular($first, '2026-10-15');
+        $this->addAlternatingRegular($second, '2026-10-22');
+
+        $this->assertSame(['2026-10-15', '2026-10-29'], $this->datesFor($first));
+        $this->assertSame(['2026-10-22'], $this->datesFor($second));
+    }
+
+    public function test_a_weekly_regular_is_refused_when_alternating_weeks_are_full(): void
+    {
+        $this->addAlternatingRegular(User::factory()->create(), '2026-10-15');
+        $this->addAlternatingRegular(User::factory()->create(), '2026-10-22');
+
+        $this->expectException(DomainException::class);
+
+        $this->addRegular(User::factory()->create(), '2026-10-01');
+    }
+
+    public function test_an_alternating_regular_is_refused_on_weeks_already_taken(): void
+    {
+        $this->addAlternatingRegular(User::factory()->create(), '2026-10-15');
+
+        $this->expectException(DomainException::class);
+
+        // 29 October is two weeks after 15 October, so it's the same set of weeks.
+        $this->addAlternatingRegular(User::factory()->create(), '2026-10-29');
+    }
+
+    public function test_headcount_is_checked_date_by_date(): void
+    {
+        // Shifts copy headcount when generated, so give the existing ones room too.
+        $this->slot->update(['headcount' => 2]);
+        Shift::query()->update(['headcount' => 2]);
+        $this->addRegular(User::factory()->create(), '2026-10-01', '2026-10-15');
+        $this->addRegular(User::factory()->create(), '2026-10-20');
+        $user = User::factory()->create();
+
+        // Never more than two regulars on any one date, so this is allowed.
+        $this->addRegular($user, '2026-10-01');
+
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($user));
+    }
+
+    public function test_an_alternating_regular_needs_an_anchor_date(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        app(AddRegular::class)->handle($this->slot, User::factory()->create(), '2026-10-01', null, SlotFrequency::EveryOtherWeek);
+    }
+
+    public function test_an_anchor_on_a_different_weekday_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        // 16 October is a Friday; the slot is on Thursdays.
+        $this->addAlternatingRegular(User::factory()->create(), '2026-10-16');
+    }
+
+    public function test_alternating_regulars_are_refused_on_an_every_other_week_slot(): void
+    {
+        $slot = WeeklySlot::factory()->everyOtherWeek('2026-10-15')->create();
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->addAlternatingRegular(User::factory()->create(), '2026-10-15', $slot);
     }
 }
