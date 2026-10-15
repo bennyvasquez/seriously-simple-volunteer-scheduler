@@ -215,7 +215,13 @@ Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours expo
 
 - **One install per organization.** No multi-tenancy.
 - **Server:** AlmaLinux.
-- **Language and framework:** PHP. Laravel is the proposed framework because its notification system already covers mail, SMS, and webhook channels, and it has a built-in scheduler and job queue for generation, escalation, and sync jobs. Confirm with the first deploying team before scaffolding.
+- **Language and framework:** PHP with Laravel, starting on Laravel 13 (PHP 8.3 or newer, which AlmaLinux 10 ships by default). Laravel's notification system already covers mail, SMS, and webhook channels, it has a built-in scheduler and job queue for generation, escalation, and sync jobs, and its Fortify package handles login, two-factor authentication and rate limiting.
+- **Planning for upgrades:** Laravel releases a major version about once a year, and each gets security fixes for two years, so every install will face a major upgrade roughly yearly. Organizations run SSVS with volunteer maintainers, so upgrades have to stay small and safe:
+  - Stay close to framework defaults and documented conventions. Avoid overriding framework internals.
+  - Add third-party packages only when they save real work, prefer first-party Laravel packages, and record why each one was added.
+  - Keep automated tests on every core flow (section 8) and on the access rules (section 13), so an upgrade can be checked by running the tests.
+  - Move SSVS to each new Laravel major within six months of its release, and note the required PHP version and any server changes in the release notes.
+  - Run automated dependency checks so vulnerable packages show up as pull requests.
 - **Database:** MariaDB.
 - **Deployment:** a single server behind nginx, optionally in Docker. Nightly database dump stored off the server, plus the host's snapshot backups.
 - **License:** AGPL-3.0, so anyone who runs a modified version as a service shares their changes.
@@ -255,11 +261,13 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-04 | Contact details are visible only to leads, coordinators and admins. |
 | 2026-10-04 | Security reports go to security@encylia.com (SECURITY.md). |
 | 2026-10-04 | Generic product, one install per organization; the Lansing Makers Network is the first deployment. |
+| 2026-10-14 | AGPL-3.0 confirmed; LICENSE file added. |
+| 2026-10-14 | Laravel confirmed as the framework, starting on Laravel 13, with upgrades planned for from the start (section 15). |
+| 2026-10-14 | Hello Club can't stand in for shifts, so SSVS is built separately. Member directory sync from Hello Club stays in phase 2. |
+| 2026-10-14 | No integration with Badgey (LMN's hours tool). The generic hours export stays in phase 3 for other organizations. |
 
 ## 19. Open questions
 
-- Framework: confirm Laravel with the first deploying team.
 - Repository home: benny's account for now; whether and when it moves to an organization.
 - Text message provider and sender type.
-- Whether hours export needs a specific format for the first deployment.
 - Wireframes: a clickable prototype exists as a private design canvas; it needs to be shared with the volunteer committee and tested with three to five volunteers.

@@ -16,7 +16,7 @@ Research done in October 2026, when the Lansing Makers Network (LMN) volunteer m
 
 | Option | Cost | What fit | Why we didn't use it |
 |---|---|---|---|
-| Hello Club (already in use for membership) | Already paid | Member list, roles, events with attendee limits, and an API | No shift rostering, swaps or cover requests that we could find. Using members-only events as shifts was an idea worth asking their support about, but it can't do cover requests or per-area leads. |
+| Hello Club (already in use for membership) | Already paid | Member list, roles, events with attendee limits, and an API | No shift rostering, swaps or cover requests that we could find. Using members-only events as shifts was considered and ruled out in October 2026: it can't do cover requests or per-area leads. |
 | Engelsystem | Free, GPL, self-hosted (PHP and MariaDB) | Teams, shifts, closed registration, OpenID Connect login, iCal export | Built around one multi-day event, so a year-round weekly front desk is awkward. No "please cover me" broadcast. |
 | Volunteer Scheduler Pro | From $45/month (Capterra, Oct 2026) | Swap requests that email qualified volunteers, skills, calendar sync, SMS | Cost was the obstacle. Docs only showed admins flagging swaps. |
 | Timecounts | Free plan; Pro $59/month | Roles and permissions, multiple locations | The free plan didn't cover LMN's needs (benny checked). |

@@ -31,4 +31,4 @@ The first deployment is the [Lansing Makers Network](docs/deployments/lmn.md) in
 
 ## License
 
-GNU Affero General Public License v3.0. The LICENSE file gets added from GitHub's license template when the repository is created.
+GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
