@@ -216,6 +216,8 @@ Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours expo
 - **One install per organization.** No multi-tenancy.
 - **Server:** AlmaLinux.
 - **Language and framework:** PHP with Laravel, starting on Laravel 13 (PHP 8.3 or newer, which AlmaLinux 10 ships by default). Laravel's notification system already covers mail, SMS, and webhook channels, it has a built-in scheduler and job queue for generation, escalation, and sync jobs, and its Fortify package handles login, two-factor authentication and rate limiting.
+- **Screens:** Blade, Laravel's built-in server-rendered templates, with as little JavaScript as possible. It has the fewest dependencies to upgrade, works well on phones, and makes accessible markup the default.
+- **Tests:** PHPUnit, Laravel's default test framework, run against MariaDB rather than SQLite so date and time handling matches production.
 - **Planning for upgrades:** Laravel releases a major version about once a year, and each gets security fixes for two years, so every install will face a major upgrade roughly yearly. Organizations run SSVS with volunteer maintainers, so upgrades have to stay small and safe:
   - Stay close to framework defaults and documented conventions. Avoid overriding framework internals.
   - Add third-party packages only when they save real work, prefer first-party Laravel packages, and record why each one was added.
@@ -265,9 +267,10 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-14 | Laravel confirmed as the framework, starting on Laravel 13, with upgrades planned for from the start (section 15). |
 | 2026-10-14 | Hello Club can't stand in for shifts, so SSVS is built separately. Member directory sync from Hello Club stays in phase 2. |
 | 2026-10-14 | No integration with Badgey (LMN's hours tool). The generic hours export stays in phase 3 for other organizations. |
+| 2026-10-14 | Wireframes reviewed with LMN volunteers; the feedback was positive, so building starts. |
+| 2026-10-14 | Screens use Blade with minimal JavaScript; tests use PHPUnit against MariaDB. |
 
 ## 19. Open questions
 
 - Repository home: benny's account for now; whether and when it moves to an organization.
 - Text message provider and sender type.
-- Wireframes: a clickable prototype exists as a private design canvas; it needs to be shared with the volunteer committee and tested with three to five volunteers.
