@@ -1,0 +1,29 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the AlmaLinux 10 app image
+        run: docker compose build app
+
+      - name: Start MariaDB
+        run: docker compose up -d --wait db
+
+      - name: Install and run the tests
+        run: >-
+          docker compose run --rm -T app sh -c
+          'cp .env.example .env
+          && composer install --no-interaction --prefer-dist
+          && php artisan key:generate --no-interaction
+          && php artisan test'
