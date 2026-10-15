@@ -1,0 +1,33 @@
+# Development only. Passwords here are local placeholders, never used on a real server.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    # Keep this on the MariaDB version AlmaLinux 10 ships (checked in Task 1, Step 6).
+    image: mariadb:10.11
+    environment:
+      MARIADB_DATABASE: ssvs
+      MARIADB_USER: ssvs
+      MARIADB_PASSWORD: ssvs-local-only
+      MARIADB_ROOT_PASSWORD: ssvs-local-root-only
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  db-data:
