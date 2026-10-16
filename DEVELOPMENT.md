@@ -12,6 +12,16 @@ docker compose exec app php artisan migrate
 
 The app is at http://localhost:8000. The database isn't published to your machine, on purpose: on a real server it's reachable only from the app.
 
+## Setting up an organization
+
+Run `docker compose exec app php artisan ssvs:setup`. It asks for the organization's name and time zone and the first admin's name and email, then prints a one-time link (and emails it). Open the link to log in. As an admin you'll be asked to choose a password and turn on two-factor authentication before anything else.
+
+Signing out of all devices relies on `SESSION_DRIVER=database`, which `.env.example` sets, so keep it on any server.
+
+## Email in development
+
+Every email the app sends lands in Mailpit at http://localhost:8025, not in real inboxes. Login links, invitations and two-factor codes show up there.
+
 ## Running tests
 
 ```bash
@@ -24,6 +34,7 @@ Tests use a separate `ssvs_test` database, so they never touch your development 
 
 - Generate shifts from weekly slots now, instead of waiting for the daily job: `docker compose exec app php artisan ssvs:generate-shifts`
 - Run the scheduler locally, so the daily jobs fire on their schedule: `docker compose exec app php artisan schedule:work`. A real server needs cron or a systemd timer that runs `php artisan schedule:run` every minute, or shifts stop being generated; the install guide will cover this.
+- Set up a fresh install: `docker compose exec app php artisan ssvs:setup`
 - Run Composer: `docker compose exec app composer <command>`
 
 ## Where things live

@@ -151,11 +151,12 @@ Volunteers trust the organization with their contact details and their whereabou
 ### Accounts and access
 
 - **Invite-only.** Accounts exist only after a coordinator invites someone, directly or through member sync.
-- **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm (bcrypt or Argon2id); login, reset and invite endpoints are rate-limited. Opening an emailed link shows a page with a button rather than logging in straight away, because some email security scanners open every link in a message.
+- **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm (bcrypt or Argon2id); login, reset and invite endpoints are rate-limited. Passwords need at least 10 characters. Login-link requests and password reset requests answer the same way for every address, so they never reveal who has an account. Opening an emailed link shows a page with a button rather than logging in straight away, because some email security scanners open every link in a message.
 - **Login, invitations and two-factor setup are built on Laravel Fortify**, Laravel's first-party authentication backend, with our own screens.
 - **Two-factor authentication is required** for admins, coordinators and area leads, since they can all see volunteers' contact details. They also need a password. The second factor is a code from an authenticator app, with one-time recovery codes. If the phone isn't available, a code can be emailed instead, but only after a password login: after an email-link login the inbox has already been used once, so an emailed code wouldn't be a second factor.
 - **Action links in emails and texts do one thing only** (section 10) and never open a full session.
-- **Sessions** expire after inactivity, and a person can sign out of all devices from their profile.
+- **Sessions** expire after 120 minutes of inactivity, and a person can sign out of all devices from their profile. Deactivating a person ends their open sessions on their next request.
+- **First-run setup:** `php artisan ssvs:setup` creates the organization and its first admin, and prints that admin's invitation link so an install works before email is configured.
 - **Change log** for clearance, role changes, account changes and schedule edits, showing who did what and when.
 
 ### Who sees what
@@ -279,6 +280,14 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-16 | Laravel Fortify provides login, password reset, rate limiting and two-factor. Passkeys stay off for now (Fortify's passkey package is pre-1.0). |
 | 2026-10-16 | Area leads also need two-factor and a password: they can see contact details for their areas. |
 | 2026-10-16 | Screens use one plain CSS file with no build step; the skeleton's Vite, Tailwind and npm setup is removed, and the font is self-hosted. |
+| 2026-10-16 | Minimum password length is 10 characters, with no check against breached-password lists, because that needs an outside service call on every password change. |
+| 2026-10-16 | An invitation link lasts 7 days and an email-login link lasts 15 minutes; asking for a new link cancels the previous unused one of the same kind. Opening a link never logs anyone in; only the button on its page does, because email security scanners open links. |
+| 2026-10-16 | An emailed two-factor code lasts 10 minutes and allows 5 tries, and is offered only after a successful password login in the same attempt. |
+| 2026-10-16 | Sessions expire after 120 minutes of inactivity (Laravel's default). |
+| 2026-10-16 | Admins can grant any role; coordinators can grant only area lead. Only admins can deactivate an admin, and nobody can deactivate themselves. |
+| 2026-10-16 | `ssvs:setup` prints the first admin's invitation link as well as emailing it, so a new install works before email is configured. |
+| 2026-10-16 | Login-link requests and password reset requests give the same answer for every address, and their emails are sent after the response, so neither the wording nor the timing reveals who has an account. |
+| 2026-10-16 | A deactivated person's open session ends on their next request, whatever session store the install uses. |
 
 ## 19. Open questions
 
