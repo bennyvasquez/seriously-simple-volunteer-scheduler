@@ -42,4 +42,15 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /** A volunteer who logs in with email links only. */
+    public function withoutPassword(): static
+    {
+        return $this->state(fn () => ['password' => null]);
+    }
+
+    public function deactivated(): static
+    {
+        return $this->state(fn () => ['deactivated_at' => now()]);
+    }
 }
