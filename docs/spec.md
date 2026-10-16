@@ -153,7 +153,7 @@ Volunteers trust the organization with their contact details and their whereabou
 - **Invite-only.** Accounts exist only after a coordinator invites someone, directly or through member sync.
 - **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm (bcrypt or Argon2id); login, reset and invite endpoints are rate-limited. Opening an emailed link shows a page with a button rather than logging in straight away, because some email security scanners open every link in a message.
 - **Login, invitations and two-factor setup are built on Laravel Fortify**, Laravel's first-party authentication backend, with our own screens.
-- **Two-factor authentication is required** for coordinators and admins, since they can see everyone's contact details. They also need a password. The second factor is a code from an authenticator app, with one-time recovery codes. If the phone isn't available, a code can be emailed instead, but only after a password login: after an email-link login the inbox has already been used once, so an emailed code wouldn't be a second factor.
+- **Two-factor authentication is required** for admins, coordinators and area leads, since they can all see volunteers' contact details. They also need a password. The second factor is a code from an authenticator app, with one-time recovery codes. If the phone isn't available, a code can be emailed instead, but only after a password login: after an email-link login the inbox has already been used once, so an emailed code wouldn't be a second factor.
 - **Action links in emails and texts do one thing only** (section 10) and never open a full session.
 - **Sessions** expire after inactivity, and a person can sign out of all devices from their profile.
 - **Change log** for clearance, role changes, account changes and schedule edits, showing who did what and when.
@@ -233,7 +233,7 @@ Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours expo
 ## 16. Phases
 
 **Phase 1: run the front desk.**
-Invite-only accounts with password and email-link login, 2FA for coordinators and admins. Roles. Areas. Weekly slots (every week and every other week) with regulars. One-time shifts. Overlapping shifts. Closures. Taking, releasing, and claim links. Cover requests and the full escalation ladder. Editing with "only this date" or "all following", followed by change notices. Shadow spots, clearance, the required-shadow setting, and moving back. Rotation sign-up. Email and chat notifications. SMS built but switched off. Per-person notification settings. The coordinator week view and "needs attention" list. The security and privacy requirements in section 13, including SECURITY.md and a security review before go-live.
+Invite-only accounts with password and email-link login, 2FA for admins, coordinators and area leads. Roles. Areas. Weekly slots (every week and every other week) with regulars. One-time shifts. Overlapping shifts. Closures. Taking, releasing, and claim links. Cover requests and the full escalation ladder. Editing with "only this date" or "all following", followed by change notices. Shadow spots, clearance, the required-shadow setting, and moving back. Rotation sign-up. Email and chat notifications. SMS built but switched off. Per-person notification settings. The coordinator week view and "needs attention" list. The security and privacy requirements in section 13, including SECURITY.md and a security review before go-live.
 
 **Phase 2: visibility.**
 Events with organizers. Public calendar. Google Calendar publishing and personal iCal feeds. Member directory sync. SMS switched on once a provider is registered.
@@ -277,6 +277,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-16 | Login, invitations and two-factor are built backend first; their screens follow a quick volunteer check of new wireframes (UX principle 6). |
 | 2026-10-16 | Two-factor for coordinators and admins: authenticator app plus recovery codes, with an emailed code as a fallback after password login only. |
 | 2026-10-16 | Laravel Fortify provides login, password reset, rate limiting and two-factor. Passkeys stay off for now (Fortify's passkey package is pre-1.0). |
+| 2026-10-16 | Area leads also need two-factor and a password: they can see contact details for their areas. |
 | 2026-10-16 | Screens use one plain CSS file with no build step; the skeleton's Vite, Tailwind and npm setup is removed, and the font is self-hosted. |
 
 ## 19. Open questions
