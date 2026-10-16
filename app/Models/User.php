@@ -46,9 +46,13 @@ class User extends Authenticatable
         return $this->hasMany(LoginLink::class);
     }
 
-    /** Sent after the response, so asking for a reset takes the same time whether or not the address has an account. */
+    /** Sent after the response, so asking for a reset takes the same time whether or not the address has an account. A turned-off account gets no email, and the answer on screen stays the same. */
     public function sendPasswordResetNotification($token): void
     {
+        if (! $this->isActive()) {
+            return;
+        }
+
         defer(fn () => $this->notify(new ResetPassword($token)));
     }
 

@@ -7,8 +7,7 @@ use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse;
 use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse;
 
 /**
- * The answer to "send me a password reset link". It is the same for every address, so it never reveals whether an account exists.
- * Fortify's broker also answers "invalid user" or "throttled" only for some addresses, so those get this answer too.
+ * The answer to "send me a password reset link". It is the same for every address, so it never reveals whether an account exists. Fortify's broker also answers "invalid user" or "throttled" only for some addresses, so those get this answer too.
  */
 class NeutralPasswordResetLinkResponse implements FailedPasswordResetLinkRequestResponse, SuccessfulPasswordResetLinkRequestResponse
 {

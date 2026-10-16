@@ -76,7 +76,7 @@ class TwoFactorEmailCodeController extends Controller
         $user = $id === null ? null : User::query()->find($id);
 
         if ($user === null || ! $user->isActive()) {
-            throw new HttpResponseException(redirect()->route('login'));
+            throw new HttpResponseException(redirect()->route('login')->withErrors(['email' => 'Log in again to get a code.']));
         }
 
         abort_if(

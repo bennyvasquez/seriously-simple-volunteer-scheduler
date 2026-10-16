@@ -14,7 +14,7 @@ The app is at http://localhost:8000. The database isn't published to your machin
 
 ## Setting up an organization
 
-Run `docker compose exec app php artisan ssvs:setup`. It asks for the organization's name and time zone and the first admin's name and email, then prints a one-time link (and emails it). Open the link to log in. As an admin you'll be asked to choose a password and turn on two-factor authentication before anything else.
+Run `docker compose exec app php artisan ssvs:setup`. It asks for the organization's name and time zone and the first admin's name and email, then prints a one-time link (and emails it). That link is how the first admin logs in, but the login and security screens are placeholders for now, so a browser can't finish setup yet. Once they're built, an admin will be asked to choose a password and turn on two-factor authentication before anything else.
 
 Signing out of all devices relies on `SESSION_DRIVER=database`, which `.env.example` sets, so keep it on any server.
 

@@ -151,7 +151,7 @@ class TwoFactorEmailCodeTest extends TestCase
 
     public function test_without_a_pending_login_you_are_sent_to_log_in(): void
     {
-        $this->post(route('two-factor.email.send'))->assertRedirect(route('login'));
-        $this->post(route('two-factor.email.verify'), ['code' => '123456'])->assertRedirect(route('login'));
+        $this->post(route('two-factor.email.send'))->assertRedirect(route('login'))->assertSessionHasErrors(['email' => 'Log in again to get a code.']);
+        $this->post(route('two-factor.email.verify'), ['code' => '123456'])->assertRedirect(route('login'))->assertSessionHasErrors(['email' => 'Log in again to get a code.']);
     }
 }
