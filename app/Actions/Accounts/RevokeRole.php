@@ -7,6 +7,7 @@ use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Takes a role away. Role checks read the database on every request, so access ends immediately (spec section 13, "People leaving").
@@ -19,13 +20,18 @@ class RevokeRole
             throw new AuthorizationException('You can\'t change that role.');
         }
 
-        $deleted = $user->roles()
-            ->where('role', $role->value)
-            ->where('area_id', $area?->id)
-            ->delete();
+        DB::transaction(function () use ($actor, $user, $role, $area) {
+            // Lock the person's row so role changes for them run one at a time: the unique index doesn't cover a NULL area_id.
+            User::query()->whereKey($user->id)->lockForUpdate()->first();
 
-        if ($deleted > 0) {
-            ChangeLogEntry::record($actor, 'role.revoked', $user, ['role' => $role->value, 'area_id' => $area?->id]);
-        }
+            $deleted = $user->roles()
+                ->where('role', $role->value)
+                ->where('area_id', $area?->id)
+                ->delete();
+
+            if ($deleted > 0) {
+                ChangeLogEntry::record($actor, 'role.revoked', $user, ['role' => $role->value, 'area_id' => $area?->id]);
+            }
+        });
     }
 }

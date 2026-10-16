@@ -8,6 +8,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\RoleAssignment;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
@@ -29,12 +30,17 @@ class GrantRole
             throw new AuthorizationException('You can\'t give people that role.');
         }
 
-        $assignment = $user->roles()->firstOrCreate(['role' => $role->value, 'area_id' => $area?->id]);
+        return DB::transaction(function () use ($actor, $user, $role, $area) {
+            // Lock the person's row so role changes for them run one at a time: the unique index doesn't cover a NULL area_id.
+            User::query()->whereKey($user->id)->lockForUpdate()->first();
 
-        if ($assignment->wasRecentlyCreated) {
-            ChangeLogEntry::record($actor, 'role.granted', $user, ['role' => $role->value, 'area_id' => $area?->id]);
-        }
+            $assignment = $user->roles()->firstOrCreate(['role' => $role->value, 'area_id' => $area?->id]);
 
-        return $assignment;
+            if ($assignment->wasRecentlyCreated) {
+                ChangeLogEntry::record($actor, 'role.granted', $user, ['role' => $role->value, 'area_id' => $area?->id]);
+            }
+
+            return $assignment;
+        });
     }
 }
