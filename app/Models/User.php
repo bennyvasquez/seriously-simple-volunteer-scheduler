@@ -39,6 +39,11 @@ class User extends Authenticatable
         return $this->hasMany(RoleAssignment::class);
     }
 
+    public function loginLinks(): HasMany
+    {
+        return $this->hasMany(LoginLink::class);
+    }
+
     public function hasRole(Role $role, ?Area $area = null): bool
     {
         return $this->roles()
