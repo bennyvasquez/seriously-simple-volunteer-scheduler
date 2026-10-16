@@ -6,7 +6,7 @@ Volunteers see their shifts, take open ones, and release the ones they can't mak
 
 ## Status
 
-The foundation and scheduling core are built (development environment, Laravel 13 skeleton, shift generation), with no login or screens yet. To run it locally, see [DEVELOPMENT.md](DEVELOPMENT.md). The spec is in [docs/spec.md](docs/spec.md). Why it exists and what else we considered: [docs/background.md](docs/background.md).
+The foundation and scheduling core are built (development environment, Laravel 13 skeleton, shift generation) and the accounts and login backend (roles, invitations, email-link and password login, two-factor), with placeholder screens. To run it locally, see [DEVELOPMENT.md](DEVELOPMENT.md). The spec is in [docs/spec.md](docs/spec.md). Why it exists and what else we considered: [docs/background.md](docs/background.md).
 
 ## What it does
 
