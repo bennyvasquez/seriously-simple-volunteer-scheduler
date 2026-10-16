@@ -12,6 +12,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\Concerns\InteractsWithTwoFactor;
@@ -116,5 +117,36 @@ class SessionsAndDeactivationTest extends TestCase
 
         $this->get('/')->assertRedirect(route('login'));
         $this->assertGuest();
+    }
+
+    public function test_a_remember_me_cookie_stops_working_once_the_account_is_turned_off(): void
+    {
+        $coordinator = $this->withRole(Role::Coordinator);
+        $user = User::factory()->create(['email' => 'leaving@example.org', 'password' => Hash::make('correct horse battery')]);
+        $recallerName = Auth::guard('web')->getRecallerName();
+
+        $recaller = $this->post('/login', ['email' => 'leaving@example.org', 'password' => 'correct horse battery', 'remember' => 'on'])
+            ->assertRedirect('/')
+            ->getCookie($recallerName)
+            ->getValue();
+
+        $this->startFreshBrowserWith($recallerName, $recaller);
+        $this->get('/login')->assertRedirect('/');
+        $this->assertAuthenticatedAs($user);
+
+        app(DeactivateUser::class)->handle($coordinator, $user);
+
+        $this->startFreshBrowserWith($recallerName, $recaller);
+        $this->get('/login')->assertOk();
+        $this->assertGuest();
+    }
+
+    /** No session and no logged-in guard left over from earlier requests, only the given cookie. */
+    private function startFreshBrowserWith(string $cookie, string $value): void
+    {
+        $this->flushSession();
+        $this->app['auth']->forgetGuards();
+        $this->defaultCookies = [];
+        $this->withCookie($cookie, $value);
     }
 }

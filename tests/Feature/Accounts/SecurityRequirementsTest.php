@@ -4,11 +4,13 @@ namespace Tests\Feature\Accounts;
 
 use App\Actions\Accounts\GrantRole;
 use App\Enums\Role;
+use App\Http\Middleware\EnsureAccountIsSecure;
 use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Fortify;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
@@ -129,5 +131,12 @@ class SecurityRequirementsTest extends TestCase
 
         $this->get('/')->assertRedirect(route('account.security'));
         $this->assertTrue(ChangeLogEntry::query()->where('action', 'two_factor.disabled')->exists());
+    }
+
+    public function test_every_route_allowed_during_setup_exists(): void
+    {
+        foreach (EnsureAccountIsSecure::ALLOWED_DURING_SETUP as $name) {
+            $this->assertTrue(Route::has($name), "The route {$name} that people need during security setup doesn't exist. Fortify may have renamed it.");
+        }
     }
 }
