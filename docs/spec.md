@@ -151,8 +151,9 @@ Volunteers trust the organization with their contact details and their whereabou
 ### Accounts and access
 
 - **Invite-only.** Accounts exist only after a coordinator invites someone, directly or through member sync.
-- **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm (bcrypt or Argon2id); login, reset and invite endpoints are rate-limited.
-- **Two-factor authentication is required** for coordinators and admins, since they can see everyone's contact details.
+- **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm (bcrypt or Argon2id); login, reset and invite endpoints are rate-limited. Opening an emailed link shows a page with a button rather than logging in straight away, because some email security scanners open every link in a message.
+- **Login, invitations and two-factor setup are built on Laravel Fortify**, Laravel's first-party authentication backend, with our own screens.
+- **Two-factor authentication is required** for coordinators and admins, since they can see everyone's contact details. They also need a password. The second factor is a code from an authenticator app, with one-time recovery codes. If the phone isn't available, a code can be emailed instead, but only after a password login: after an email-link login the inbox has already been used once, so an emailed code wouldn't be a second factor.
 - **Action links in emails and texts do one thing only** (section 10) and never open a full session.
 - **Sessions** expire after inactivity, and a person can sign out of all devices from their profile.
 - **Change log** for clearance, role changes, account changes and schedule edits, showing who did what and when.
@@ -217,7 +218,7 @@ Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours expo
 - **One install per organization.** No multi-tenancy.
 - **Server:** AlmaLinux.
 - **Language and framework:** PHP with Laravel, starting on Laravel 13 (PHP 8.3 or newer, which AlmaLinux 10 ships by default). Laravel's notification system already covers mail, SMS, and webhook channels, it has a built-in scheduler and job queue for generation, escalation, and sync jobs, and its Fortify package handles login, two-factor authentication and rate limiting.
-- **Screens:** Blade, Laravel's built-in server-rendered templates, with as little JavaScript as possible. It has the fewest dependencies to upgrade, works well on phones, and makes accessible markup the default.
+- **Screens:** Blade, Laravel's built-in server-rendered templates, with as little JavaScript as possible. It has the fewest dependencies to upgrade, works well on phones, and makes accessible markup the default. Styling is one plain CSS file with no build step and no Node on the server, and the font (Atkinson Hyperlegible, as in the wireframes) is served from the install itself, so no outside font service sees who's using the app.
 - **Tests:** PHPUnit, Laravel's default test framework, run against MariaDB rather than SQLite so date and time handling matches production.
 - **Planning for upgrades:** Laravel releases a major version about once a year, and each gets security fixes for two years, so every install will face a major upgrade roughly yearly. Organizations run SSVS with volunteer maintainers, so upgrades have to stay small and safe:
   - Stay close to framework defaults and documented conventions. Avoid overriding framework internals.
@@ -273,6 +274,10 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-14 | One time zone per install. Volunteers work at the organization's own location, so every shift uses the organization's time zone and shift times follow the local clock through daylight saving changes (a 6 to 9pm shift stays 6 to 9pm). |
 | 2026-10-14 | Shifts are generated daily and existing shifts are never changed by generation; adding a regular also adds them to already-generated shifts that haven't started, still have room, and don't already include them. Dated shift times are stored in UTC. |
 | 2026-10-14 | Alternate-week regulars live on one weekly slot: each regular has their own frequency and anchor date, rather than splitting the slot into two every-other-week slots. Coordinators think of "the Thursday desk shift" as one thing. |
+| 2026-10-16 | Login, invitations and two-factor are built backend first; their screens follow a quick volunteer check of new wireframes (UX principle 6). |
+| 2026-10-16 | Two-factor for coordinators and admins: authenticator app plus recovery codes, with an emailed code as a fallback after password login only. |
+| 2026-10-16 | Laravel Fortify provides login, password reset, rate limiting and two-factor. Passkeys stay off for now (Fortify's passkey package is pre-1.0). |
+| 2026-10-16 | Screens use one plain CSS file with no build step; the skeleton's Vite, Tailwind and npm setup is removed, and the font is self-hosted. |
 
 ## 19. Open questions
 
