@@ -36,8 +36,8 @@ class FortifyServiceProvider extends ServiceProvider
 
         // Deactivated accounts and accounts without a password can't log in with a password.
         Fortify::authenticateUsing(function (Request $request) {
-            // A password login never counts as an email-link login, even if one was started earlier in this session.
-            $request->session()->forget('login.via');
+            // A new password attempt cancels any pending login started earlier in this session (including an email-link one). If the attempt fails, nothing stays pending, so a failed attempt can't leave a link-started login in a state that allows an emailed code.
+            $request->session()->forget(['login.id', 'login.remember', 'login.via']);
 
             $user = User::query()->where('email', Str::lower($request->input(Fortify::username())))->first();
 
@@ -46,7 +46,14 @@ class FortifyServiceProvider extends ServiceProvider
             // Every path does one hash check, so response time doesn't reveal whether the address has a usable account.
             $matches = Hash::check((string) $request->input('password'), $usable ? $user->password : self::dummyHash());
 
-            return $usable && $matches ? $user : null;
+            if (! $usable || ! $matches) {
+                return null;
+            }
+
+            // Fortify stores login.id and login.remember after this callback returns and leaves login.via alone. The emailed two-factor code is only allowed when this marker says the pending login came from a password.
+            $request->session()->put('login.via', 'password');
+
+            return $user;
         });
 
         // Placeholder screens until the screens plan replaces them.

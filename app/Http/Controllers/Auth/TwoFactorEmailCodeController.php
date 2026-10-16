@@ -80,7 +80,7 @@ class TwoFactorEmailCodeController extends Controller
         }
 
         abort_if(
-            $request->session()->get('login.via') === 'link',
+            $request->session()->get('login.via') !== 'password',
             403,
             'An emailed code can\'t be used after logging in with an email link. Use your authenticator app or a recovery code, or log in with your password instead.',
         );

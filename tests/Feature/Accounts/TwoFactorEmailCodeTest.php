@@ -80,6 +80,35 @@ class TwoFactorEmailCodeTest extends TestCase
         $this->post(route('two-factor.email.send'))->assertSessionHas('status');
     }
 
+    public function test_a_failed_password_attempt_after_a_link_login_does_not_allow_an_emailed_code(): void
+    {
+        $this->startLinkLogin();
+
+        $this->post('/login', ['email' => 'coordinator@example.org', 'password' => 'wrong password'])->assertSessionHasErrors('email');
+
+        $this->post(route('two-factor.email.send'))->assertRedirect(route('login'));
+        Notification::assertNotSentTo($this->user, TwoFactorCodeNotification::class);
+        $this->assertGuest();
+    }
+
+    public function test_a_failed_attempt_with_a_wrong_address_after_a_link_login_does_not_allow_an_emailed_code(): void
+    {
+        $this->startLinkLogin();
+
+        $this->post('/login', ['email' => 'nobody@example.org', 'password' => 'correct horse battery'])->assertSessionHasErrors('email');
+
+        $this->post(route('two-factor.email.send'))->assertRedirect(route('login'));
+        Notification::assertNotSentTo($this->user, TwoFactorCodeNotification::class);
+        $this->assertGuest();
+    }
+
+    private function startLinkLogin(): void
+    {
+        $url = app(IssueLoginLink::class)->handle($this->user, LoginLinkPurpose::SignIn);
+        $this->post(route('login-link.consume', basename(parse_url($url, PHP_URL_PATH))))
+            ->assertRedirect(route('two-factor.login'));
+    }
+
     public function test_a_wrong_code_is_refused(): void
     {
         $this->logInWithPassword();
