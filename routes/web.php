@@ -1,8 +1,11 @@
 <?php
 
+use App\Actions\Accounts\SignOutEverywhere;
 use App\Http\Controllers\Auth\InitialPasswordController;
 use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -20,4 +23,12 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/account/security', fn () => view('auth.pending', ['screen' => 'Secure your account']))->name('account.security');
     Route::post('/account/password', [InitialPasswordController::class, 'store'])->name('account.password.set');
+    Route::post('/account/sign-out-everywhere', function (Request $request, SignOutEverywhere $signOutEverywhere) {
+        $signOutEverywhere->handle($request->user());
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login')->with('status', 'You\'re signed out on every device.');
+    })->name('account.sign-out-everywhere');
 });
