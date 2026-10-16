@@ -153,7 +153,7 @@ Volunteers trust the organization with their contact details and their whereabou
 - **Invite-only.** Accounts exist only after a coordinator invites someone, directly or through member sync.
 - **Login:** password, or a one-time email link. Passwords are hashed with a modern algorithm (bcrypt or Argon2id); login, reset and invite endpoints are rate-limited. Passwords need at least 10 characters. Login-link requests and password reset requests answer the same way for every address, so they never reveal who has an account. Opening an emailed link shows a page with a button rather than logging in straight away, because some email security scanners open every link in a message.
 - **Login, invitations and two-factor setup are built on Laravel Fortify**, Laravel's first-party authentication backend, with our own screens.
-- **Two-factor authentication is required** for admins, coordinators and area leads, since they can all see volunteers' contact details. They also need a password. The second factor is a code from an authenticator app, with one-time recovery codes. If the phone isn't available, a code can be emailed instead, but only after a password login: after an email-link login the inbox has already been used once, so an emailed code wouldn't be a second factor.
+- **Two-factor authentication is required** for admins, coordinators and area leads, since they can all see volunteers' contact details. They also need a password. The second factor is a code from an authenticator app, with one-time recovery codes. If the phone isn't available, a code can be emailed instead, but only after a password login: after an email-link login the inbox has already been used once, so an emailed code wouldn't be a second factor. For the same reason, after a password reset by email the emailed code is refused until the person next logs in with their authenticator app or a recovery code. A reset also emails the person to say their password was changed.
 - **Action links in emails and texts do one thing only** (section 10) and never open a full session.
 - **Sessions** expire after 120 minutes of inactivity, and a person can sign out of all devices from their profile. Deactivating a person ends their open sessions on their next request.
 - **First-run setup:** `php artisan ssvs:setup` creates the organization and its first admin, and prints that admin's invitation link so an install works before email is configured.
@@ -288,6 +288,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-16 | `ssvs:setup` prints the first admin's invitation link as well as emailing it, so a new install works before email is configured. |
 | 2026-10-16 | Login-link requests and password reset requests give the same answer for every address, and their emails are sent after the response, so neither the wording nor the timing reveals who has an account. |
 | 2026-10-16 | A deactivated person's open session ends on their next request, whatever session store the install uses. |
+| 2026-10-16 | After a password reset by email, the emailed two-factor code is refused until the person next logs in with their authenticator app or a recovery code, because a reset uses only the inbox. |
 
 ## 19. Open questions
 

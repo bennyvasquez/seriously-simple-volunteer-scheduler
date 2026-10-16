@@ -32,6 +32,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'deactivated_at' => 'datetime',
+            'password_reset_at' => 'datetime',
         ];
     }
 

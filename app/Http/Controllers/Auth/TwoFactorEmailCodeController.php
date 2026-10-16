@@ -85,6 +85,13 @@ class TwoFactorEmailCodeController extends Controller
             'An emailed code can\'t be used after logging in with an email link. Use your authenticator app or a recovery code, or log in with your password instead.',
         );
 
+        // A reset by email used only the inbox, so the inbox can't be the second factor too until the next app or recovery code login.
+        abort_if(
+            $user->password_reset_at !== null,
+            403,
+            'Your password was just reset by email, so use your authenticator app or a recovery code this time.',
+        );
+
         return $user;
     }
 

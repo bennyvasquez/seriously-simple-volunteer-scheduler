@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Fortify\Events\TwoFactorAuthenticationConfirmed;
 use Laravel\Fortify\Events\TwoFactorAuthenticationDisabled;
+use Laravel\Fortify\Events\ValidTwoFactorAuthenticationCodeProvided;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,5 +38,7 @@ class AppServiceProvider extends ServiceProvider
 
         Event::listen(TwoFactorAuthenticationConfirmed::class, fn ($event) => ChangeLogEntry::record($event->user, 'two_factor.enabled', $event->user));
         Event::listen(TwoFactorAuthenticationDisabled::class, fn ($event) => ChangeLogEntry::record($event->user, 'two_factor.disabled', $event->user));
+        // Fortify fires this only when its challenge accepts an authenticator or recovery code, so the emailed code can be offered again after a reset.
+        Event::listen(ValidTwoFactorAuthenticationCodeProvided::class, fn ($event) => $event->user->forceFill(['password_reset_at' => null])->save());
     }
 }
