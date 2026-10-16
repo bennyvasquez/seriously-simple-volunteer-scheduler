@@ -11,6 +11,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   db:
     # Keep this on the MariaDB version AlmaLinux 10 ships (check with: dnf info mariadb-server).
@@ -28,6 +30,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  mailpit:
+    # Development only: catches every email the app sends. Inbox at http://localhost:8025.
+    image: axllent/mailpit:v1.27
+    ports:
+      - "8025:8025"
 
 volumes:
   db-data:
