@@ -8,7 +8,9 @@ use App\Models\ChangeLogEntry;
 use App\Models\User;
 use App\Notifications\LoginLinkNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
@@ -41,6 +43,18 @@ class LoginLinkTest extends TestCase
             ->assertSessionHas('status', self::ANSWER);
 
         Notification::assertSentTo($user, LoginLinkNotification::class);
+    }
+
+    public function test_a_failure_sending_the_email_does_not_change_the_answer(): void
+    {
+        User::factory()->create(['email' => 'volunteer@example.org']);
+        Event::listen(NotificationSending::class, fn () => throw new \RuntimeException('The mail server is down.'));
+        $this->withoutExceptionHandling();
+
+        $this->post(route('login-link.request'), ['email' => 'volunteer@example.org'])
+            ->assertRedirect()
+            ->assertSessionHas('status', self::ANSWER)
+            ->assertSessionHasNoErrors();
     }
 
     public function test_unknown_and_deactivated_addresses_get_the_same_answer(): void

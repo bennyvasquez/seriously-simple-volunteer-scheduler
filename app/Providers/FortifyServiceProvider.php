@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
+use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -12,13 +13,19 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
+use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse;
+use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse;
 use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
 {
+    private static ?string $dummyHash = null;
+
     public function register(): void
     {
-        //
+        // Asking for a password reset answers the same way for every address (spec: no response reveals whether an account exists).
+        $this->app->bind(SuccessfulPasswordResetLinkRequestResponse::class, NeutralPasswordResetLinkResponse::class);
+        $this->app->bind(FailedPasswordResetLinkRequestResponse::class, NeutralPasswordResetLinkResponse::class);
     }
 
     public function boot(): void
@@ -34,11 +41,12 @@ class FortifyServiceProvider extends ServiceProvider
 
             $user = User::query()->where('email', Str::lower($request->input(Fortify::username())))->first();
 
-            if ($user !== null && $user->isActive() && $user->password !== null && Hash::check($request->input('password'), $user->password)) {
-                return $user;
-            }
+            $usable = $user !== null && $user->isActive() && $user->password !== null;
 
-            return null;
+            // Every path does one hash check, so response time doesn't reveal whether the address has a usable account.
+            $matches = Hash::check((string) $request->input('password'), $usable ? $user->password : self::dummyHash());
+
+            return $usable && $matches ? $user : null;
         });
 
         // Placeholder screens until the screens plan replaces them.
@@ -57,5 +65,11 @@ class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('two-factor', function (Request $request) {
             return Limit::perMinute(5)->by($request->session()->get('login.id'));
         });
+    }
+
+    /** A hash nobody's password matches, computed once, used to keep login timing the same when there's no usable account. */
+    private static function dummyHash(): string
+    {
+        return self::$dummyHash ??= Hash::make(Str::random(40));
     }
 }

@@ -25,7 +25,9 @@ class LoginLinkController extends Controller
         $user = User::query()->where('email', Str::lower($request->input('email')))->first();
 
         if ($user !== null && $user->isActive()) {
-            $user->notify(new LoginLinkNotification($issueLoginLink->handle($user, LoginLinkPurpose::SignIn)));
+            // After the response is sent: the answer and how long it takes must not depend on whether the address has an account,
+            // and a mail server failure must not show up only for real accounts.
+            defer(fn () => $user->notify(new LoginLinkNotification($issueLoginLink->handle($user, LoginLinkPurpose::SignIn))));
         }
 
         return back()->with('status', 'If that address has an account, we\'ve emailed a link. It works for 15 minutes.');

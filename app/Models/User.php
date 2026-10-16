@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
@@ -42,6 +43,12 @@ class User extends Authenticatable
     public function loginLinks(): HasMany
     {
         return $this->hasMany(LoginLink::class);
+    }
+
+    /** Sent after the response, so asking for a reset takes the same time whether or not the address has an account. */
+    public function sendPasswordResetNotification($token): void
+    {
+        defer(fn () => $this->notify(new ResetPassword($token)));
     }
 
     public function hasRole(Role $role, ?Area $area = null): bool
