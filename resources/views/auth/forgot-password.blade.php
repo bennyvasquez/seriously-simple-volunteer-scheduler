@@ -4,12 +4,12 @@
 
 @section('content')
 <h1>Reset your password</h1>
-@if (session('status'))
-<x-state label="After pressing the button">
+@if (session('reset_link_sent'))
+<div class="panel">
 <h2>Check your email</h2>
-<p>If {{ old('email') }} has an account, we've emailed it a link to choose a new password. The link works for 60 minutes.</p>
+<p>If {{ old('email') ?: 'that address' }} has an account, we've emailed it a link to choose a new password. The link works for 60 minutes.</p>
 <p class="muted">Nothing yet? Check your spam or junk folder. You can ask again in a minute.</p>
-</x-state>
+</div>
 <a href="{{ route('login') }}">Back to log in</a>
 @else
 <p>Enter your email address and we'll send you a link to choose a new password.</p>

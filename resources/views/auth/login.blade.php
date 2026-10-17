@@ -5,7 +5,7 @@
 
 @section('content')
 <h1>Check your email</h1>
-<p>If {{ old('email') }} has an account, we've emailed it a link to log in. The link works once, for the next 15 minutes.</p>
+<p>If {{ old('email') ?: 'that address' }} has an account, we've emailed it a link to log in. The link works once, for the next 15 minutes.</p>
 <p>Open the email on any device and press the link. You can close this page.</p>
 <div class="panel">
 <h2>Didn't get it?</h2>

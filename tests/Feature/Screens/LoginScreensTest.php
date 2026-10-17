@@ -50,7 +50,18 @@ class LoginScreensTest extends TestCase
     public function test_asking_for_a_reset_shows_the_check_your_email_state(): void
     {
         $this->followingRedirects()->from(route('password.request'))->post(route('password.email'), ['email' => 'nobody@example.org'])
-            ->assertSee('Check your email')->assertSee('If nobody@example.org has an account');
+            ->assertSee('Check your email')->assertSee('If nobody@example.org has an account')->assertDontSee('After pressing the button');
+    }
+
+    public function test_the_sent_states_never_show_an_empty_address(): void
+    {
+        $this->withSession(['reset_link_sent' => true])->get(route('password.request'))->assertSee('If that address has an account');
+        $this->withSession(['login_link_sent' => true])->get('/login')->assertSee('If that address has an account');
+    }
+
+    public function test_a_plain_status_does_not_show_the_reset_sent_state(): void
+    {
+        $this->withSession(['status' => 'Something else.'])->get(route('password.request'))->assertDontSee('Check your email')->assertSee('Email me a reset link');
     }
 
     public function test_the_confirm_password_screen_says_why(): void
