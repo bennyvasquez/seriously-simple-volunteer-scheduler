@@ -26,7 +26,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/account/password', [InitialPasswordController::class, 'store'])->name('account.password.set');
     Route::get('/account/email', [EmailChangeController::class, 'edit'])->name('account.email.edit');
     Route::post('/account/email', [EmailChangeController::class, 'update'])->middleware('throttle:email-change')->name('account.email.update');
-    Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change')->name('account.email.identity.send');
+    Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change-identity')->name('account.email.identity.send');
     Route::post('/account/sign-out-everywhere', function (Request $request, SignOutEverywhere $signOutEverywhere) {
         $signOutEverywhere->handle($request->user());
         Auth::guard('web')->logout();

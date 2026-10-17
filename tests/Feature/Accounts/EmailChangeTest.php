@@ -271,6 +271,31 @@ class EmailChangeTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_the_identity_link_does_not_count_as_a_password_confirmation_elsewhere(): void
+    {
+        $volunteer = User::factory()->withoutPassword()->create(['email' => 'sam@example.org']);
+        $token = $this->identityTokenFor($volunteer);
+
+        $this->post(route('account.email.identity', $token))->assertRedirect(route('account.email.edit'));
+
+        $this->assertNull(session('auth.password_confirmed_at'));
+        $this->post(route('two-factor.enable'))->assertRedirect(route('password.confirm'));
+        $this->assertNull($volunteer->fresh()->two_factor_secret);
+    }
+
+    public function test_an_identity_link_is_refused_once_the_person_has_a_password(): void
+    {
+        $volunteer = User::factory()->withoutPassword()->create(['email' => 'sam@example.org']);
+        $token = $this->identityTokenFor($volunteer);
+        $volunteer->forceFill(['password' => 'a long enough phrase'])->save();
+
+        $this->get(route('account.email.identity', $token))->assertOk()->assertSee('This link doesn\'t work anymore');
+        $this->post(route('account.email.identity', $token))->assertOk()->assertSee('This link doesn\'t work anymore');
+
+        $this->assertGuest();
+        $this->assertNull(session('account.email.identity_confirmed_at'));
+    }
+
     public function test_these_links_cannot_be_used_to_log_in(): void
     {
         $sam = User::factory()->withoutPassword()->create(['email' => 'sam@example.org']);
@@ -310,6 +335,39 @@ class EmailChangeTest extends TestCase
             ->assertSessionHas('status', 'We\'ve sent a link to lead.new@example.org. Your current address keeps working until you open it.');
 
         Notification::assertSentOnDemand(EmailChangeConfirmationNotification::class);
+    }
+
+    public function test_a_mistyped_address_does_not_use_up_the_app_code(): void
+    {
+        Notification::fake();
+        $lead = $this->leadWithTwoFactor();
+        $code = $this->currentCode($this->leadSecret);
+
+        $this->actingAs($lead)->withSession(['auth.password_confirmed_at' => time()])
+            ->post(route('account.email.update'), ['email' => 'lead.new@@example.org', 'code' => $code])
+            ->assertSessionHasErrors('email')->assertSessionDoesntHaveErrors('code');
+
+        $this->actingAs($lead)->withSession(['auth.password_confirmed_at' => time()])
+            ->post(route('account.email.update'), ['email' => 'lead.new@example.org', 'code' => $code])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'We\'ve sent a link to lead.new@example.org. Your current address keeps working until you open it.');
+
+        Notification::assertSentOnDemand(EmailChangeConfirmationNotification::class);
+    }
+
+    public function test_the_form_and_the_identity_link_have_separate_limits(): void
+    {
+        Notification::fake();
+        $volunteer = User::factory()->withoutPassword()->create(['email' => 'sam@example.org']);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->actingAs($volunteer)->post(route('account.email.identity.send'))->assertRedirect();
+        }
+        $this->actingAs($volunteer)->post(route('account.email.identity.send'))->assertStatus(429);
+
+        $this->actingAs($volunteer)->withSession(['account.email.identity_confirmed_at' => time()])
+            ->post(route('account.email.update'), ['email' => 'sam.new@example.org'])
+            ->assertRedirect(route('account.show'));
     }
 
     public function test_confirming_ends_other_sessions_and_keeps_this_one(): void

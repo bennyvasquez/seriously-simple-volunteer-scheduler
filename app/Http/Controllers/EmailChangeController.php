@@ -22,6 +22,9 @@ use Laravel\Fortify\Fortify;
  */
 class EmailChangeController extends Controller
 {
+    /** Set when someone without a password confirms it's them with an emailed link. */
+    public const IDENTITY_CONFIRMED_AT = 'account.email.identity_confirmed_at';
+
     public function edit(Request $request): View|RedirectResponse
     {
         $user = $request->user();
@@ -76,7 +79,8 @@ class EmailChangeController extends Controller
             $request->session()->regenerate();
         }
 
-        $request->session()->put('auth.password_confirmed_at', time());
+        // Its own key, not Laravel's auth.password_confirmed_at: this link stands in for a password only on the email change screens, never on other password-protected routes.
+        $request->session()->put(self::IDENTITY_CONFIRMED_AT, time());
 
         return redirect()->route('account.email.edit');
     }
@@ -89,18 +93,22 @@ class EmailChangeController extends Controller
             return $user->password !== null ? redirect()->guest(route('password.confirm')) : redirect()->route('account.email.edit');
         }
 
-        // The app code is checked before anything else, so a wrong code never reaches the address.
-        if ($user->hasEnabledTwoFactorAuthentication()) {
-            $request->validate(['code' => ['required', 'string']]);
+        $needsCode = $user->hasEnabledTwoFactorAuthentication();
 
+        // The address's format is checked first, so a typo doesn't use up a valid app code. The format says nothing about who has an account.
+        $email = Str::lower($request->validate([
+            'email' => ['required', 'string', 'email', 'max:255'],
+            ...($needsCode ? ['code' => ['required', 'string']] : []),
+        ])['email']);
+
+        // The app code is checked before the address is looked up or anything is sent.
+        if ($needsCode) {
             $valid = app(TwoFactorAuthenticationProvider::class)->verify(Fortify::currentEncrypter()->decrypt($user->two_factor_secret), (string) $request->input('code'));
 
             if (! $valid) {
                 throw ValidationException::withMessages(['code' => 'That code didn\'t work. Check your app and try the newest code.']);
             }
         }
-
-        $email = Str::lower($request->validate(['email' => ['required', 'string', 'email', 'max:255']])['email']);
 
         $requestEmailChange->handle($user, $email);
 
@@ -129,10 +137,17 @@ class EmailChangeController extends Controller
         return view('account.email', ['step' => 'changed', 'newEmail' => $link->email]);
     }
 
-    /** Same rule as Laravel's password.confirm middleware: confirmed within the password timeout. */
+    /** Same rule as Laravel's password.confirm middleware: confirmed within the password timeout. A confirmation by identity link counts only for people without a password. */
     private function recentlyConfirmed(Request $request): bool
     {
-        return time() - (int) $request->session()->get('auth.password_confirmed_at', 0) < (int) config('auth.password_timeout', 10800);
+        $session = $request->session();
+        $confirmedAt = (int) $session->get('auth.password_confirmed_at', 0);
+
+        if ($request->user()->password === null) {
+            $confirmedAt = max($confirmedAt, (int) $session->get(self::IDENTITY_CONFIRMED_AT, 0));
+        }
+
+        return time() - $confirmedAt < (int) config('auth.password_timeout', 10800);
     }
 
     /** Identity links are only for people without a password (and so without a second step). If that changed after the link was sent, the link doesn't work. */
