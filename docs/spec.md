@@ -157,7 +157,7 @@ Volunteers trust the organization with their contact details and their whereabou
 - **Action links in emails and texts do one thing only** (section 10) and never open a full session.
 - **Sessions** expire after 120 minutes of inactivity, and a person can sign out of all devices from their profile. Deactivating a person ends their open sessions on their next request.
 - **First-run setup:** `php artisan ssvs:setup` creates the organization and its first admin, and prints that admin's invitation link so an install works before email is configured.
-- **Change log** for clearance, role changes, account changes and schedule edits, showing who did what and when.
+- **Change log** for every change to stored data, including clearance, roles, accounts and the schedule. Each entry says who made the change (a person, or the system for automatic jobs), what changed with the old and new values, and when. Coordinators and admins can filter it by who made a change, who it was about, which record, which kind of change and a date range. Entries are never edited. Password hashes, tokens and two-factor secrets are never copied into it.
 
 ### Who sees what
 
@@ -167,16 +167,17 @@ Volunteers trust the organization with their contact details and their whereabou
 | Email addresses and phone numbers | Their own | Yes | Yes | No |
 | Notification settings | Their own | No | Admins only | No |
 | Clearance status and shadow history | Their own | Yes | Yes | No |
+| Last login and last seen | Their own | Yes | Yes | No |
 | Open shifts and "needs N more" counts | Yes | Yes | Yes | Only areas and events marked public, never names |
 
 New volunteers who aren't cleared yet can see the full schedule. That includes when someone is working alone, so each deployment should decide whether that's acceptable; the invite-only model is the main protection.
 
 ### Data we keep, and for how long
 
-- **Stored:** name, email, optional phone number, roles, skills, clearance status, notification settings, and schedule history. Nothing else is required.
+- **Stored:** name, email, optional phone number, roles, skills, clearance status, notification settings, last login and last seen times, and schedule history. Nothing else is required.
 - **Phone numbers** are only stored after the person confirms them with a code, and are deleted when they turn text messages off.
-- **Inactive accounts** (no login and no shifts for a set period; setting, default 18 months) are flagged to coordinators for removal.
-- **Removal on request:** a coordinator can delete a person's account and contact details. Past schedule history keeps a placeholder name so staffing records still add up.
+- **Inactive accounts** (not seen and no shifts for a set period; setting, default 18 months) are flagged to coordinators for removal.
+- **Removal on request:** a coordinator can delete a person's account and contact details. Past schedule history keeps a placeholder name so staffing records still add up. In the change log, the person's name becomes "Removed person" and their contact details are blanked; the entries themselves stay.
 - **Export on request:** a person can download the information the app holds about them.
 
 ### Secrets and integrations
@@ -289,7 +290,13 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-16 | Login-link requests and password reset requests give the same answer for every address, and their emails are sent after the response, so neither the wording nor the timing reveals who has an account. |
 | 2026-10-16 | A deactivated person's open session ends on their next request, whatever session store the install uses. |
 | 2026-10-16 | After a password reset by email, the emailed two-factor code is refused until the person next logs in with their authenticator app or a recovery code, because a reset uses only the inbox. |
-| 2026-10-17 | Last login is set at each sign-in (including a remember-me recall) and last seen at most once an hour, both by direct database updates that add nothing to the change log. Coordinators and admins see everyone on the users page; area leads see people with a shift or a regular slot in their areas, past or future, plus themselves; everyone else sees only themselves. Deactivated people stay in that list so the page can filter them. |
+| 2026-10-17 | Every change to stored data is logged with who, what (old and new values) and when, and the log is filterable by actor, affected person, record, kind of change and date. |
+| 2026-10-17 | When a person's account is removed, their name in the change log becomes "Removed person" and their contact details are blanked, so the log keeps its history without keeping their details. |
+| 2026-10-17 | Shift generation logs one entry per run that creates shifts, not one per shift, written after the run because each shift is created in its own transaction. |
+| 2026-10-17 | The app records each person's last login and last seen times (last seen at most once an hour). They aren't change log entries. Inactivity is measured from last seen, because a remember-me cookie means some people rarely log in. |
+| 2026-10-17 | A users page lets area leads and up see people's roles, invitation status, last login and last seen. Coordinators and admins see everyone; an area lead sees the people who have worked or are scheduled in their areas. Deactivated people stay in that list so the page can filter them. |
+| 2026-10-17 | Coordinators never see an invitation link, only its status, because the link logs in as that person. Only `ssvs:setup` prints one. |
+| 2026-10-17 | Signing in changes nothing in the change log: clearing a pending password reset after an authenticator-app login and starting a session aren't logged. Using a recovery code is logged, because it uses one up. |
 
 ## 19. Open questions
 
