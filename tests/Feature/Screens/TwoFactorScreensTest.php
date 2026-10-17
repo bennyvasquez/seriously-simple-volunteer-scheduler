@@ -102,6 +102,39 @@ class TwoFactorScreensTest extends TestCase
         $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
 
         $this->followingRedirects()->from(route('two-factor.login', ['recovery' => 1]))->post(route('two-factor.login.store'), ['recovery_code' => 'nope'])
-            ->assertSee('name="recovery_code"', false);
+            ->assertSee('name="recovery_code"', false)->assertSee('That recovery code didn\'t work. Check it and try again, or use a different one.');
+    }
+
+    public function test_the_email_screen_survives_a_refresh_and_confirms_a_new_code(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+        $this->from(route('two-factor.login'))->post(route('two-factor.email.send'));
+
+        $this->get(route('two-factor.login'))->assertSee('Check your email for a code');
+        $this->get(route('two-factor.login'))->assertSee('Check your email for a code')->assertSee('name="code"', false);
+        $this->get(route('two-factor.login', ['app' => 1]))->assertSee('Enter your code');
+
+        $this->followingRedirects()->from(route('two-factor.login'))->post(route('two-factor.email.send'))
+            ->assertSee('We emailed you a 6-digit code. It works for 10 minutes.');
+    }
+
+    public function test_the_fields_are_required(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+
+        $this->get(route('two-factor.login'))->assertSee('name="code" id="code"', false)->assertSee('required', false);
+        $this->get(route('two-factor.login', ['recovery' => 1]))->assertSee('required', false);
+    }
+
+    public function test_after_a_reset_the_screen_keeps_the_admin_line_and_does_not_repeat_the_reason(): void
+    {
+        $lead = $this->leadWithTwoFactor(['password_reset_at' => now()]);
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+        $this->from(route('two-factor.login'))->post(route('two-factor.email.send'));
+
+        $html = $this->get(route('two-factor.login'))->assertSee('Ask an admin to help you get back in.')->getContent();
+        $this->assertStringNotContainsString('role="alert"', $html);
     }
 }

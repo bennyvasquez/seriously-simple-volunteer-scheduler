@@ -1,5 +1,6 @@
 {
     "The provided two factor authentication code was invalid.": "That code didn't work. Check your app and try the newest code.",
+    "The provided two factor recovery code was invalid.": "That recovery code didn't work. Check it and try again, or use a different one.",
     "The provided password was incorrect.": "That password isn't right. Try again.",
     "The provided password does not match your current password.": "That isn't your current password."
 }

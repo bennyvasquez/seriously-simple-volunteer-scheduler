@@ -27,7 +27,7 @@ class TwoFactorEmailCodeController extends Controller
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $expiresAt = now()->addMinutes(self::LIFETIME_MINUTES);
 
-        Cache::put($this->cacheKey($user), ['hash' => hash('sha256', $code), 'tries' => 0, 'expires_at' => $expiresAt->getTimestamp()], $expiresAt);
+        Cache::put(self::cacheKey($user), ['hash' => hash('sha256', $code), 'tries' => 0, 'expires_at' => $expiresAt->getTimestamp()], $expiresAt);
         $user->notify(new TwoFactorCodeNotification($code));
 
         return back()->with('status', 'We emailed you a 6-digit code. It works for 10 minutes.');
@@ -38,11 +38,11 @@ class TwoFactorEmailCodeController extends Controller
         $user = $this->pendingUser($request);
         $request->validate(['code' => ['required', 'string']]);
 
-        $key = $this->cacheKey($user);
+        $key = self::cacheKey($user);
         $entry = Cache::get($key);
 
         if ($entry === null) {
-            return back()->with('email_code_pending', true)->withErrors(['code' => 'That code has expired. Ask for a new one.']);
+            return back()->withErrors(['code' => 'That code has expired. Ask for a new one.']);
         }
 
         if (! hash_equals($entry['hash'], hash('sha256', trim($request->input('code'))))) {
@@ -51,12 +51,12 @@ class TwoFactorEmailCodeController extends Controller
             if ($entry['tries'] >= self::MAX_TRIES) {
                 Cache::forget($key);
 
-                return back()->with('email_code_pending', true)->withErrors(['code' => 'That code didn\'t match, and it\'s now used up. Ask for a new one.']);
+                return back()->withErrors(['code' => 'That code didn\'t match, and it\'s now used up. Ask for a new one.']);
             }
 
             Cache::put($key, $entry, now()->setTimestamp($entry['expires_at']));
 
-            return back()->with('email_code_pending', true)->withErrors(['code' => 'That code didn\'t match. Check the email and try again.']);
+            return back()->withErrors(['code' => 'That code didn\'t match. Check the email and try again.']);
         }
 
         Cache::forget($key);
@@ -97,7 +97,8 @@ class TwoFactorEmailCodeController extends Controller
         throw new HttpResponseException(redirect()->route('two-factor.login')->withErrors(['email_code' => $message]));
     }
 
-    private function cacheKey(User $user): string
+    /** The cache key for a person's pending emailed code. The code screen also reads it to know whether to show the email form. */
+    public static function cacheKey(User $user): string
     {
         return "two-factor-email:{$user->id}";
     }

@@ -105,7 +105,8 @@ class PasswordResetTwoFactorTest extends TestCase
         $this->post(route('two-factor.login.store'), ['code' => $wrong]);
 
         $this->assertNotNull($this->user->fresh()->password_reset_at);
-        $this->post(route('two-factor.email.send'))->assertRedirect(route('two-factor.login'))->assertSessionHasErrors('email_code');
+        $this->post(route('two-factor.email.send'))->assertRedirect(route('two-factor.login'))
+            ->assertSessionHasErrors(['email_code' => 'Your password was just reset by email, so use your authenticator app or a recovery code this time.']);
     }
 
     public function test_a_reset_is_logged_and_the_person_is_told(): void

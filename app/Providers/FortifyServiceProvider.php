@@ -4,10 +4,12 @@ namespace App\Providers;
 
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
+use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -70,7 +72,7 @@ class FortifyServiceProvider extends ServiceProvider
             // A failed recovery code comes back without the query string, so the error says which form to show.
             $mode = match (true) {
                 $request->boolean('recovery') || $request->session()->get('errors')?->has('recovery_code') => 'recovery',
-                $canEmailCode && ($session->has('status') || $session->has('email_code_pending')) => 'email',
+                $canEmailCode && ! $request->boolean('app') && Cache::has(TwoFactorEmailCodeController::cacheKey($pendingUser)) => 'email',
                 default => 'app',
             };
 
