@@ -1,0 +1,115 @@
+<?php
+
+namespace App\Calendar;
+
+use App\Enums\SlotFrequency;
+use App\Models\Organization;
+use App\Models\Shift;
+use App\Models\WeeklySlot;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Route;
+
+/**
+ * The sidebar's "Needs attention" list (plan decision): for the next 14 days, shifts with open places (marked urgent inside 24 hours) and rotation shifts nobody signed up for, then weekly slots with no regular. "Ready for review" waits for clearance.
+ */
+final class NeedsAttention
+{
+    public const DAYS = 14;
+
+    /**
+     * @return Collection<int, array{label: string, detail: string, url: ?string, urgent: bool}>
+     */
+    public static function for(Organization $organization, array $areaIds): Collection
+    {
+        $timezone = $organization->timezone;
+        $now = CarbonImmutable::now();
+        $today = $organization->today()->toDateString();
+        $tomorrow = $organization->today()->addDay()->toDateString();
+
+        $shifts = Shift::query()
+            ->active()
+            ->whereIn('area_id', $areaIds)
+            ->where('starts_at', '>', $now)
+            ->where('starts_at', '<=', $now->addDays(self::DAYS))
+            ->with(['area', 'assignments', 'weeklySlot'])
+            ->orderBy('starts_at')
+            ->get()
+            ->filter(fn (Shift $shift) => $shift->openPlaces() > 0);
+
+        $items = $shifts->map(function (Shift $shift) use ($timezone, $now, $today, $tomorrow) {
+            $date = $shift->local_date->toDateString();
+            $urgent = $shift->isUrgent($now);
+
+            if ($shift->weeklySlot?->is_rotation && $shift->filledCount() === 0) {
+                $detail = $shift->area->name.' rotation, nobody signed up';
+            } else {
+                $detail = $shift->area->name.', '.$shift->openPlaces().' open';
+            }
+
+            if ($urgent) {
+                $detail .= $date === $today ? ', starts today' : ($date === $tomorrow ? ', starts tomorrow' : ', starts soon');
+            }
+
+            return [
+                'label' => $shift->starts_at->setTimezone($timezone)->format('D M j').', '.TimeFormat::time($shift->starts_at->setTimezone($timezone)),
+                'detail' => $detail,
+                'url' => self::shiftUrl($shift),
+                'urgent' => $urgent,
+            ];
+        })->values();
+
+        return $items->concat(self::slotsWithoutRegular($today, $areaIds));
+    }
+
+    /** @return Collection<int, array{label: string, detail: string, url: ?string, urgent: bool}> */
+    private static function slotsWithoutRegular(string $today, array $areaIds): Collection
+    {
+        $days = [];
+        $first = CarbonImmutable::parse($today, 'UTC');
+        for ($offset = 0; $offset < self::DAYS; $offset++) {
+            $days[] = $first->addDays($offset)->toDateString();
+        }
+
+        return WeeklySlot::query()
+            ->whereIn('area_id', $areaIds)
+            ->where('is_rotation', false)
+            ->where('valid_from', '<=', $days[self::DAYS - 1])
+            ->where(fn ($query) => $query->whereNull('valid_until')->orWhere('valid_until', '>=', $today))
+            ->whereDoesntHave('regulars', fn ($query) => $query->where(fn ($ends) => $ends->whereNull('ends_on')->orWhere('ends_on', '>=', $today)))
+            ->with('area')
+            ->orderBy('weekday')
+            ->orderBy('start_time')
+            ->get()
+            ->map(function (WeeklySlot $slot) use ($days) {
+                $next = collect($days)->first(fn (string $date) => $slot->occursOn($date));
+
+                if ($next === null) {
+                    return null;
+                }
+
+                $weekday = CarbonImmutable::parse($next)->format('l');
+                $when = $slot->frequency === SlotFrequency::EveryOtherWeek ? 'every other '.$weekday : $weekday.'s';
+                $time = TimeFormat::range(CarbonImmutable::parse($slot->start_time), CarbonImmutable::parse($slot->end_time));
+
+                return [
+                    'label' => $slot->area->name.', '.$when.' '.$time,
+                    'detail' => 'No regular',
+                    'url' => route('calendar.week', ['date' => $next]),
+                    'urgent' => false,
+                ];
+            })
+            ->filter()
+            ->values();
+    }
+
+    /** The shift's details once that screen exists (Task 5); its week until then. */
+    private static function shiftUrl(Shift $shift): string
+    {
+        if (Route::has('calendar.shift')) {
+            return route('calendar.shift', $shift);
+        }
+
+        return route('calendar.week', ['date' => $shift->local_date->toDateString()]);
+    }
+}

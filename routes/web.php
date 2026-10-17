@@ -5,6 +5,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\InitialPasswordController;
 use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
+use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\PersonSecurityController;
 use Illuminate\Http\Request;
@@ -28,6 +29,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/account/email', [EmailChangeController::class, 'edit'])->name('account.email.edit');
     Route::post('/account/email', [EmailChangeController::class, 'update'])->middleware('throttle:email-change')->name('account.email.update');
     Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change-identity')->name('account.email.identity.send');
+    Route::middleware('can:viewAny,App\Models\Area')->group(function () {
+        Route::get('/calendar', [CalendarController::class, 'week'])->name('calendar.week');
+        Route::get('/calendar/day', [CalendarController::class, 'day'])->name('calendar.day');
+        Route::get('/calendar/month', [CalendarController::class, 'month'])->name('calendar.month');
+    });
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');
     // The reset screens are for logged-out people, so "Forgot your password?" on the confirm screen logs out first.
