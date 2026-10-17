@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Accounts\SignOutEverywhere;
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\InitialPasswordController;
 use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
@@ -19,7 +20,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
-    Route::get('/account/security', fn () => view('auth.pending', ['screen' => 'Secure your account']))->name('account.security');
+    Route::get('/account/security', [AccountController::class, 'security'])->name('account.security');
     Route::post('/account/password', [InitialPasswordController::class, 'store'])->name('account.password.set');
     Route::post('/account/sign-out-everywhere', function (Request $request, SignOutEverywhere $signOutEverywhere) {
         $signOutEverywhere->handle($request->user());

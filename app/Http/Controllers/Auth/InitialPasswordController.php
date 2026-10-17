@@ -9,6 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
 
 /**
  * Lets someone who joined by invitation, and so has no password, choose one. Changing an existing password goes through Fortify, which asks for the current one.
@@ -32,6 +33,13 @@ class InitialPasswordController extends Controller
 
             ChangeLogEntry::record($user, 'user.password_set', $user, changes: $changes);
         });
+
+        // Enabling two-factor sits behind password confirmation, and they just typed the password, so skip asking again.
+        $request->session()->passwordConfirmed();
+
+        if ($user->requiresTwoFactor()) {
+            app(EnableTwoFactorAuthentication::class)($user);
+        }
 
         return redirect()->route('account.security')->with('status', 'Your password is set.');
     }
