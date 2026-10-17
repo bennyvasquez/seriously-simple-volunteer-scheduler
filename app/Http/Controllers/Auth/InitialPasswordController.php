@@ -41,6 +41,11 @@ class InitialPasswordController extends Controller
             app(EnableTwoFactorAuthentication::class)($user);
         }
 
+        // Someone who doesn't need two-factor is finished, so send them back to their account page.
+        if (! $user->requiresTwoFactor()) {
+            return redirect()->route('account.show')->with('status', 'Your password is saved.');
+        }
+
         return redirect()->route('account.security')->with('status', 'Your password is set.');
     }
 }

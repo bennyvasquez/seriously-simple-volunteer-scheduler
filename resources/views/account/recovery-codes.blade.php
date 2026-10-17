@@ -4,7 +4,7 @@
 @section('header', 'Secure your account')
 
 @section('content')
-<p><strong>The app is connected.</strong></p>
+<p><strong>{{ $message ?? 'The app is connected.' }}</strong></p>
 <h1>Save your recovery codes</h1>
 <p>If you lose your phone or get a new one, each of these codes lets you log in once instead of a code from the app. Keep them somewhere safe, like a password manager or a printed copy at home.</p>
 <section class="panel">

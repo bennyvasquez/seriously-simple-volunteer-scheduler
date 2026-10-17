@@ -1,6 +1,6 @@
-@props(['name', 'label', 'type' => 'text', 'hint' => null, 'value' => null, 'autocomplete' => null])
+@props(['name', 'label', 'type' => 'text', 'hint' => null, 'value' => null, 'autocomplete' => null, 'bag' => 'default'])
 @php
-    $error = $errors->first($name);
+    $error = $errors->getBag($bag)->first($name);
     $describedBy = trim(($hint ? $name.'-hint ' : '').($error ? $name.'-error' : ''));
 @endphp
 <div class="field">
