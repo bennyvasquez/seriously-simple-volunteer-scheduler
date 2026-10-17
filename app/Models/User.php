@@ -8,6 +8,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -36,12 +37,24 @@ class User extends Authenticatable
             'password' => 'hashed',
             'deactivated_at' => 'datetime',
             'password_reset_at' => 'datetime',
+            'last_login_at' => 'datetime',
+            'last_seen_at' => 'datetime',
         ];
     }
 
     public function roles(): HasMany
     {
         return $this->hasMany(RoleAssignment::class);
+    }
+
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(Assignment::class);
+    }
+
+    public function regulars(): HasMany
+    {
+        return $this->hasMany(SlotRegular::class);
     }
 
     public function loginLinks(): HasMany
@@ -92,5 +105,30 @@ class User extends Authenticatable
         }
 
         return $role === Role::AreaLead && $this->hasRole(Role::Coordinator);
+    }
+
+    /**
+     * The people this person may see on the users page. Coordinators and admins see everyone. Area leads see anyone with a shift or a regular slot in one of their areas, past or future, and themselves. Everyone else sees only themselves. Deactivated people are included so the page can filter them, and the query has no order.
+     *
+     * @return Builder<User>
+     */
+    public function visiblePeople(): Builder
+    {
+        if ($this->isCoordinator()) {
+            return static::query();
+        }
+
+        $areaIds = $this->roles()->where('role', Role::AreaLead->value)->pluck('area_id');
+
+        return static::query()->where(fn (Builder $query) => $query
+            ->whereKey($this->id)
+            ->when($areaIds->isNotEmpty(), fn (Builder $query) => $query
+                ->orWhereHas('assignments.shift', fn ($shift) => $shift->whereIn('area_id', $areaIds))
+                ->orWhereHas('regulars.weeklySlot', fn ($slot) => $slot->whereIn('area_id', $areaIds))));
+    }
+
+    public function canSee(User $other): bool
+    {
+        return $this->visiblePeople()->whereKey($other->id)->exists();
     }
 }

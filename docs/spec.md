@@ -289,6 +289,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-16 | Login-link requests and password reset requests give the same answer for every address, and their emails are sent after the response, so neither the wording nor the timing reveals who has an account. |
 | 2026-10-16 | A deactivated person's open session ends on their next request, whatever session store the install uses. |
 | 2026-10-16 | After a password reset by email, the emailed two-factor code is refused until the person next logs in with their authenticator app or a recovery code, because a reset uses only the inbox. |
+| 2026-10-17 | Last login is set at each sign-in (including a remember-me recall) and last seen at most once an hour, both by direct database updates that add nothing to the change log. Coordinators and admins see everyone on the users page; area leads see people with a shift or a regular slot in their areas, past or future, plus themselves; everyone else sees only themselves. Deactivated people stay in that list so the page can filter them. |
 
 ## 19. Open questions
 
