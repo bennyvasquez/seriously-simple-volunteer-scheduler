@@ -157,7 +157,7 @@ Volunteers trust the organization with their contact details and their whereabou
 - **Action links in emails and texts do one thing only** (section 10) and never open a full session.
 - **Sessions** expire after 120 minutes of inactivity, and a person can sign out of all devices from their profile. Deactivating a person ends their open sessions on their next request.
 - **First-run setup:** `php artisan ssvs:setup` creates the organization and its first admin, and prints that admin's invitation link so an install works before email is configured.
-- **Change log** for every change to stored data, including clearance, roles, accounts and the schedule. Each entry says who made the change (a person, or the system for automatic jobs), what changed with the old and new values, and when. Coordinators and admins can filter it by who made a change, who it was about, which record, which kind of change and a date range. Entries are never edited. Password hashes, tokens and two-factor secrets are never copied into it.
+- **Change log** for every change to stored data, including clearance, roles, accounts and the schedule. Each entry says who made the change (a person, or the system for automatic jobs), what changed, with the old and new values where there are any (secrets show only that they changed), and when. Coordinators and admins can filter it by who made a change, who it was about, which record, which kind of change and a date range. Entries are never edited. Password hashes, tokens and two-factor secrets are never copied into it.
 
 ### Who sees what
 
@@ -290,7 +290,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-16 | Login-link requests and password reset requests give the same answer for every address, and their emails are sent after the response, so neither the wording nor the timing reveals who has an account. |
 | 2026-10-16 | A deactivated person's open session ends on their next request, whatever session store the install uses. |
 | 2026-10-16 | After a password reset by email, the emailed two-factor code is refused until the person next logs in with their authenticator app or a recovery code, because a reset uses only the inbox. |
-| 2026-10-17 | Every change to stored data is logged with who, what (old and new values) and when, and the log is filterable by actor, affected person, record, kind of change and date. |
+| 2026-10-17 | Every change to stored data is logged with who, what (old and new values where there are any) and when, and the log is filterable by actor, affected person, record, kind of change and date. |
 | 2026-10-17 | When a person's account is removed, their name in the change log becomes "Removed person" and their contact details are blanked, so the log keeps its history without keeping their details. |
 | 2026-10-17 | Shift generation logs one entry per run that creates shifts, not one per shift, written after the run because each shift is created in its own transaction. |
 | 2026-10-17 | The app records each person's last login and last seen times (last seen at most once an hour). They aren't change log entries. Inactivity is measured from last seen, because a remember-me cookie means some people rarely log in. |
