@@ -116,7 +116,7 @@ SSVS is the record of volunteer hours.
 
 - **A shift counts as worked once it ends**, unless its lead marks a no-show. Leads can correct a mark afterwards. Every mark and correction is in the change log.
 - **Hours** are the length of each shift a person worked. Each person sees their own hours; leads see hours worked in their areas, and coordinators and admins see everyone's, filtered by person, area and date range.
-- **Credit requests.** An organization can let volunteers turn hours into credit, such as credit toward a membership. A volunteer asks for credit for hours they haven't claimed yet, and a small group of people reviews the queue and approves or declines each request. Hours in an approved request can't be claimed again. Who reviews, and what an hour is worth, are open questions (section 19).
+- **Credit requests.** An organization can let volunteers turn hours into credit, such as credit toward a membership. A volunteer asks for credit for hours they haven't claimed yet, and a small group of people reviews the queue and approves or declines each request. Hours in an approved request can't be claimed again. Credit requests come in phase 4. Who reviews, and what an hour is worth, are open questions (section 19).
 
 ## 9. New volunteers, shadowing and clearance
 
@@ -253,6 +253,9 @@ Events with organizers. Public calendar. Google Calendar publishing and personal
 **Phase 3: polish.**
 Hours export. Direct person-to-person swaps. Staffing reports. Skills on event shifts. Text messages, once a provider is chosen and registered.
 
+**Phase 4: credit.**
+Credit requests for volunteer hours and the review queue (section 8.6). Adding approved credit to the membership system automatically comes after that.
+
 ## 17. Launch approach
 
 Run a test copy a couple of weeks before launch. Coordinators enter the real schedule there, confirming each regular as they go, which doubles as their training and surfaces confusing screens while they're cheap to fix. Copy the finished schedule into the live install, then launch, so on day one every volunteer logs in and finds their shifts already there. Don't auto-import an old shared calendar: they tend to carry stale recurring entries and inconsistent names.
@@ -316,5 +319,5 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 
 - Repository home: benny's account for now; whether and when it moves to an organization.
 - Text message provider and sender type, for phase 3. The October 2026 research in docs/background.md recommends a verified toll-free number.
-- Which phase volunteer hours and credit requests ship in. An organization replacing another hours tool needs them before that tool stops.
+- Which phase volunteer hours themselves (counting worked shifts, no-shows, each person's totals) ship in. Credit requests are phase 4. An organization replacing another hours tool needs hours before that tool stops recording them.
 - Who reviews credit requests (a new permission an admin grants, or a role), and whether the value of an hour is a setting.
