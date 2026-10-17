@@ -7,6 +7,7 @@ use App\Enums\LoginLinkPurpose;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -31,6 +32,18 @@ class LastSeenTest extends TestCase
 
         $this->post(route('login-link.consume', basename(parse_url($url, PHP_URL_PATH))));
 
+        $this->assertNotNull($user->fresh()->last_login_at);
+    }
+
+    public function test_a_remember_me_recall_records_last_login(): void
+    {
+        $user = User::factory()->create(['remember_token' => 'remember-token-for-test']);
+        $recallerName = Auth::guard('web')->getRecallerName();
+
+        $this->withCookie($recallerName, $user->id.'|remember-token-for-test|'.$user->getAuthPassword());
+        $this->get('/login')->assertRedirect('/');
+
+        $this->assertAuthenticatedAs($user);
         $this->assertNotNull($user->fresh()->last_login_at);
     }
 

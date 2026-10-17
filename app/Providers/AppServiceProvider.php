@@ -41,8 +41,15 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('two-factor-email', fn (Request $request) => Limit::perMinutes(10, 3)->by('two-factor-email|'.$request->session()->get('login.id')));
 
         // A query-builder update, so signing in fires no model events and writes no change log entry. Login also fires when a remember-me cookie signs someone back in.
-        Event::listen(Login::class, function ($event) {
-            User::query()->whereKey($event->user->getAuthIdentifier())->update(['last_login_at' => now(), 'last_seen_at' => now()]);
+        Event::listen(Login::class, function (Login $event) {
+            $now = now();
+            User::query()->whereKey($event->user->getAuthIdentifier())->update(['last_login_at' => $now, 'last_seen_at' => $now]);
+
+            // Keeps RecordLastSeen from writing again in the same request.
+            foreach (['last_login_at', 'last_seen_at'] as $column) {
+                $event->user->setAttribute($column, $now);
+                $event->user->syncOriginalAttribute($column);
+            }
         });
 
         Event::listen(TwoFactorAuthenticationConfirmed::class, fn ($event) => ChangeLogEntry::record($event->user, 'two_factor.enabled', $event->user));

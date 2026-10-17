@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Accounts;
 
+use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use LogicException;
 use Tests\TestCase;
 
@@ -129,5 +131,30 @@ class ChangeLogTest extends TestCase
         $this->assertSame(['old' => null, 'new' => null, 'removed' => true], $byRobin->fresh()->changes['email']);
         $this->assertSame(ChangeLogEntry::REMOVED_PERSON, $aboutSam->fresh()->actor_name);
         $this->assertSame(['old' => 'sam@example.org', 'new' => 'sam.new@example.org'], $aboutSam->fresh()->changes['email']);
+    }
+
+    public function test_forgetting_a_person_keeps_names_in_entries_about_other_records(): void
+    {
+        $robin = User::factory()->create(['name' => 'Robin']);
+        $area = Area::factory()->create(['name' => 'Robin']);
+        $area->name = 'Woodshop';
+        $entry = ChangeLogEntry::record($robin, 'area.renamed', $area, changes: ChangeLogEntry::changesOf($area), about: $robin);
+
+        ChangeLogEntry::forgetPersonalDetailsOf($robin);
+
+        $this->assertSame(ChangeLogEntry::REMOVED_PERSON, $entry->fresh()->actor_name);
+        $this->assertSame(['old' => 'Robin', 'new' => 'Woodshop'], $entry->fresh()->changes['name']);
+    }
+
+    public function test_a_hidden_field_that_was_never_set_is_not_logged(): void
+    {
+        $user = new User(['name' => 'Robin', 'email' => 'robin@example.org', 'password' => null]);
+
+        $this->assertArrayNotHasKey('password', ChangeLogEntry::changesOf($user));
+
+        $user->save();
+        $user->password = Hash::make('correct horse battery');
+
+        $this->assertSame(['hidden' => true], ChangeLogEntry::changesOf($user)['password']);
     }
 }

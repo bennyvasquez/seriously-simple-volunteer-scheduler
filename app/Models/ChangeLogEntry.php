@@ -52,7 +52,7 @@ class ChangeLogEntry extends Model
         ]);
     }
 
-    /** Old and new values of every dirty attribute. Call before saving. Hidden attributes (password hashes, tokens, secrets) are logged as changed, without values. */
+    /** Old and new values of every dirty attribute. Call before saving. Hidden attributes (password hashes, tokens, secrets) are logged as changed, without values, and skipped when both the old and new value are null (a password that was never set). */
     public static function changesOf(Model $model): array
     {
         $changes = [];
@@ -63,15 +63,24 @@ class ChangeLogEntry extends Model
                 continue;
             }
 
-            $changes[$key] = in_array($key, $hidden, true)
-                ? ['hidden' => true]
-                : ['old' => $model->getRawOriginal($key), 'new' => $model->getAttributes()[$key]];
+            $old = $model->getRawOriginal($key);
+            $new = $model->getAttributes()[$key];
+
+            if (in_array($key, $hidden, true)) {
+                if ($old !== null || $new !== null) {
+                    $changes[$key] = ['hidden' => true];
+                }
+
+                continue;
+            }
+
+            $changes[$key] = ['old' => $old, 'new' => $new];
         }
 
         return $changes;
     }
 
-    /** Scrubs a person's name and contact details from every entry they made or that is about them. Returns how many entries changed. Writes with the query builder, the one path that skips the edit guard. */
+    /** Scrubs a person's name and contact details: their name in `actor_name` on every entry they made, and the personal fields inside `changes` of entries whose subject is their own User row. Entries merely about them (for example an area renamed, recorded with `about`) keep their changes, because those fields belong to another record. Returns how many entries changed. Writes with the query builder, the one path that skips the edit guard. */
     public static function forgetPersonalDetailsOf(User $user): int
     {
         return DB::transaction(function () use ($user) {
@@ -84,9 +93,8 @@ class ChangeLogEntry extends Model
             }
 
             $about = DB::table('change_log')
-                ->where(fn ($query) => $query
-                    ->where('affected_user_id', $user->id)
-                    ->orWhere(fn ($query) => $query->where('subject_type', $user->getMorphClass())->where('subject_id', $user->id)))
+                ->where('subject_type', $user->getMorphClass())
+                ->where('subject_id', $user->id)
                 ->whereNotNull('changes')
                 ->get(['id', 'changes']);
 

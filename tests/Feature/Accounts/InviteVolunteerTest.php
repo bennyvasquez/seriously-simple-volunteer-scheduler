@@ -43,6 +43,7 @@ class InviteVolunteerTest extends TestCase
         $this->assertNull($user->fresh()->email_verified_at);
         Notification::assertSentTo($user, InvitationNotification::class);
         $this->assertTrue(ChangeLogEntry::query()->where('action', 'user.invited')->where('actor_id', $this->coordinator->id)->exists());
+        $this->assertArrayNotHasKey('password', ChangeLogEntry::query()->where('action', 'user.invited')->sole()->changes);
     }
 
     public function test_the_invitation_link_logs_the_volunteer_in(): void

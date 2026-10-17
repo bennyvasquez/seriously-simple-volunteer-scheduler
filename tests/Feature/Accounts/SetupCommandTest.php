@@ -44,6 +44,7 @@ class SetupCommandTest extends TestCase
         $admin = User::query()->where('email', 'admin@example.org')->firstOrFail();
         $this->assertTrue($admin->hasRole(Role::Admin));
         $this->assertNull($admin->password);
+        $this->assertArrayNotHasKey('password', ChangeLogEntry::query()->where('action', 'user.created')->sole()->changes);
         $this->assertSame(1, $admin->loginLinks()->where('purpose', LoginLinkPurpose::Invitation->value)->count());
         Notification::assertSentTo($admin, InvitationNotification::class);
     }
