@@ -30,7 +30,10 @@ class LoginLinkController extends Controller
             defer(fn () => $user->notify(new LoginLinkNotification($issueLoginLink->handle($user, LoginLinkPurpose::SignIn))));
         }
 
-        return back()->with('status', 'If that address has an account, we\'ve emailed a link. It works for 15 minutes.');
+        // login_link_sent tells the login screen to show "Check your email". Other flows also flash a plain status to that screen.
+        return back()->withInput($request->only('email'))
+            ->with('status', 'If that address has an account, we\'ve emailed a link. It works for 15 minutes.')
+            ->with('login_link_sent', true);
     }
 
     /** The page an emailed link opens. It never logs anyone in: email security scanners open links too. */

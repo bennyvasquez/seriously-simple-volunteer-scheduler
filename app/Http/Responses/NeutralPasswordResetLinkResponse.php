@@ -19,6 +19,6 @@ class NeutralPasswordResetLinkResponse implements FailedPasswordResetLinkRequest
     {
         return $request->wantsJson()
             ? new JsonResponse(['message' => self::MESSAGE], 200)
-            : back()->with('status', self::MESSAGE);
+            : back()->withInput($request->only('email'))->with('status', self::MESSAGE);
     }
 }

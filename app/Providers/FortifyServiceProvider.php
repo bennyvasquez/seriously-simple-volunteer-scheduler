@@ -56,12 +56,13 @@ class FortifyServiceProvider extends ServiceProvider
             return $user;
         });
 
-        // Placeholder screens until the screens plan replaces them.
-        Fortify::loginView(fn () => view('auth.pending', ['screen' => 'Log in']));
+        Fortify::loginView(fn () => view('auth.login'));
+        Fortify::requestPasswordResetLinkView(fn () => view('auth.forgot-password'));
+        Fortify::resetPasswordView(fn (Request $request) => view('auth.reset-password', ['request' => $request]));
+        Fortify::confirmPasswordView(fn () => view('auth.confirm-password'));
+
+        // Placeholder screen until the screens plan replaces it.
         Fortify::twoFactorChallengeView(fn () => view('auth.pending', ['screen' => 'Enter your code']));
-        Fortify::requestPasswordResetLinkView(fn () => view('auth.pending', ['screen' => 'Reset your password']));
-        Fortify::resetPasswordView(fn () => view('auth.pending', ['screen' => 'Choose a new password']));
-        Fortify::confirmPasswordView(fn () => view('auth.pending', ['screen' => 'Confirm your password']));
 
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
