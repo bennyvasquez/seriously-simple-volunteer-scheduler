@@ -1,0 +1,27 @@
+@font-face{font-family:'Atkinson Hyperlegible';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/atkinson-hyperlegible-400.woff2) format('woff2')}
+@font-face{font-family:'Atkinson Hyperlegible';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/atkinson-hyperlegible-700.woff2) format('woff2')}
+
+body{margin:0;background:#f4f4f4;font-family:'Atkinson Hyperlegible',system-ui,sans-serif;color:#1a1a1a}
+a{color:#1a1a1a}a:hover{color:#000}
+.bar{display:flex;align-items:center;padding:12px 16px;min-height:68px;box-sizing:border-box;background:#fff;border-bottom:1px solid #ddd}
+.bar-name{font-weight:700;font-size:18px}
+.page{max-width:480px;margin:0 auto;padding:24px 16px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box}
+.page h1{margin:0;font-size:26px}
+.page p{margin:0;font-size:16px}
+form{display:flex;flex-direction:column;gap:12px}
+.btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid #1a1a1a;background:#fff;font:inherit;font-size:15px;color:#1a1a1a;display:flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box;cursor:pointer}
+.btn-primary{background:#1a1a1a;color:#fff}
+.btn-primary:hover{color:#fff}
+.muted{color:#555;font-size:14px}
+.panel{background:#fff;border:1px solid #ddd;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.panel h2{margin:0;font-size:16px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.field input{min-height:44px;border:1px solid #8a8a8a;border-radius:6px;padding:8px 10px;font:inherit;box-sizing:border-box;background:#fff}
+.field input[aria-invalid="true"]{border-color:#b00020}
+.field-hint{color:#555;font-size:14px}
+.field-error{color:#b00020;font-size:14px;font-weight:700}
+.check{display:flex;gap:10px;align-items:center;font-size:15px;min-height:44px}
+.check input{width:22px;height:22px;margin:0}
+.state{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#555}
+.step{font-size:14px;font-weight:700;color:#444}
+.code{font-family:ui-monospace,monospace;font-size:14px;padding:8px;border:1px solid #ddd;border-radius:6px;text-align:center;background:#fafafa}
