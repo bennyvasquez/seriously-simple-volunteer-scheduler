@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\InitialPasswordController;
 use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\PersonSecurityController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -27,6 +28,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/account/email', [EmailChangeController::class, 'edit'])->name('account.email.edit');
     Route::post('/account/email', [EmailChangeController::class, 'update'])->middleware('throttle:email-change')->name('account.email.update');
     Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change-identity')->name('account.email.identity.send');
+    Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
+    Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');
     Route::post('/account/sign-out-everywhere', function (Request $request, SignOutEverywhere $signOutEverywhere) {
         $signOutEverywhere->handle($request->user());
         Auth::guard('web')->logout();
