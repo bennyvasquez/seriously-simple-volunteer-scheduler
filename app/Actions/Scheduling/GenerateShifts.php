@@ -35,26 +35,10 @@ class GenerateShifts
             ->with('regulars')
             ->get();
 
-        $closuresByArea = AreaClosure::query()
-            ->where('starts_on', '<=', $lastDay->toDateString())
-            ->where('ends_on', '>=', $firstDay->toDateString())
-            ->get()
-            ->groupBy('area_id');
-
         $created = 0;
 
-        for ($offset = 0; $offset < $days; $offset++) {
-            $date = $firstDay->addDays($offset)->toDateString();
-
-            foreach ($slots as $slot) {
-                if (! $slot->occursOn($date) || $this->isClosed($closuresByArea->get($slot->area_id), $date)) {
-                    continue;
-                }
-
-                if ($this->createShift($organization, $slot, $date)) {
-                    $created++;
-                }
-            }
+        foreach ($slots as $slot) {
+            $created += $this->forSlot($organization, $slot);
         }
 
         if ($created > 0) {
@@ -63,6 +47,42 @@ class GenerateShifts
                 'from' => $firstDay->toDateString(),
                 'to' => $lastDay->toDateString(),
             ]);
+        }
+
+        return $created;
+    }
+
+    /**
+     * Generates one slot's shifts for the organization's window. Logs nothing itself; the caller's change log entry covers it.
+     *
+     * @return int The number of shifts created.
+     */
+    public function forSlot(Organization $organization, WeeklySlot $slot): int
+    {
+        $firstDay = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC');
+        $days = $organization->weeks_ahead * 7;
+        $lastDay = $firstDay->addDays($days - 1);
+
+        $slot->loadMissing('regulars');
+
+        $closures = AreaClosure::query()
+            ->where('area_id', $slot->area_id)
+            ->where('starts_on', '<=', $lastDay->toDateString())
+            ->where('ends_on', '>=', $firstDay->toDateString())
+            ->get();
+
+        $created = 0;
+
+        for ($offset = 0; $offset < $days; $offset++) {
+            $date = $firstDay->addDays($offset)->toDateString();
+
+            if (! $slot->occursOn($date) || $this->isClosed($closures, $date)) {
+                continue;
+            }
+
+            if ($this->createShift($organization, $slot, $date)) {
+                $created++;
+            }
         }
 
         return $created;
@@ -93,6 +113,7 @@ class GenerateShifts
                     'ends_at' => $endsAt,
                     'headcount' => $slot->headcount,
                     'shadow_spots' => $slot->shadow_spots,
+                    'title' => $slot->title,
                 ],
             );
 

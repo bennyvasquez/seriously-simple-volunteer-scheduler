@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AreaColor;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -12,5 +13,10 @@ class Area extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'color'];
+
+    protected function casts(): array
+    {
+        return ['color' => AreaColor::class];
+    }
 }

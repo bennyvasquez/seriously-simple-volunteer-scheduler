@@ -22,7 +22,7 @@ class WeeklySlot extends Model
 
     protected $fillable = [
         'area_id', 'weekday', 'start_time', 'end_time', 'headcount', 'shadow_spots',
-        'frequency', 'anchor_date', 'valid_from', 'valid_until',
+        'frequency', 'anchor_date', 'valid_from', 'valid_until', 'title', 'is_rotation',
     ];
 
     protected function casts(): array
@@ -31,6 +31,7 @@ class WeeklySlot extends Model
             'weekday' => 'integer',
             'headcount' => 'integer',
             'shadow_spots' => 'integer',
+            'is_rotation' => 'boolean',
             'frequency' => SlotFrequency::class,
             'anchor_date' => 'immutable_date',
             'valid_from' => 'immutable_date',
