@@ -19,7 +19,6 @@ Volunteer-run organizations keep a shared calendar, a chat channel, and a lot of
 ## 3. Non-goals
 
 - Membership management, payments, or donor tracking. The app reads a member list from another system instead (section 11).
-- Logging volunteer hours as the system of record. The app sends completed shifts to whatever system does that (section 11).
 - Chat. The app posts to chat; it doesn't replace it.
 - Hosting many organizations in one install.
 
@@ -111,6 +110,14 @@ Timings are settings per area; these are the defaults.
 
 A coordinator adds a closure for an area and a date range, with a reason. Affected shifts are cancelled and everyone on them is notified. Closures don't create cover requests.
 
+### 8.6 Volunteer hours and credit
+
+SSVS is the record of volunteer hours.
+
+- **A shift counts as worked once it ends**, unless its lead marks a no-show. Leads can correct a mark afterwards. Every mark and correction is in the change log.
+- **Hours** are the length of each shift a person worked. Each person sees their own hours; leads see hours worked in their areas, and coordinators and admins see everyone's, filtered by person, area and date range.
+- **Credit requests.** An organization can let volunteers turn hours into credit, such as credit toward a membership. A volunteer asks for credit for hours they haven't claimed yet, and a small group of people reviews the queue and approves or declines each request. Hours in an approved request can't be claimed again. Who reviews, and what an hour is worth, are open questions (section 19).
+
 ## 9. New volunteers, shadowing and clearance
 
 - New volunteers are invited like everyone else and can see the full schedule, but **start not cleared**. The flag is worded positively ("Cleared for regular shifts") so that forgetting to change it is the safe mistake.
@@ -127,7 +134,7 @@ A coordinator adds a closure for an area and a date range, with a reason. Affect
 - **Channels:** email (always available), chat webhooks, and text messages. Each person picks which channels get which kinds of notice: cover requests, changes to my shifts, reminders, and (for leads and coordinators) escalations.
 - **Email is the baseline.** Chat only reaches people who are active there, so it can't be the only channel for anything that matters.
 - **Chat** goes through a generic outgoing-webhook layer, with Discord as the first adapter. Matrix, Zulip, Slack, and Mattermost all accept incoming webhooks, so switching chat platforms is a configuration change.
-- **Text messages** are built in phase 1 behind a provider interface and stay off until an organization configures a provider. US senders need carrier registration (10DLC or toll-free verification) before texting, which can take weeks. Phone numbers need a confirmation code and an explicit opt-in per notice type. Carrier email-to-text gateways are not an option; the major US carriers have shut them down or are shutting them down.
+- **Text messages** come in phase 3. Email and chat are the channels until then, and notifications are written so a text channel can be added later without changing them. US senders need carrier registration (10DLC or toll-free verification) before texting, which can take weeks. Phone numbers need a confirmation code and an explicit opt-in per notice type. Carrier email-to-text gateways are not an option; the major US carriers have shut them down or are shutting them down.
 - **Action links:** links in emails and texts are signed for that recipient, single-use, and short-lived (setting, default 7 days or until the shift starts, whichever comes first). Each link does exactly one thing, such as claiming one shift or confirming one change, and never opens a full session. A forwarded email therefore can't be used to get into someone's account. Links posted in chat are public, so they require a normal login first.
 - **Reminders:** a reminder before each shift (setting, default 24 hours).
 
@@ -136,7 +143,8 @@ A coordinator adds a closure for an area and a date range, with a reason. Affect
 Each one is optional and off by default.
 
 - **Member directory sync.** A scheduled job reads people from an external membership system and creates invitations or deactivates accounts to match. It matches people by their ID in the membership system, never by email address, because volunteers can change their own address. The first adapter is Hello Club, which has an API with key-based access and a rate limit of about 30 requests per minute (per an unofficial guide; confirm against the vendor's docs).
-- **Hours export.** When a shift ends, the app sends the completed assignment (person, date, area, duration, regular or shadow) to a webhook, so a separate system can record volunteer hours without anyone typing them twice.
+- **Hours export,** for organizations that keep hours somewhere else as well. When a shift ends, the app sends the completed assignment (person, date, area, duration, regular or shadow) to a webhook, so a separate system can record volunteer hours without anyone typing them twice.
+- **Credit to the membership system (later goal).** Approved credit requests could be added to the member's record in the membership system automatically, starting with Hello Club. That needs write access, unlike member sync, so it would be the one exception to read-only access (section 13).
 - **Google Calendar, one way.** The app publishes shifts to organization-owned Google calendars (one per area, or one combined) through a Google service account. No volunteer has to connect a Google account. Two-way sync is out of scope; it needs per-user Google sign-in, which brings Google's app verification review and a lot of breakage.
 - **Personal calendar feeds.** Every volunteer gets a private iCal feed of their own shifts, with an "Add to my calendar" button on the home screen. The feed address is a secret, so it shows only that person's shifts (no other volunteers' names) and has a "reset my calendar link" button that invalidates the old address.
 
@@ -169,6 +177,7 @@ Volunteers trust the organization with their contact details and their whereabou
 | Notification settings | Their own | No | Admins only | No |
 | Clearance status and shadow history | Their own | Yes | Yes | No |
 | Last login and last seen | Their own | Yes | Yes | No |
+| Volunteer hours and credit requests | Their own | Hours in their areas | Yes | No |
 | Open shifts and "needs N more" counts | Yes | Yes | Yes | Only areas and events marked public, never names |
 
 New volunteers who aren't cleared yet can see the full schedule. That includes when someone is working alone, so each deployment should decide whether that's acceptable; the invite-only model is the main protection.
@@ -236,13 +245,13 @@ Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours expo
 ## 16. Phases
 
 **Phase 1: run the front desk.**
-Invite-only accounts with password and email-link login, 2FA for admins, coordinators and area leads. Roles. Areas. Weekly slots (every week and every other week) with regulars. One-time shifts. Overlapping shifts. Closures. Taking, releasing, and claim links. Cover requests and the full escalation ladder. Editing with "only this date" or "all following", followed by change notices. Shadow spots, clearance, the required-shadow setting, and moving back. Rotation sign-up. Email and chat notifications. SMS built but switched off. Per-person notification settings. The coordinator week view and "needs attention" list. The security and privacy requirements in section 13, including SECURITY.md and a security review before go-live.
+Invite-only accounts with password and email-link login, 2FA for admins, coordinators and area leads. Roles. Areas. Weekly slots (every week and every other week) with regulars. One-time shifts. Overlapping shifts. Closures. Taking, releasing, and claim links. Cover requests and the full escalation ladder. Editing with "only this date" or "all following", followed by change notices. Shadow spots, clearance, the required-shadow setting, and moving back. Rotation sign-up. Email and chat notifications. Per-person notification settings. The coordinator week view and "needs attention" list. The security and privacy requirements in section 13, including SECURITY.md and a security review before go-live.
 
 **Phase 2: visibility.**
-Events with organizers. Public calendar. Google Calendar publishing and personal iCal feeds. Member directory sync. SMS switched on once a provider is registered.
+Events with organizers. Public calendar. Google Calendar publishing and personal iCal feeds. Member directory sync.
 
 **Phase 3: polish.**
-Hours export. Direct person-to-person swaps. Staffing reports. Skills on event shifts.
+Hours export. Direct person-to-person swaps. Staffing reports. Skills on event shifts. Text messages, once a provider is chosen and registered.
 
 ## 17. Launch approach
 
@@ -300,8 +309,12 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-17 | Signing in changes nothing in the change log: clearing a pending password reset after an authenticator-app login and starting a session aren't logged. Using a recovery code is logged, because it uses one up. |
 | 2026-10-17 | An admin can reset a person's two-factor when they've lost both their phone and their recovery codes. The admin first checks in person or by phone that it's really them, because anyone can send an email or chat message pretending to be someone. The reset logs the person out everywhere and emails them, and they set it up again on their next login. The reset is logged. Anyone can add a password and log in with it; area leads, coordinators and admins must have one. |
 | 2026-10-17 | Volunteers can change their own email address. They confirm who they are first, the new address has to be confirmed by a link before it takes effect, the old address is told, and every other device is logged out. Member sync matches people by membership ID so a changed address doesn't break it. |
+| 2026-10-17 | SSVS is the record of volunteer hours, which reverses the earlier non-goal. A shift counts as worked once it ends unless its lead marks a no-show. Volunteers can ask to turn hours into credit, and a small group reviews the requests. Adding approved credit to the membership system automatically is a later goal. |
+| 2026-10-17 | Text messages move to phase 3. Two-factor never used them (it uses an authenticator app with an emailed fallback), and email and chat cover notifications until then. |
 
 ## 19. Open questions
 
 - Repository home: benny's account for now; whether and when it moves to an organization.
-- Text message provider and sender type.
+- Text message provider and sender type, for phase 3. The October 2026 research in docs/background.md recommends a verified toll-free number.
+- Which phase volunteer hours and credit requests ship in. An organization replacing another hours tool needs them before that tool stops.
+- Who reviews credit requests (a new permission an admin grants, or a role), and whether the value of an hour is a setting.
