@@ -81,9 +81,10 @@ class AccountPageTest extends TestCase
         $this->actingAs($lead)->withSession(['auth.password_confirmed_at' => time()])->post(route('two-factor.regenerate-recovery-codes'))->assertRedirect();
     }
 
-    public function test_the_email_button_is_disabled_until_the_change_screen_exists(): void
+    public function test_the_email_button_links_to_the_change_screen(): void
     {
-        $this->actingAs(User::factory()->create())->get(route('account.show'))->assertSee('Change my email address');
+        $this->actingAs(User::factory()->create())->get(route('account.show'))
+            ->assertSee('<a class="btn" href="'.route('account.email.edit').'">Change my email address</a>', false);
     }
 
     public function test_signing_out_everywhere_except_here_keeps_this_session(): void

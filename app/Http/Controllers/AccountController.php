@@ -7,7 +7,6 @@ use App\Models\Organization;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
 
@@ -55,7 +54,6 @@ class AccountController extends Controller
             'user' => $user,
             'hasPassword' => $user->password !== null,
             'isStaff' => $user->requiresTwoFactor(),
-            'canChangeEmail' => Route::has('account.email.edit'),
             // Fortify flashes its own keyword when a password changes; other messages are already words.
             'status' => $status === 'password-updated' ? 'Your password is changed.' : $status,
         ]);

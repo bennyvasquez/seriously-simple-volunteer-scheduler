@@ -12,11 +12,7 @@
 <section class="panel">
 <h2>How you log in</h2>
 <div>{{ $hasPassword ? 'With your password, or with a link we email to' : 'With a link we email to' }} {{ $user->email }}</div>
-@if ($canChangeEmail)
 <a class="btn" href="{{ route('account.email.edit') }}">Change my email address</a>
-@else
-<button type="button" class="btn" disabled>Change my email address</button>
-@endif
 <div class="muted">We'll ask you to confirm it's you, then email a link to the new address. Your current address keeps working until you open that link.</div>
 </section>
 

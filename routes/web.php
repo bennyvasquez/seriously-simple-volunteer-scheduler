@@ -5,6 +5,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\InitialPasswordController;
 use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
+use App\Http\Controllers\EmailChangeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/account', [AccountController::class, 'show'])->name('account.show');
     Route::get('/account/security', [AccountController::class, 'security'])->name('account.security');
     Route::post('/account/password', [InitialPasswordController::class, 'store'])->name('account.password.set');
+    Route::get('/account/email', [EmailChangeController::class, 'edit'])->name('account.email.edit');
+    Route::post('/account/email', [EmailChangeController::class, 'update'])->middleware('throttle:email-change')->name('account.email.update');
+    Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change')->name('account.email.identity.send');
     Route::post('/account/sign-out-everywhere', function (Request $request, SignOutEverywhere $signOutEverywhere) {
         $signOutEverywhere->handle($request->user());
         Auth::guard('web')->logout();
@@ -32,3 +36,9 @@ Route::middleware('auth')->group(function () {
         return redirect()->route('login')->with('status', 'You\'re signed out on every device.');
     })->name('account.sign-out-everywhere');
 });
+
+// Emailed links for changing an address. They work whether or not this device is logged in.
+Route::get('/account/email/identity/{token}', [EmailChangeController::class, 'showIdentity'])->name('account.email.identity');
+Route::post('/account/email/identity/{token}', [EmailChangeController::class, 'confirmIdentity'])->middleware('throttle:login-link-use');
+Route::get('/account/email/confirm/{token}', [EmailChangeController::class, 'showConfirm'])->name('account.email.confirm');
+Route::post('/account/email/confirm/{token}', [EmailChangeController::class, 'confirm'])->middleware('throttle:login-link-use');

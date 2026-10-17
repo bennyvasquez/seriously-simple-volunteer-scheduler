@@ -40,7 +40,7 @@ class LoginLinkController extends Controller
     /** The page an emailed link opens. It never logs anyone in: email security scanners open links too. */
     public function show(string $token): View
     {
-        $link = LoginLink::findUsable($token);
+        $link = LoginLink::findUsable($token, ...LoginLinkPurpose::forLoggingIn());
 
         $inviter = null;
         if ($link?->purpose === LoginLinkPurpose::Invitation) {
