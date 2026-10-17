@@ -22,7 +22,10 @@ class InitialPasswordController extends Controller
     {
         $user = $request->user();
 
-        abort_if($user->password !== null, 403, 'You already have a password. Change it from your account settings.');
+        // A second tab or a resubmitted form. Changing a password asks for the current one, on the account page.
+        if ($user->password !== null) {
+            return redirect()->route('account.show')->with('status', 'You already have a password. You can change it below.');
+        }
 
         $request->validate(['password' => $this->passwordRules()]);
 

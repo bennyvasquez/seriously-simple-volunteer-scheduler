@@ -78,6 +78,50 @@ class LinkLandingTest extends TestCase
         $this->get(route('login-link.show', 'nonsense'))->assertOk()->assertSee('This link doesn\'t work anymore');
     }
 
+    public function test_a_used_link_shows_the_expired_state_and_uses_nothing(): void
+    {
+        $user = User::factory()->withoutPassword()->create();
+        $url = app(IssueLoginLink::class)->handle($user, LoginLinkPurpose::SignIn);
+        $usedAt = now()->subMinute()->startOfSecond();
+        $user->loginLinks()->sole()->forceFill(['used_at' => $usedAt])->save();
+
+        $this->get($url)->assertOk()->assertSee('This link doesn\'t work anymore')->assertDontSee('Log me in');
+
+        $this->assertTrue($usedAt->equalTo($user->loginLinks()->sole()->used_at));
+        $this->assertGuest();
+    }
+
+    public function test_a_deactivated_persons_link_shows_the_expired_state_and_uses_nothing(): void
+    {
+        $user = User::factory()->withoutPassword()->create();
+        $url = app(IssueLoginLink::class)->handle($user, LoginLinkPurpose::SignIn);
+        $user->forceFill(['deactivated_at' => now()])->save();
+
+        $this->get($url)->assertOk()->assertSee('This link doesn\'t work anymore')->assertDontSee('Log me in');
+
+        $this->assertNull($user->loginLinks()->sole()->used_at);
+        $this->assertGuest();
+    }
+
+    public function test_an_expired_or_used_invitation_explains_invitations(): void
+    {
+        Notification::fake();
+        $alex = $this->withRole(Role::Coordinator, 'Alex');
+        $user = app(InviteVolunteer::class)->handle($alex, 'Robin', 'robin@example.org');
+        $url = $this->invitationUrlFor($user);
+        $this->travel(8)->days();
+
+        $this->get($url)->assertOk()
+            ->assertSee('This invitation doesn\'t work anymore')
+            ->assertSee('Invitations work once, for 7 days. If you already used it, log in with your email address instead. If it ran out, ask whoever invited you to send a new one.')
+            ->assertSee('Go to log in')
+            ->assertDontSee('Login links work once');
+
+        $this->travelBack();
+        $user->loginLinks()->sole()->forceFill(['used_at' => now(), 'expires_at' => now()->addDay()])->save();
+        $this->get($url)->assertOk()->assertSee('This invitation doesn\'t work anymore');
+    }
+
     public function test_remember_me_on_the_landing_page_is_honored(): void
     {
         $user = User::factory()->withoutPassword()->create();

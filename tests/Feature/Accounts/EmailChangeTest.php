@@ -142,14 +142,17 @@ class EmailChangeTest extends TestCase
         $this->assertSame(0, LoginLink::query()->where('purpose', LoginLinkPurpose::EmailChange)->count());
     }
 
-    public function test_your_own_address_gets_the_same_answer_and_changes_nothing(): void
+    public function test_your_own_address_gets_a_field_error_and_changes_nothing(): void
     {
         Notification::fake();
         $sam = User::factory()->create(['email' => 'sam@example.org']);
 
         $this->actingAs($sam)->withSession(['auth.password_confirmed_at' => time()])
+            ->from(route('account.email.edit'))
             ->post(route('account.email.update'), ['email' => 'SAM@example.org'])
-            ->assertSessionHas('status', 'We\'ve sent a link to sam@example.org. Your current address keeps working until you open it.');
+            ->assertRedirect(route('account.email.edit'))
+            ->assertSessionHasErrors(['email' => 'That\'s already your address.'])
+            ->assertSessionMissing('status');
 
         Notification::assertNothingSent();
         $this->assertSame(0, LoginLink::query()->count());

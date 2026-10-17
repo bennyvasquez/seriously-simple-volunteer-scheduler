@@ -26,6 +26,7 @@ class EnsureAccountIsSecure
         'password.confirm.store',
         'password.confirmation',
         'logout',
+        'account.forgot-password',
         'account.sign-out-everywhere',
     ];
 

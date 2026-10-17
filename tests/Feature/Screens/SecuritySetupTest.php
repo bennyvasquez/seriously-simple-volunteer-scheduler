@@ -121,4 +121,40 @@ class SecuritySetupTest extends TestCase
 
         $this->actingAs($lead)->get(route('account.security'))->assertSee('Set up the app');
     }
+
+    public function test_both_setup_steps_have_a_log_out_button(): void
+    {
+        $button = '<form method="POST" action="'.route('logout').'">';
+
+        $this->actingAs($this->withRole(Role::AreaLead, $this->area(), password: null))->get(route('account.security'))->assertSee('Step 1 of 2')->assertSee($button, false);
+        $this->actingAs($this->withRole(Role::AreaLead, $this->area()))->get(route('account.security'))->assertSee('Set up the app')->assertSee($button, false);
+        $this->actingAs($this->leadWithUnconfirmedTwoFactor())->get(route('account.security'))->assertSee('Connect the app')->assertSee($button, false);
+    }
+
+    public function test_the_setup_key_and_the_recovery_codes_are_not_cached(): void
+    {
+        $lead = $this->leadWithUnconfirmedTwoFactor();
+
+        $setup = $this->actingAs($lead)->get(route('account.security'))->assertSee('Connect the app');
+        $this->assertStringContainsString('no-store', $setup->headers->get('Cache-Control'));
+
+        $this->actingAs($lead)->withSession(['auth.password_confirmed_at' => time()])->from(route('account.security'))
+            ->post(route('two-factor.confirm'), ['code' => $this->currentCodeFor($lead)]);
+        $codes = $this->actingAs($lead->fresh())->withSession(['status' => 'two-factor-authentication-confirmed'])->get(route('account.security'))
+            ->assertSee('Save your recovery codes')->assertSee('<div class="bar-name">Secure your account</div>', false);
+        $this->assertStringContainsString('no-store', $codes->headers->get('Cache-Control'));
+    }
+
+    public function test_connecting_the_app_clears_a_pending_password_reset(): void
+    {
+        $lead = $this->leadWithUnconfirmedTwoFactor();
+        $lead->forceFill(['password_reset_at' => now()])->save();
+
+        $this->actingAs($lead)->withSession(['auth.password_confirmed_at' => time()])->from(route('account.security'))
+            ->post(route('two-factor.confirm'), ['code' => $this->currentCodeFor($lead)]);
+
+        $this->assertNull($lead->fresh()->password_reset_at);
+        $this->assertTrue($lead->fresh()->hasEnabledTwoFactorAuthentication());
+        $this->assertSame(1, ChangeLogEntry::query()->about($lead)->ofAction('two_factor.enabled')->count());
+    }
 }

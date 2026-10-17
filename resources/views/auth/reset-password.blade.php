@@ -12,6 +12,7 @@
 <x-field name="password_confirmation" type="password" label="Type it again" autocomplete="new-password" />
 <button type="submit" class="btn btn-primary">Save my new password</button>
 </form>
+<a class="muted" href="{{ route('password.request') }}">Ask for a new reset link</a>
 <div class="panel">
 <h2>What happens next</h2>
 <p class="muted">You'll log in again with your new password. We'll also email you to say your password changed, so you'd know if someone else did it.</p>

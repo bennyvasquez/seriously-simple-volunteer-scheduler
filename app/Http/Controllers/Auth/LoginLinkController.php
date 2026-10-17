@@ -47,7 +47,10 @@ class LoginLinkController extends Controller
             $inviter = ChangeLogEntry::query()->about($link->user)->ofAction('user.invited')->first()?->actor_name;
         }
 
-        return view('auth.link', ['link' => $link, 'inviter' => $inviter]);
+        // Someone holding a used or expired invitation gets the invitation's own explanation. The token is theirs, so this tells them nothing new.
+        $expiredInvitation = $link === null && LoginLink::query()->where('token_hash', hash('sha256', $token))->where('purpose', LoginLinkPurpose::Invitation)->exists();
+
+        return view('auth.link', ['link' => $link, 'inviter' => $inviter, 'expiredInvitation' => $expiredInvitation]);
     }
 
     public function consume(Request $request, string $token, ConsumeLoginLink $consumeLoginLink): RedirectResponse

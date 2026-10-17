@@ -111,4 +111,44 @@ class AccountPageTest extends TestCase
         $entry = ChangeLogEntry::query()->where('action', 'user.signed_out_everywhere')->latest('id')->first();
         $this->assertFalse($entry->details['kept_current_session']);
     }
+
+    public function test_home_and_login_and_security_have_a_log_out_button(): void
+    {
+        $volunteer = User::factory()->create();
+        $button = '<form method="POST" action="'.route('logout').'">';
+
+        $this->actingAs($volunteer)->get(route('home'))->assertSee($button, false)->assertSee('Log out');
+        $this->actingAs($volunteer)->get(route('account.show'))->assertSee($button, false)->assertSee('Log out');
+    }
+
+    public function test_setting_a_first_password_twice_goes_back_to_the_account_page(): void
+    {
+        $volunteer = User::factory()->create();
+        $hash = $volunteer->password;
+
+        $this->actingAs($volunteer)->post(route('account.password.set'), ['password' => 'a long enough phrase', 'password_confirmation' => 'a long enough phrase'])
+            ->assertRedirect(route('account.show'))->assertSessionHas('status', 'You already have a password. You can change it below.');
+
+        $this->assertSame($hash, $volunteer->fresh()->password);
+    }
+
+    public function test_new_recovery_codes_keep_the_login_and_security_header_and_are_not_cached(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+
+        $response = $this->actingAs($lead)->withSession(['status' => 'recovery-codes-generated'])->get(route('account.show'))
+            ->assertSee('<div class="bar-name">Login and security</div>', false)->assertDontSee('Secure your account');
+
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+    }
+
+    public function test_the_copy_button_only_appears_when_the_clipboard_works(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+
+        $this->actingAs($lead)->withSession(['status' => 'recovery-codes-generated'])->get(route('account.show'))
+            ->assertSee('if (! navigator.clipboard)', false)
+            ->assertSee('Couldn\'t copy. Select the codes and copy them instead.', false)
+            ->assertDontSee('<script>'."\n".'const copy', false);
+    }
 }

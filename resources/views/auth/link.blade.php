@@ -1,6 +1,16 @@
 @extends('layouts.app')
 
-@if ($link === null)
+@if ($link === null && $expiredInvitation)
+@section('title', 'This invitation doesn\'t work anymore')
+
+@section('content')
+<div class="panel">
+<h1>This invitation doesn't work anymore</h1>
+<p>Invitations work once, for 7 days. If you already used it, log in with your email address instead. If it ran out, ask whoever invited you to send a new one.</p>
+<a class="btn btn-primary" href="{{ route('login') }}">Go to log in</a>
+</div>
+@endsection
+@elseif ($link === null)
 @section('title', 'This link doesn\'t work anymore')
 
 @section('content')
@@ -16,7 +26,7 @@
 
 @section('content')
 <h1>Welcome to {{ \App\Models\Organization::query()->value('name') ?? config('app.name') }}</h1>
-<p>{{ $inviter ? $inviter.' invited you' : 'You\'ve been invited' }} to help with the makerspace's volunteer schedule. Here you'll see your shifts, swap ones you can't make and pick up open ones.</p>
+<p>{{ $inviter ? $inviter.' invited you' : 'You\'ve been invited' }} to help with the volunteer schedule. Here you'll see your shifts, swap ones you can't make and pick up open ones.</p>
 <form method="POST" action="{{ route('login-link.consume', request()->route('token')) }}">
 @csrf
 <button type="submit" class="btn btn-primary">Get started</button>

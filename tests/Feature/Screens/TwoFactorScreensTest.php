@@ -137,4 +137,50 @@ class TwoFactorScreensTest extends TestCase
         $html = $this->get(route('two-factor.login'))->assertSee('Ask an admin to help you get back in.')->getContent();
         $this->assertStringNotContainsString('role="alert"', $html);
     }
+
+    public function test_a_wrong_app_code_after_asking_for_an_emailed_code_stays_on_the_app_screen(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+        $this->from(route('two-factor.login'))->post(route('two-factor.email.send'));
+
+        $this->post(route('two-factor.login.store'), ['code' => '000000'])
+            ->assertRedirect(route('two-factor.login', ['app' => 1]))->assertSessionHasErrors('code');
+        $this->followingRedirects()->from(route('two-factor.login', ['app' => 1]))->post(route('two-factor.login.store'), ['code' => '000000'])
+            ->assertSee('Enter your code')->assertSee('That code didn\'t work. Check your app and try the newest code.')->assertDontSee('Check your email for a code');
+    }
+
+    public function test_a_wrong_recovery_code_keeps_the_recovery_mode(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+
+        $this->post(route('two-factor.login.store'), ['recovery_code' => 'nope'])
+            ->assertRedirect(route('two-factor.login', ['recovery' => 1]))->assertSessionHasErrors('recovery_code');
+    }
+
+    public function test_an_expired_emailed_code_shows_its_message_as_the_alert_on_the_app_screen(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+        $this->from(route('two-factor.login'))->post(route('two-factor.email.send'));
+        $this->travel(11)->minutes();
+
+        $this->followingRedirects()->from(route('two-factor.login'))->post(route('two-factor.email.verify'), ['code' => '123456'])
+            ->assertSee('Enter your code')->assertSee('<p role="alert">That code has expired. Ask for a new one.</p>', false)->assertDontSee('id="code-error"', false);
+    }
+
+    public function test_a_used_up_emailed_code_shows_its_message_as_the_alert_on_the_app_screen(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+        $this->from(route('two-factor.login'))->post(route('two-factor.email.send'));
+
+        for ($i = 0; $i < 4; $i++) {
+            $this->from(route('two-factor.login'))->post(route('two-factor.email.verify'), ['code' => '000000']);
+        }
+
+        $this->followingRedirects()->from(route('two-factor.login'))->post(route('two-factor.email.verify'), ['code' => '000000'])
+            ->assertSee('Enter your code')->assertSee('<p role="alert">That code didn&#039;t match, and it&#039;s now used up. Ask for a new one.</p>', false);
+    }
 }

@@ -9,7 +9,7 @@
 <p>Open the email on any device and press the link. You can close this page.</p>
 <div class="panel">
 <h2>Didn't get it?</h2>
-<p class="muted">It can take a minute or two to arrive. Check your spam or junk folder, and make sure you typed the address you gave the makerspace.</p>
+<p class="muted">It can take a minute or two to arrive. Check your spam or junk folder, and make sure you typed the address you signed up with.</p>
 <form method="POST" action="{{ route('login-link.request') }}">
 @csrf
 <input type="hidden" name="email" value="{{ old('email') }}">

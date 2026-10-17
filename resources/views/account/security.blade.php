@@ -46,4 +46,5 @@
 </form>
 @endif
 @endif
+<x-log-out />
 @endsection

@@ -42,7 +42,8 @@ class TwoFactorEmailCodeController extends Controller
         $entry = Cache::get($key);
 
         if ($entry === null) {
-            return back()->withErrors(['code' => 'That code has expired. Ask for a new one.']);
+            // email_code, not code: with no code waiting, the screen shows the app form, and this is the alert beside "Email me a code instead".
+            return back()->withErrors(['email_code' => 'That code has expired. Ask for a new one.']);
         }
 
         if (! hash_equals($entry['hash'], hash('sha256', trim($request->input('code'))))) {
@@ -51,7 +52,7 @@ class TwoFactorEmailCodeController extends Controller
             if ($entry['tries'] >= self::MAX_TRIES) {
                 Cache::forget($key);
 
-                return back()->withErrors(['code' => 'That code didn\'t match, and it\'s now used up. Ask for a new one.']);
+                return back()->withErrors(['email_code' => 'That code didn\'t match, and it\'s now used up. Ask for a new one.']);
             }
 
             Cache::put($key, $entry, now()->setTimestamp($entry['expires_at']));

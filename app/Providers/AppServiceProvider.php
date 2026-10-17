@@ -54,7 +54,14 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
-        Event::listen(TwoFactorAuthenticationConfirmed::class, fn ($event) => ChangeLogEntry::record($event->user, 'two_factor.enabled', $event->user));
+        Event::listen(TwoFactorAuthenticationConfirmed::class, function ($event) {
+            ChangeLogEntry::record($event->user, 'two_factor.enabled', $event->user);
+
+            // A newly connected app has just proved itself, like an app code at login, so a pending email reset no longer blocks the emailed code. Unlogged, the same as the login below.
+            if ($event->user->password_reset_at !== null) {
+                $event->user->forceFill(['password_reset_at' => null])->save();
+            }
+        });
         Event::listen(TwoFactorAuthenticationDisabled::class, fn ($event) => ChangeLogEntry::record($event->user, 'two_factor.disabled', $event->user));
         Event::listen(RecoveryCodesGenerated::class, fn ($event) => ChangeLogEntry::record($event->user, 'two_factor.recovery_codes_regenerated', $event->user));
         // Only the user: the event also carries the code that was used, which must never reach the log.

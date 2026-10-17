@@ -101,6 +101,11 @@ class EmailChangeController extends Controller
             ...($needsCode ? ['code' => ['required', 'string']] : []),
         ])['email']);
 
+        // Your own address is refused out loud: it says nothing about anyone else's account.
+        if ($email === $user->email) {
+            throw ValidationException::withMessages(['email' => 'That\'s already your address.']);
+        }
+
         // The app code is checked before the address is looked up or anything is sent.
         if ($needsCode) {
             $valid = app(TwoFactorAuthenticationProvider::class)->verify(Fortify::currentEncrypter()->decrypt($user->two_factor_secret), (string) $request->input('code'));

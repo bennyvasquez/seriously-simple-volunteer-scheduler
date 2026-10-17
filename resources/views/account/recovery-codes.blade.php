@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Save your recovery codes')
-@section('header', 'Secure your account')
+@section('header', $header ?? 'Secure your account')
 
 @section('content')
 <p><strong>{{ $message ?? 'The app is connected.' }}</strong></p>
@@ -17,6 +17,7 @@
 <button type="button" class="btn" id="copy-codes" hidden>Copy codes</button>
 <a class="btn" href="data:text/plain;charset=utf-8,{{ rawurlencode(implode("\n", $codes)) }}" download="{{ $filename }}">Download codes</a>
 </div>
+<p class="muted" id="copy-failed" role="alert" hidden>Couldn't copy. Select the codes and copy them instead.</p>
 </section>
 <p class="muted">You won't see these codes again on this page. If you lose them, you can make a new set from your profile, and the old ones stop working.</p>
 <a class="btn btn-primary" href="{{ route('home') }}">I've saved my codes</a>
@@ -24,11 +25,22 @@
 
 @push('scripts')
 <script>
-const copy = document.getElementById('copy-codes');
-copy.hidden = false;
-copy.addEventListener('click', () => {
-    const text = [...document.querySelectorAll('#recovery-codes .code')].map(c => c.textContent).join('\n');
-    navigator.clipboard.writeText(text).then(() => { copy.textContent = 'Copied'; });
-});
+(() => {
+    // The button stays hidden where the browser can't copy, such as a page not served over HTTPS.
+    if (! navigator.clipboard) {
+        return;
+    }
+
+    const copy = document.getElementById('copy-codes');
+    const failed = document.getElementById('copy-failed');
+    copy.hidden = false;
+    copy.addEventListener('click', () => {
+        const text = [...document.querySelectorAll('#recovery-codes .code')].map(c => c.textContent).join('\n');
+        navigator.clipboard.writeText(text).then(
+            () => { failed.hidden = true; copy.textContent = 'Copied'; },
+            () => { failed.hidden = false; },
+        );
+    });
+})();
 </script>
 @endpush

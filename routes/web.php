@@ -30,6 +30,14 @@ Route::middleware('auth')->group(function () {
     Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change-identity')->name('account.email.identity.send');
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');
+    // The reset screens are for logged-out people, so "Forgot your password?" on the confirm screen logs out first.
+    Route::post('/account/forgot-password', function (Request $request) {
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('password.request');
+    })->name('account.forgot-password');
     Route::post('/account/sign-out-everywhere', function (Request $request, SignOutEverywhere $signOutEverywhere) {
         $signOutEverywhere->handle($request->user());
         Auth::guard('web')->logout();

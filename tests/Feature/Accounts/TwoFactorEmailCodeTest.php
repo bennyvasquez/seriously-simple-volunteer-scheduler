@@ -135,7 +135,7 @@ class TwoFactorEmailCodeTest extends TestCase
         }
         $this->travel(2)->minutes(); // Past the two-factor rate limit window.
 
-        $this->post(route('two-factor.email.verify'), ['code' => $right])->assertSessionHasErrors('code');
+        $this->post(route('two-factor.email.verify'), ['code' => $right])->assertSessionHasErrors('email_code');
         $this->assertGuest();
     }
 
@@ -147,7 +147,7 @@ class TwoFactorEmailCodeTest extends TestCase
 
         $this->travel(11)->minutes();
 
-        $this->post(route('two-factor.email.verify'), ['code' => $code])->assertSessionHasErrors('code');
+        $this->post(route('two-factor.email.verify'), ['code' => $code])->assertSessionHasErrors(['email_code' => 'That code has expired. Ask for a new one.']);
         $this->assertGuest();
     }
 

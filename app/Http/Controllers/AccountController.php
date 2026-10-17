@@ -7,6 +7,7 @@ use App\Models\Organization;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
 
@@ -15,7 +16,7 @@ use Laravel\Fortify\Fortify;
  */
 class AccountController extends Controller
 {
-    public function security(Request $request): View|RedirectResponse
+    public function security(Request $request): View|Response|RedirectResponse
     {
         $user = $request->user();
 
@@ -32,22 +33,22 @@ class AccountController extends Controller
             return redirect()->route('home');
         }
 
-        return view('account.security', [
-            'step' => 2,
-            'user' => $user,
-            'setupKey' => $user->two_factor_secret ? Fortify::currentEncrypter()->decrypt($user->two_factor_secret) : null,
-        ]);
+        $setupKey = $user->two_factor_secret ? Fortify::currentEncrypter()->decrypt($user->two_factor_secret) : null;
+        $view = view('account.security', ['step' => 2, 'user' => $user, 'setupKey' => $setupKey]);
+
+        // The setup key and QR code are the secret itself, so the browser mustn't keep a copy.
+        return $setupKey === null ? $view : response($view)->header('Cache-Control', 'no-store');
     }
 
     /** Where anyone manages how they log in. */
-    public function show(Request $request): View
+    public function show(Request $request): View|Response
     {
         $user = $request->user();
         $status = session('status');
 
         // Fortify flashes this status once, right after it makes new codes. That is the only time they are shown.
         if ($status === 'recovery-codes-generated' && $user->hasEnabledTwoFactorAuthentication()) {
-            return $this->recoveryCodesView($user, "Here are your new recovery codes. The old ones don't work anymore.");
+            return $this->recoveryCodesView($user, "Here are your new recovery codes. The old ones don't work anymore.", 'Login and security');
         }
 
         return view('account.show', [
@@ -59,15 +60,17 @@ class AccountController extends Controller
         ]);
     }
 
-    private function recoveryCodesView($user, ?string $message = null): View
+    /** The codes are shown once, so the browser mustn't keep a copy of the page either. $header names the screen it was reached from. */
+    private function recoveryCodesView($user, ?string $message = null, string $header = 'Secure your account'): Response
     {
         $name = Organization::query()->value('name') ?? config('app.name');
 
-        return view('account.recovery-codes', [
+        return response(view('account.recovery-codes', [
             'codes' => $user->recoveryCodes(),
             'filename' => Str::slug($name).'-recovery-codes.txt',
             'message' => $message,
-        ]);
+            'header' => $header,
+        ]))->header('Cache-Control', 'no-store');
     }
 
     /** The highest role wins: admin over coordinator over area lead. */

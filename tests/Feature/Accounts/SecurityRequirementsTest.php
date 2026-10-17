@@ -103,9 +103,14 @@ class SecurityRequirementsTest extends TestCase
 
     public function test_setting_a_first_password_cannot_replace_an_existing_one(): void
     {
-        $this->actingAs($this->coordinator())
+        $coordinator = $this->coordinator();
+        $hash = $coordinator->password;
+
+        $this->actingAs($coordinator)
             ->post(route('account.password.set'), ['password' => 'a long enough password', 'password_confirmation' => 'a long enough password'])
-            ->assertForbidden();
+            ->assertRedirect(route('account.show'));
+
+        $this->assertSame($hash, $coordinator->fresh()->password);
     }
 
     public function test_a_coordinator_can_turn_on_two_factor_and_then_get_in(): void

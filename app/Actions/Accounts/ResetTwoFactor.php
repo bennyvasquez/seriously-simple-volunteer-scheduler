@@ -44,7 +44,7 @@ class ResetTwoFactor
             $this->signOutEverywhere->handle($user, actor: $admin);
         });
 
-        // After the transaction commits, so a rolled-back reset never sends the email.
-        $user->notify(new TwoFactorResetNotification($admin));
+        // After the transaction commits, so a rolled-back reset never sends the email, and after the response, so a mail server failure doesn't show the admin an error for a reset that already happened.
+        defer(fn () => $user->notify(new TwoFactorResetNotification($admin)));
     }
 }

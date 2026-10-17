@@ -60,4 +60,6 @@
 <button type="submit" class="btn">Sign out everywhere</button>
 </form>
 </section>
+
+<x-log-out />
 @endsection

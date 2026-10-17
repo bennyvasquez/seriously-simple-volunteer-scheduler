@@ -68,4 +68,31 @@ class LoginScreensTest extends TestCase
     {
         $this->actingAs(User::factory()->create())->get(route('password.confirm'))->assertOk()->assertSee('Confirm it\'s you', false);
     }
+
+    public function test_the_reset_screen_offers_a_new_link(): void
+    {
+        $this->get(route('password.reset', ['token' => 'not-a-real-token', 'email' => 'sam@example.org']))
+            ->assertSee('<a class="muted" href="'.route('password.request').'">Ask for a new reset link</a>', false);
+    }
+
+    public function test_the_confirm_password_screen_has_a_way_out(): void
+    {
+        $this->actingAs(User::factory()->create())->get(route('password.confirm'))
+            ->assertSee('<form method="POST" action="'.route('account.forgot-password').'">', false)
+            ->assertSee('Forgot your password?')
+            ->assertSee('href="'.route('account.show').'"', false);
+    }
+
+    public function test_forgot_your_password_from_the_confirm_screen_logs_out_and_opens_the_reset_screen(): void
+    {
+        $this->actingAs(User::factory()->create())->post(route('account.forgot-password'))->assertRedirect(route('password.request'));
+
+        $this->assertGuest();
+        $this->get(route('password.request'))->assertOk()->assertSee('Reset your password');
+    }
+
+    public function test_the_login_screens_use_no_organization_specific_words(): void
+    {
+        $this->withSession(['login_link_sent' => true])->get('/login')->assertSee('make sure you typed the address you signed up with')->assertDontSee('makerspace');
+    }
 }

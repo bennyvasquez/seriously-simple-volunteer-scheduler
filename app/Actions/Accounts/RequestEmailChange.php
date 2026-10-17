@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 
 /**
- * Starts an email address change (spec section 13): emails a link to the new address, and nothing changes until it's opened. An address another account uses, or the person's own, quietly does nothing, so the screen never reveals who has an account.
+ * Starts an email address change (spec section 13): emails a link to the new address, and nothing changes until it's opened. An address another account uses quietly does nothing, so the screen never reveals who has an account. The form refuses the person's own address before this runs; the check here stays as a backstop.
  */
 class RequestEmailChange
 {
