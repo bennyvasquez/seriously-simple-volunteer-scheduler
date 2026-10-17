@@ -12,6 +12,7 @@ use App\Notifications\LoginLinkNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -51,11 +52,17 @@ class LoginLinkController extends Controller
         $user = $link->user;
 
         if ($link->purpose === LoginLinkPurpose::Invitation) {
-            if ($user->email_verified_at === null) {
-                $user->forceFill(['email_verified_at' => now()])->save();
-            }
+            DB::transaction(function () use ($user) {
+                $changes = [];
 
-            ChangeLogEntry::record($user, 'user.accepted_invitation', $user);
+                if ($user->email_verified_at === null) {
+                    $user->forceFill(['email_verified_at' => now()]);
+                    $changes = ChangeLogEntry::changesOf($user);
+                    $user->save();
+                }
+
+                ChangeLogEntry::record($user, 'user.accepted_invitation', $user, changes: $changes);
+            });
         }
 
         if ($user->hasEnabledTwoFactorAuthentication()) {

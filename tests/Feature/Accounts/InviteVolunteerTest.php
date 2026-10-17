@@ -76,4 +76,13 @@ class InviteVolunteerTest extends TestCase
 
         $this->invite('robin@example.org', User::factory()->create());
     }
+
+    public function test_the_invitation_logs_the_new_name_and_address(): void
+    {
+        $user = $this->invite('robin@example.org');
+
+        $entry = ChangeLogEntry::query()->where('action', 'user.invited')->sole();
+        $this->assertSame('robin@example.org', $entry->changes['email']['new']);
+        $this->assertSame($user->id, $entry->affected_user_id);
+    }
 }

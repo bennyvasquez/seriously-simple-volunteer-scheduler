@@ -4,6 +4,7 @@ namespace Tests\Feature\Accounts;
 
 use App\Enums\LoginLinkPurpose;
 use App\Enums\Role;
+use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\InvitationNotification;
@@ -83,5 +84,16 @@ class SetupCommandTest extends TestCase
         $this->expectException(UniqueConstraintViolationException::class);
 
         DB::table('organizations')->insert(['name' => 'Second', 'timezone' => 'UTC', 'weeks_ahead' => 8, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    public function test_setup_logs_the_organization_and_the_first_admin(): void
+    {
+        Notification::fake();
+        $this->setUpInstall()->assertSuccessful();
+
+        $organization = ChangeLogEntry::query()->where('action', 'organization.created')->sole();
+        $this->assertTrue($organization->isBySystem());
+        $this->assertSame('Example Makerspace', $organization->changes['name']['new']);
+        $this->assertTrue(ChangeLogEntry::query()->where('action', 'user.created')->about(User::query()->sole())->exists());
     }
 }

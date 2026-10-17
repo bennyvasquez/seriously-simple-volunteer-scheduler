@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChangeLogEntry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -24,8 +25,13 @@ class InitialPasswordController extends Controller
 
         $request->validate(['password' => $this->passwordRules()]);
 
-        $user->forceFill(['password' => Hash::make($request->input('password'))])->save();
-        ChangeLogEntry::record($user, 'user.password_set', $user);
+        DB::transaction(function () use ($user, $request) {
+            $user->forceFill(['password' => Hash::make($request->input('password'))]);
+            $changes = ChangeLogEntry::changesOf($user);
+            $user->save();
+
+            ChangeLogEntry::record($user, 'user.password_set', $user, changes: $changes);
+        });
 
         return redirect()->route('account.security')->with('status', 'Your password is set.');
     }

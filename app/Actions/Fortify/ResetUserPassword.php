@@ -5,6 +5,7 @@ namespace App\Actions\Fortify;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use App\Notifications\PasswordChangedNotification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -28,12 +29,17 @@ class ResetUserPassword implements ResetsUserPasswords
         ])->validate();
 
         // A reset uses only the inbox, so the emailed two-factor code stays off until the next app or recovery code login (spec section 13).
-        $user->forceFill([
-            'password' => Hash::make($input['password']),
-            'password_reset_at' => now(),
-        ])->save();
+        DB::transaction(function () use ($user, $input) {
+            $user->forceFill([
+                'password' => Hash::make($input['password']),
+                'password_reset_at' => now(),
+            ]);
+            $changes = ChangeLogEntry::changesOf($user);
+            $user->save();
 
-        ChangeLogEntry::record($user, 'user.password_reset', $user);
+            ChangeLogEntry::record($user, 'user.password_reset', $user, changes: $changes);
+        });
+
         $user->notify(new PasswordChangedNotification);
     }
 }

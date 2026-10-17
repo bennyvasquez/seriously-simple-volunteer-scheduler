@@ -6,6 +6,7 @@ use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\IssueLoginLink;
 use App\Enums\LoginLinkPurpose;
 use App\Enums\Role;
+use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\InvitationNotification;
@@ -60,13 +61,19 @@ class SetupCommand extends Command
         }
 
         [$admin, $url] = DB::transaction(function () use ($answers, $grantRole, $issueLoginLink) {
-            Organization::query()->create(['name' => $answers['organization'], 'timezone' => $answers['timezone']]);
+            $organization = new Organization(['name' => $answers['organization'], 'timezone' => $answers['timezone']]);
+            $organizationChanges = ChangeLogEntry::changesOf($organization);
+            $organization->save();
+            ChangeLogEntry::record(null, 'organization.created', $organization, changes: $organizationChanges);
 
-            $admin = User::query()->create([
+            $admin = new User([
                 'name' => $answers['admin_name'],
                 'email' => Str::lower($answers['admin_email']),
                 'password' => null,
             ]);
+            $adminChanges = ChangeLogEntry::changesOf($admin);
+            $admin->save();
+            ChangeLogEntry::record(null, 'user.created', $admin, changes: $adminChanges);
 
             $grantRole->handle(null, $admin, Role::Admin);
 

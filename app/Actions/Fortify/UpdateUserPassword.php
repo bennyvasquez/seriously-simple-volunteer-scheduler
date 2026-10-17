@@ -4,6 +4,7 @@ namespace App\Actions\Fortify;
 
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -29,10 +30,12 @@ class UpdateUserPassword implements UpdatesUserPasswords
             'current_password.current_password' => __('The provided password does not match your current password.'),
         ])->validateWithBag('updatePassword');
 
-        $user->forceFill([
-            'password' => Hash::make($input['password']),
-        ])->save();
+        DB::transaction(function () use ($user, $input) {
+            $user->forceFill(['password' => Hash::make($input['password'])]);
+            $changes = ChangeLogEntry::changesOf($user);
+            $user->save();
 
-        ChangeLogEntry::record($user, 'user.password_changed', $user);
+            ChangeLogEntry::record($user, 'user.password_changed', $user, changes: $changes);
+        });
     }
 }

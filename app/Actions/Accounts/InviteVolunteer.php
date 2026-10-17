@@ -31,9 +31,11 @@ class InviteVolunteer
         }
 
         return DB::transaction(function () use ($inviter, $name, $email) {
-            $user = User::query()->create(['name' => trim($name), 'email' => $email, 'password' => null]);
+            $user = new User(['name' => trim($name), 'email' => $email, 'password' => null]);
+            $changes = ChangeLogEntry::changesOf($user);
+            $user->save();
 
-            ChangeLogEntry::record($inviter, 'user.invited', $user);
+            ChangeLogEntry::record($inviter, 'user.invited', $user, changes: $changes);
 
             $url = $this->issueLoginLink->handle($user, LoginLinkPurpose::Invitation);
             $user->notify(new InvitationNotification($url, $inviter->name));

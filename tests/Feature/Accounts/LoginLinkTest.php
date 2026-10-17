@@ -178,4 +178,15 @@ class LoginLinkTest extends TestCase
 
         $this->post(route('login-link.request'), ['email' => 'volunteer@example.org'])->assertStatus(429);
     }
+
+    public function test_accepting_an_invitation_logs_the_confirmed_address(): void
+    {
+        $user = User::factory()->withoutPassword()->create(['email_verified_at' => null]);
+
+        $this->useLink($this->tokenFor($user, LoginLinkPurpose::Invitation));
+
+        $entry = ChangeLogEntry::query()->where('action', 'user.accepted_invitation')->sole();
+        $this->assertNull($entry->changes['email_verified_at']['old']);
+        $this->assertNotNull($entry->changes['email_verified_at']['new']);
+    }
 }

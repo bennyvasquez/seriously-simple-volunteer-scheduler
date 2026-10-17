@@ -149,4 +149,17 @@ class SessionsAndDeactivationTest extends TestCase
         $this->defaultCookies = [];
         $this->withCookie($cookie, $value);
     }
+
+    public function test_deactivation_logs_when_it_happened(): void
+    {
+        $coordinator = $this->withRole(Role::Coordinator);
+        $user = User::factory()->create();
+
+        app(DeactivateUser::class)->handle($coordinator, $user);
+
+        $entry = ChangeLogEntry::query()->where('action', 'user.deactivated')->sole();
+        $this->assertNull($entry->changes['deactivated_at']['old']);
+        $this->assertNotNull($entry->changes['deactivated_at']['new']);
+        $this->assertSame(['hidden' => true], $entry->changes['remember_token']);
+    }
 }

@@ -73,4 +73,18 @@ class PasswordResetTest extends TestCase
         $this->assertTrue(Hash::check('a brand new password', $user->fresh()->password));
         $this->assertTrue(ChangeLogEntry::query()->where('action', 'user.password_changed')->where('actor_id', $user->id)->where('subject_id', $user->id)->exists());
     }
+
+    public function test_a_password_change_never_logs_the_hash(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct horse battery')]);
+
+        $this->actingAs($user)
+            ->put(route('user-password.update'), ['current_password' => 'correct horse battery', 'password' => 'a brand new password', 'password_confirmation' => 'a brand new password'])
+            ->assertSessionHasNoErrors();
+
+        $entry = ChangeLogEntry::query()->where('action', 'user.password_changed')->sole();
+
+        $this->assertSame(['password' => ['hidden' => true]], $entry->changes);
+        $this->assertStringNotContainsString('$2y$', json_encode($entry->getAttributes()));
+    }
 }

@@ -120,4 +120,15 @@ class PasswordResetTwoFactorTest extends TestCase
             ->exists());
         Notification::assertSentTo($this->user, PasswordChangedNotification::class);
     }
+
+    public function test_using_a_recovery_code_is_logged(): void
+    {
+        $this->post('/login', ['email' => 'coordinator@example.org', 'password' => 'correct horse battery'])
+            ->assertRedirect(route('two-factor.login'));
+        $this->post(route('two-factor.login.store'), ['recovery_code' => 'recovery-code-one'])->assertRedirect('/');
+
+        $entry = ChangeLogEntry::query()->where('action', 'two_factor.recovery_code_used')->sole();
+        $this->assertSame($this->user->id, $entry->affected_user_id);
+        $this->assertStringNotContainsString('recovery-code', json_encode($entry->getAttributes()));
+    }
 }

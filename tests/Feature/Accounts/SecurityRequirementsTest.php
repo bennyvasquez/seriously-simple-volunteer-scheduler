@@ -139,4 +139,17 @@ class SecurityRequirementsTest extends TestCase
             $this->assertTrue(Route::has($name), "The route {$name} that people need during security setup doesn't exist. Fortify may have renamed it.");
         }
     }
+
+    public function test_regenerating_recovery_codes_is_logged(): void
+    {
+        $coordinator = $this->coordinator();
+        $this->enableTwoFactor($coordinator);
+
+        $this->actingAs($coordinator)->withSession(['auth.password_confirmed_at' => time()])
+            ->post(route('two-factor.regenerate-recovery-codes'));
+
+        $entry = ChangeLogEntry::query()->where('action', 'two_factor.recovery_codes_regenerated')->sole();
+        $this->assertSame($coordinator->id, $entry->affected_user_id);
+        $this->assertStringNotContainsString('recovery-code', json_encode($entry->getAttributes()));
+    }
 }

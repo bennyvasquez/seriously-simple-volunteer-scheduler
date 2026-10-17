@@ -29,11 +29,13 @@ class DeactivateUser
         }
 
         DB::transaction(function () use ($actor, $user) {
-            $user->forceFill(['deactivated_at' => now(), 'remember_token' => Str::random(60)])->save();
+            $user->forceFill(['deactivated_at' => now(), 'remember_token' => Str::random(60)]);
+            $changes = ChangeLogEntry::changesOf($user);
+            $user->save();
             DB::table('sessions')->where('user_id', $user->id)->delete();
             $user->loginLinks()->whereNull('used_at')->delete();
 
-            ChangeLogEntry::record($actor, 'user.deactivated', $user);
+            ChangeLogEntry::record($actor, 'user.deactivated', $user, changes: $changes);
         });
     }
 }
