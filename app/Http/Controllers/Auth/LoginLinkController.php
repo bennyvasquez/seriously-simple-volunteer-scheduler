@@ -7,6 +7,7 @@ use App\Actions\Accounts\IssueLoginLink;
 use App\Enums\LoginLinkPurpose;
 use App\Http\Controllers\Controller;
 use App\Models\ChangeLogEntry;
+use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\LoginLinkNotification;
 use Illuminate\Http\RedirectResponse;
@@ -39,7 +40,14 @@ class LoginLinkController extends Controller
     /** The page an emailed link opens. It never logs anyone in: email security scanners open links too. */
     public function show(string $token): View
     {
-        return view('auth.pending', ['screen' => 'Log in with your link']);
+        $link = LoginLink::findUsable($token);
+
+        $inviter = null;
+        if ($link?->purpose === LoginLinkPurpose::Invitation) {
+            $inviter = ChangeLogEntry::query()->about($link->user)->ofAction('user.invited')->first()?->actor_name;
+        }
+
+        return view('auth.link', ['link' => $link, 'inviter' => $inviter]);
     }
 
     public function consume(Request $request, string $token, ConsumeLoginLink $consumeLoginLink): RedirectResponse
@@ -70,12 +78,12 @@ class LoginLinkController extends Controller
 
         if ($user->hasEnabledTwoFactorAuthentication()) {
             // Hand off to Fortify's two-factor challenge. Remember this was a link login: an emailed code won't count as a second factor.
-            $request->session()->put(['login.id' => $user->id, 'login.remember' => false, 'login.via' => 'link']);
+            $request->session()->put(['login.id' => $user->id, 'login.remember' => $request->boolean('remember'), 'login.via' => 'link']);
 
             return redirect()->route('two-factor.login');
         }
 
-        Auth::login($user);
+        Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 
         return redirect()->intended(config('fortify.home'));

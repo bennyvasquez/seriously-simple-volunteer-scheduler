@@ -11,9 +11,9 @@ class ConsumeLoginLink
 {
     public function handle(string $token): ?LoginLink
     {
-        $link = LoginLink::query()->with('user')->where('token_hash', hash('sha256', $token))->first();
+        $link = LoginLink::findUsable($token);
 
-        if ($link === null || $link->used_at !== null || $link->expires_at->isPast() || ! $link->user->isActive()) {
+        if ($link === null) {
             return null;
         }
 
