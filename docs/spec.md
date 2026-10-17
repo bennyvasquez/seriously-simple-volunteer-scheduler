@@ -326,6 +326,5 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 
 ## 19. Open questions
 
-- Repository home: benny's account for now; whether and when it moves to an organization.
 - Text message provider and sender type, for phase 3. The October 2026 research in docs/background.md recommends a verified toll-free number.
 - Who reviews credit requests (a new permission an admin grants, or a role), and whether the value of an hour is a setting.
