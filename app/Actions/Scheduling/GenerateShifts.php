@@ -4,6 +4,7 @@ namespace App\Actions\Scheduling;
 
 use App\Enums\AssignmentType;
 use App\Models\AreaClosure;
+use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\WeeklySlot;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Creates dated shifts from weekly slots for the organization's generation window (spec section 7).
  *
- * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. Running it twice is harmless.
+ * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. Running it twice is harmless. A run that creates shifts is logged once, as the system.
  */
 class GenerateShifts
 {
@@ -54,6 +55,14 @@ class GenerateShifts
                     $created++;
                 }
             }
+        }
+
+        if ($created > 0) {
+            ChangeLogEntry::record(null, 'shifts.generated', $organization, [
+                'created' => $created,
+                'from' => $firstDay->toDateString(),
+                'to' => $lastDay->toDateString(),
+            ]);
         }
 
         return $created;

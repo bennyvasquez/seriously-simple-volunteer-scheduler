@@ -7,6 +7,7 @@ use App\Enums\AssignmentType;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Assignment;
+use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
@@ -188,5 +189,19 @@ class GenerateShiftsTest extends TestCase
         $this->generate();
 
         $this->assertSame(['2026-10-14'], $this->localDates());
+    }
+
+    public function test_a_run_that_creates_shifts_is_logged_once(): void
+    {
+        WeeklySlot::factory()->create(['weekday' => 4]);
+
+        $created = $this->generate();
+        $this->generate();
+
+        $entry = ChangeLogEntry::query()->ofAction('shifts.generated')->sole();
+        $this->assertTrue($entry->isBySystem());
+        $this->assertSame($created, $entry->details['created']);
+        $this->assertSame('2026-10-15', $entry->details['from']);
+        $this->assertSame('2026-10-28', $entry->details['to']);
     }
 }

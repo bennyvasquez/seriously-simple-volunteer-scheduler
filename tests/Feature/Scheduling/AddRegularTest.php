@@ -6,6 +6,7 @@ use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
+use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
@@ -35,12 +36,12 @@ class AddRegularTest extends TestCase
 
     private function addRegular(User $user, string $startsOn, ?string $endsOn = null): void
     {
-        app(AddRegular::class)->handle($this->slot, $user, $startsOn, $endsOn);
+        app(AddRegular::class)->handle(null, $this->slot, $user, $startsOn, $endsOn);
     }
 
     private function addAlternatingRegular(User $user, string $anchorDate, ?WeeklySlot $slot = null): void
     {
-        app(AddRegular::class)->handle($slot ?? $this->slot, $user, '2026-10-01', null, SlotFrequency::EveryOtherWeek, $anchorDate);
+        app(AddRegular::class)->handle(null, $slot ?? $this->slot, $user, '2026-10-01', null, SlotFrequency::EveryOtherWeek, $anchorDate);
     }
 
     /** @return list<string> */
@@ -229,7 +230,7 @@ class AddRegularTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
 
-        app(AddRegular::class)->handle($this->slot, User::factory()->create(), '2026-10-01', null, SlotFrequency::EveryOtherWeek);
+        app(AddRegular::class)->handle(null, $this->slot, User::factory()->create(), '2026-10-01', null, SlotFrequency::EveryOtherWeek);
     }
 
     public function test_an_anchor_on_a_different_weekday_is_refused(): void
@@ -252,17 +253,44 @@ class AddRegularTest extends TestCase
     public function test_headcount_is_checked_for_a_slot_that_starts_later(): void
     {
         $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1, 'valid_from' => '2027-01-07']);
-        app(AddRegular::class)->handle($slot, User::factory()->create(), '2026-10-15');
+        app(AddRegular::class)->handle(null, $slot, User::factory()->create(), '2026-10-15');
 
         $this->expectException(DomainException::class);
 
-        app(AddRegular::class)->handle($slot, User::factory()->create(), '2026-10-15');
+        app(AddRegular::class)->handle(null, $slot, User::factory()->create(), '2026-10-15');
     }
 
     public function test_a_weekly_regular_does_not_keep_an_anchor_date(): void
     {
-        $regular = app(AddRegular::class)->handle($this->slot, User::factory()->create(), '2026-10-01', null, SlotFrequency::Weekly, '2026-10-15');
+        $regular = app(AddRegular::class)->handle(null, $this->slot, User::factory()->create(), '2026-10-01', null, SlotFrequency::Weekly, '2026-10-15');
 
         $this->assertNull($regular->fresh()->anchor_date);
+    }
+
+    public function test_adding_a_regular_is_logged_about_the_person(): void
+    {
+        $coordinator = User::factory()->create(['name' => 'Alex']);
+        $robin = User::factory()->create();
+
+        $regular = app(AddRegular::class)->handle($coordinator, $this->slot, $robin, '2026-10-01');
+
+        $entry = ChangeLogEntry::query()->about($robin)->ofAction('regular.added')->sole();
+        $this->assertSame($coordinator->id, $entry->actor_id);
+        $this->assertTrue($regular->is($entry->subject));
+        $this->assertSame('2026-10-01 00:00:00', $entry->changes['starts_on']['new']);
+        $this->assertSame($this->slot->id, $entry->details['weekly_slot_id']);
+    }
+
+    public function test_a_refused_regular_logs_nothing(): void
+    {
+        $robin = User::factory()->create();
+        app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-10-01');
+
+        try {
+            app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-10-01');
+        } catch (DomainException) {
+        }
+
+        $this->assertSame(1, ChangeLogEntry::query()->ofAction('regular.added')->count());
     }
 }

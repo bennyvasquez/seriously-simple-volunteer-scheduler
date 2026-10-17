@@ -4,6 +4,7 @@ namespace App\Actions\Scheduling;
 
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
+use App\Models\ChangeLogEntry;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
@@ -17,6 +18,8 @@ use InvalidArgumentException;
 /**
  * Makes someone a regular on a weekly slot (spec section 5) and adds them to the slot's shifts that were already generated. Generation only fills regulars into new shifts, so without this a new regular would be missing from the next few weeks.
  *
+ * The actor is who made the change, or null when the system did. Adding a regular is logged about the person, with the ids of the shifts they were added to.
+ *
  * A regular can work every week or, on a weekly slot, every other week from an anchor date. Headcount is checked date by date, so two people alternating weeks don't count against each other.
  *
  * Shifts that have started, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone.
@@ -24,6 +27,7 @@ use InvalidArgumentException;
 class AddRegular
 {
     public function handle(
+        ?User $actor,
         WeeklySlot $slot,
         User $user,
         string $startsOn,
@@ -50,7 +54,7 @@ class AddRegular
         $regular->weeklySlot()->associate($slot);
         $regular->ensureValid();
 
-        return DB::transaction(function () use ($slot, $user, $regular, $startsOn, $endsOn) {
+        return DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn) {
             $overlapping = $slot->regulars()
                 ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))
                 ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $startsOn))
@@ -67,6 +71,7 @@ class AddRegular
                 throw new DomainException('This slot already has as many regulars as it needs, starting '.CarbonImmutable::parse($fullOn)->format('l j F Y').'.');
             }
 
+            $changes = ChangeLogEntry::changesOf($regular);
             $regular->save();
 
             $shifts = $slot->shifts()
@@ -84,6 +89,11 @@ class AddRegular
                     'type' => AssignmentType::Regular,
                 ]);
             }
+
+            ChangeLogEntry::record($actor, 'regular.added', $regular, [
+                'weekly_slot_id' => $slot->id,
+                'added_to_shift_ids' => $shifts->pluck('id')->values()->all(),
+            ], $changes, about: $user);
 
             return $regular;
         });
