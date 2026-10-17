@@ -37,7 +37,7 @@ Volunteer-run organizations keep a shared calendar, a chat channel, and a lot of
 |---|---|
 | Organization | The one group this install serves. Has a name, a time zone, and settings. |
 | Area | A place or kind of work that needs staff, such as Front desk, Hosted events, or Outreach events. Every shift belongs to one area. |
-| Event | Optional. Something with a date or date range, a location, a description, and an organizer, such as a festival booth. An event holds one or more shifts. |
+| Event | Optional. Something with a date or date range, a location, a description, and an organizer, such as a festival booth. An event holds one or more shifts. Events are where event planning happens, and they bridge the gap between event volunteering and regular shifts. |
 | Weekly slot | A repeating shift template: area, weekday, start and end time, how many people it needs, how many shadow spots it offers, an optional required skill, and whether it repeats every week or every other week. |
 | Shift | One dated occurrence. Generated from a weekly slot, or created on its own (one-time shifts and event shifts). |
 | Regular | A person attached to a weekly slot, with a start date, an optional end date, and whether they work every week or every other week (with an anchor date). Regulars are filled into each generated shift they cover automatically. |
