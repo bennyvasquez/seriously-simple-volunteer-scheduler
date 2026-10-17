@@ -1,14 +1,14 @@
 @font-face{font-family:'Atkinson Hyperlegible';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/atkinson-hyperlegible-400.woff2) format('woff2')}
 @font-face{font-family:'Atkinson Hyperlegible';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/atkinson-hyperlegible-700.woff2) format('woff2')}
 
-body{margin:0;background:#f4f4f4;font-family:'Atkinson Hyperlegible',system-ui,sans-serif;color:#1a1a1a}
+body{margin:0;background:#f4f4f4;font-family:'Atkinson Hyperlegible',system-ui,sans-serif;color:#1a1a1a;font-size:16px}
 a{color:#1a1a1a}a:hover{color:#000}
 .bar{display:flex;align-items:center;padding:12px 16px;min-height:68px;box-sizing:border-box;background:#fff;border-bottom:1px solid #ddd}
 .bar-name{font-weight:700;font-size:18px}
 .page{max-width:480px;margin:0 auto;padding:24px 16px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box}
 .page h1{margin:0;font-size:26px}
-.page p{margin:0;font-size:16px}
-form{display:flex;flex-direction:column;gap:12px}
+.page p{margin:0}
+.page form{display:flex;flex-direction:column;gap:12px}
 .btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid #1a1a1a;background:#fff;font:inherit;font-size:15px;color:#1a1a1a;display:flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box;cursor:pointer}
 .btn-primary{background:#1a1a1a;color:#fff}
 .btn-primary:hover{color:#fff}

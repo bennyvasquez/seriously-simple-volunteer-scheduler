@@ -40,6 +40,7 @@ class LayoutTest extends TestCase
             '<x-field name="email" type="email" label="Email address" hint="We email you a link." />'
         );
 
+        $html->assertSee('<label for="email">Email address</label>', false);
         $html->assertSee('aria-invalid="true"', false);
         $html->assertSee('aria-describedby="email-hint email-error"', false);
         $html->assertSee('Enter a valid email address.');
