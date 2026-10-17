@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
  */
 class SignOutEverywhere
 {
-    public function handle(User $user, ?string $exceptSessionId = null): void
+    public function handle(User $user, ?string $exceptSessionId = null, ?User $actor = null): void
     {
         DB::table('sessions')
             ->where('user_id', $user->id)
@@ -20,6 +20,6 @@ class SignOutEverywhere
             ->delete();
         $user->forceFill(['remember_token' => Str::random(60)])->save();
 
-        ChangeLogEntry::record($user, 'user.signed_out_everywhere', $user, ['kept_current_session' => $exceptSessionId !== null]);
+        ChangeLogEntry::record($actor ?? $user, 'user.signed_out_everywhere', $user, ['kept_current_session' => $exceptSessionId !== null]);
     }
 }

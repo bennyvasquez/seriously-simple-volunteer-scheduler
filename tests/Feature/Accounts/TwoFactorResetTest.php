@@ -72,13 +72,14 @@ class TwoFactorResetTest extends TestCase
     public function test_the_reset_signs_the_person_out_everywhere(): void
     {
         Notification::fake();
+        $admin = $this->adminWithTwoFactor();
         $jordan = $this->leadWithTwoFactor();
         DB::table('sessions')->insert(['id' => 'jordan-phone', 'user_id' => $jordan->id, 'payload' => '', 'last_activity' => time()]);
 
-        app(ResetTwoFactor::class)->handle($this->adminWithTwoFactor(), $jordan);
+        app(ResetTwoFactor::class)->handle($admin, $jordan);
 
         $this->assertSame(0, DB::table('sessions')->where('user_id', $jordan->id)->count());
-        $this->assertSame(1, ChangeLogEntry::query()->about($jordan)->ofAction('user.signed_out_everywhere')->count());
+        $this->assertSame($admin->id, ChangeLogEntry::query()->about($jordan)->ofAction('user.signed_out_everywhere')->sole()->actor_id);
     }
 
     public function test_the_email_names_the_admin_and_says_what_happens_next(): void
@@ -181,5 +182,34 @@ class TwoFactorResetTest extends TestCase
         $this->post('/login', ['email' => $jordan->email, 'password' => 'correct horse battery']);
 
         $this->get('/')->assertRedirect(route('account.security'));
+    }
+
+    public function test_a_reset_is_refused_when_no_app_is_connected(): void
+    {
+        Notification::fake();
+        $sam = User::factory()->create(['name' => 'Sam Lee']);
+        $sam->forceFill(['remember_token' => 'keep'])->save();
+
+        $this->actingAs($this->adminWithTwoFactor())->post(route('people.two-factor.reset', $sam), ['identity_checked' => '1'])
+            ->assertSessionHasErrors(['identity_checked' => 'Sam doesn\'t have an authenticator app connected.']);
+
+        Notification::assertNothingSent();
+        $this->assertSame(0, ChangeLogEntry::query()->about($sam)->count());
+        $this->assertSame('keep', $sam->fresh()->remember_token);
+    }
+
+    public function test_non_admins_get_the_same_403_for_a_real_and_a_missing_person(): void
+    {
+        $coordinator = $this->actingAs($this->coordinatorWithTwoFactor());
+        $real = $this->leadWithTwoFactor();
+
+        $coordinator->get(route('people.security', $real))->assertForbidden();
+        $coordinator->get(route('people.security', 999999))->assertForbidden();
+        $coordinator->post(route('people.two-factor.reset', 999999), ['identity_checked' => '1'])->assertForbidden();
+    }
+
+    public function test_an_admin_gets_a_404_for_a_missing_person(): void
+    {
+        $this->actingAs($this->adminWithTwoFactor())->get(route('people.security', 999999))->assertNotFound();
     }
 }

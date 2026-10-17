@@ -21,8 +21,8 @@ a{color:#1a1a1a}a:hover{color:#000}
 .field input[aria-invalid="true"]{border-color:#b00020}
 .field-hint{color:#555;font-size:14px}
 .field-error{color:#b00020;font-size:14px;font-weight:700}
-.check{display:flex;gap:10px;align-items:center;font-size:15px;min-height:44px}
-.check input{width:22px;height:22px;margin:0}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:15px;line-height:22px;padding:11px 0}
+.check input{width:22px;height:22px;margin:0;flex-shrink:0}
 .row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #eee;padding:6px 0;font-size:15px}
 .step{font-size:14px;font-weight:700;color:#444}
 .code{font-family:ui-monospace,monospace;font-size:14px;padding:8px;border:1px solid #ddd;border-radius:6px;text-align:center;background:#fafafa}

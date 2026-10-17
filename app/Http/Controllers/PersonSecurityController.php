@@ -17,9 +17,10 @@ use Illuminate\View\View;
  */
 class PersonSecurityController extends Controller
 {
-    public function show(Request $request, User $user): View
+    public function show(Request $request, string $user): View
     {
         $this->authorizeAdmin($request);
+        $user = User::query()->findOrFail($user);
 
         $user->load('roles.area');
 
@@ -36,9 +37,11 @@ class PersonSecurityController extends Controller
         ]);
     }
 
-    public function reset(Request $request, User $user, ResetTwoFactor $resetTwoFactor): RedirectResponse
+    public function reset(Request $request, string $user, ResetTwoFactor $resetTwoFactor): RedirectResponse
     {
+        // The admin check comes before the lookup, so a non-admin gets the same 403 for a person who exists and one who doesn't.
         $this->authorizeAdmin($request);
+        $user = User::query()->findOrFail($user);
 
         $request->validate(['identity_checked' => ['accepted']], ['identity_checked.accepted' => 'Tick the box once you\'ve checked it\'s really them.']);
 

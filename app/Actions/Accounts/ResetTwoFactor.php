@@ -27,6 +27,10 @@ class ResetTwoFactor
             throw new DomainException('Ask another admin to reset your own two-factor.');
         }
 
+        if ($user->two_factor_secret === null) {
+            throw new DomainException(explode(' ', trim($user->name))[0]." doesn't have an authenticator app connected.");
+        }
+
         DB::transaction(function () use ($admin, $user) {
             $user->forceFill([
                 'two_factor_secret' => null,
@@ -37,7 +41,7 @@ class ResetTwoFactor
             $user->save();
 
             ChangeLogEntry::record($admin, 'two_factor.reset', $user, changes: $changes);
-            $this->signOutEverywhere->handle($user);
+            $this->signOutEverywhere->handle($user, actor: $admin);
         });
 
         // After the transaction commits, so a rolled-back reset never sends the email.
