@@ -61,8 +61,21 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::resetPasswordView(fn (Request $request) => view('auth.reset-password', ['request' => $request]));
         Fortify::confirmPasswordView(fn () => view('auth.confirm-password'));
 
-        // Placeholder screen until the screens plan replaces it.
-        Fortify::twoFactorChallengeView(fn () => view('auth.pending', ['screen' => 'Enter your code']));
+        Fortify::twoFactorChallengeView(function (Request $request) {
+            $session = $request->session();
+            $pendingUser = User::query()->find($session->get('login.id'));
+            $justReset = $pendingUser?->password_reset_at !== null;
+            $canEmailCode = $pendingUser !== null && $session->get('login.via') === 'password' && ! $justReset;
+
+            // A failed recovery code comes back without the query string, so the error says which form to show.
+            $mode = match (true) {
+                $request->boolean('recovery') || $request->session()->get('errors')?->has('recovery_code') => 'recovery',
+                $canEmailCode && ($session->has('status') || $session->has('email_code_pending')) => 'email',
+                default => 'app',
+            };
+
+            return view('auth.two-factor-challenge', compact('pendingUser', 'canEmailCode', 'justReset', 'mode'));
+        });
 
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());

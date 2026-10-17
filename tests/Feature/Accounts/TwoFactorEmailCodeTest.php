@@ -64,7 +64,9 @@ class TwoFactorEmailCodeTest extends TestCase
         $this->post(route('login-link.consume', basename(parse_url($url, PHP_URL_PATH))))
             ->assertRedirect(route('two-factor.login'));
 
-        $this->post(route('two-factor.email.send'))->assertForbidden();
+        $this->post(route('two-factor.email.send'))
+            ->assertRedirect(route('two-factor.login'))
+            ->assertSessionHasErrors(['email_code' => 'An emailed code can\'t be used after logging in with an email link. Use your authenticator app or a recovery code, or log in with your password instead.']);
 
         Notification::assertNotSentTo($this->user, TwoFactorCodeNotification::class);
         $this->assertGuest();

@@ -42,7 +42,7 @@ class TwoFactorEmailCodeController extends Controller
         $entry = Cache::get($key);
 
         if ($entry === null) {
-            return back()->withErrors(['code' => 'That code has expired. Ask for a new one.']);
+            return back()->with('email_code_pending', true)->withErrors(['code' => 'That code has expired. Ask for a new one.']);
         }
 
         if (! hash_equals($entry['hash'], hash('sha256', trim($request->input('code'))))) {
@@ -51,12 +51,12 @@ class TwoFactorEmailCodeController extends Controller
             if ($entry['tries'] >= self::MAX_TRIES) {
                 Cache::forget($key);
 
-                return back()->withErrors(['code' => 'That code didn\'t match, and it\'s now used up. Ask for a new one.']);
+                return back()->with('email_code_pending', true)->withErrors(['code' => 'That code didn\'t match, and it\'s now used up. Ask for a new one.']);
             }
 
             Cache::put($key, $entry, now()->setTimestamp($entry['expires_at']));
 
-            return back()->withErrors(['code' => 'That code didn\'t match. Check the email and try again.']);
+            return back()->with('email_code_pending', true)->withErrors(['code' => 'That code didn\'t match. Check the email and try again.']);
         }
 
         Cache::forget($key);
@@ -79,20 +79,22 @@ class TwoFactorEmailCodeController extends Controller
             throw new HttpResponseException(redirect()->route('login')->withErrors(['email' => 'Log in again to get a code.']));
         }
 
-        abort_if(
-            $request->session()->get('login.via') !== 'password',
-            403,
-            'An emailed code can\'t be used after logging in with an email link. Use your authenticator app or a recovery code, or log in with your password instead.',
-        );
+        if ($request->session()->get('login.via') !== 'password') {
+            $this->refuse('An emailed code can\'t be used after logging in with an email link. Use your authenticator app or a recovery code, or log in with your password instead.');
+        }
 
         // A reset by email used only the inbox, so the inbox can't be the second factor too until the next app or recovery code login.
-        abort_if(
-            $user->password_reset_at !== null,
-            403,
-            'Your password was just reset by email, so use your authenticator app or a recovery code this time.',
-        );
+        if ($user->password_reset_at !== null) {
+            $this->refuse('Your password was just reset by email, so use your authenticator app or a recovery code this time.');
+        }
 
         return $user;
+    }
+
+    /** Sends the person back to the code screen with the reason, instead of an error page. */
+    private function refuse(string $message): never
+    {
+        throw new HttpResponseException(redirect()->route('two-factor.login')->withErrors(['email_code' => $message]));
     }
 
     private function cacheKey(User $user): string
