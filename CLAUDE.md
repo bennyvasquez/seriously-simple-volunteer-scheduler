@@ -7,6 +7,7 @@ The Seriously Simple Volunteer Scheduler (SSVS) helps a small organization run i
 - docs/spec.md is the source of truth for what SSVS does. Its decision log (section 18) records every decision; add a row when a decision changes or a new one is made. Open questions are in section 19.
 - docs/background.md explains why SSVS exists and which alternatives were rejected. Don't re-propose them without new information.
 - docs/plans/ holds the implementation plans already built, each with the decisions it made and its follow-ups. Read the most recent ones before starting related work.
+- Known issues, follow-ups and open questions are tracked in GitHub issues, labeled by kind (`bug`, `security`, `tech debt`, `tests`, `copy`, `accessibility`, `enhancement`, `question`) and by timing (`before launch`, `phase 3`, `phase 4`). The follow-up sections in docs/plans/ are where they were first found; new ones go in issues.
 - DEVELOPMENT.md: how to run and test the app locally (Docker, matching AlmaLinux 10).
 - SECURITY.md: report security problems privately to security@encylia.com, never in a public issue or pull request.
 
