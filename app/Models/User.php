@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -84,6 +85,28 @@ class User extends Authenticatable
     public function isCoordinator(): bool
     {
         return $this->roles()->whereIn('role', [Role::Admin->value, Role::Coordinator->value])->exists();
+    }
+
+    /** The ids of the areas this person leads. */
+    public function ledAreaIds(): Collection
+    {
+        return $this->roles()->where('role', Role::AreaLead->value)->whereNotNull('area_id')->pluck('area_id');
+    }
+
+    /** Anyone with a role can open the coordinator calendar; a turned-off account cannot. */
+    public function canViewCalendar(): bool
+    {
+        return $this->isActive() && $this->roles()->exists();
+    }
+
+    /** Coordinators and admins manage every area; a lead manages only the areas they lead. */
+    public function canManageArea(Area $area): bool
+    {
+        if (! $this->isActive()) {
+            return false;
+        }
+
+        return $this->isCoordinator() || $this->hasRole(Role::AreaLead, $area);
     }
 
     /** Every role can see volunteers' contact details (leads for their areas), so anyone with a role needs two-factor (spec section 13). */
