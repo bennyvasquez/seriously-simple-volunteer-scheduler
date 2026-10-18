@@ -73,10 +73,8 @@ class GenerateShifts
 
         $created = 0;
 
-        for ($offset = 0; $offset < $days; $offset++) {
-            $date = $firstDay->addDays($offset)->toDateString();
-
-            if (! $slot->occursOn($date) || $this->isClosed($closures, $date)) {
+        foreach ($slot->datesWithin($firstDay, $lastDay) as $date) {
+            if ($this->isClosed($closures, $date)) {
                 continue;
             }
 

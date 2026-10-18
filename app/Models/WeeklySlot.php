@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Calendar\TimeFormat;
 use App\Enums\SlotFrequency;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -109,6 +110,33 @@ class WeeklySlot extends Model
         }
 
         return $this->frequency->includes($localDate, $this->anchor_date);
+    }
+
+    /**
+     * The local dates (Y-m-d) from $from to $to, both included, that this slot occurs on.
+     *
+     * @return list<string>
+     */
+    public function datesWithin(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $dates = [];
+
+        for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+            if ($this->occursOn($day->toDateString())) {
+                $dates[] = $day->toDateString();
+            }
+        }
+
+        return $dates;
+    }
+
+    /** The slot in words: "Thursdays, 6:30 to 9:30pm" or "Every other Thursday, 6:30 to 9:30pm". */
+    public function describe(): string
+    {
+        $weekday = CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($this->weekday)->format('l');
+        $when = $this->frequency === SlotFrequency::Weekly ? $weekday.'s' : 'Every other '.$weekday;
+
+        return $when.', '.TimeFormat::range(CarbonImmutable::parse($this->start_time), CarbonImmutable::parse($this->end_time));
     }
 
     /**

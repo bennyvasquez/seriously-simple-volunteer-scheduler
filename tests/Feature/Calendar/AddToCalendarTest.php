@@ -280,4 +280,92 @@ class AddToCalendarTest extends TestCase
         $this->actingAs($this->coordinator())->get(route('calendar.week', ['date' => '2026-10-21']))
             ->assertSee(route('calendar.add', ['date' => '2026-10-21']), false);
     }
+
+    private function slotFormPost(array $overrides = []): array
+    {
+        return $overrides + [
+            'area' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-22', 'valid_until' => '',
+        ];
+    }
+
+    public function test_the_slot_form_previews_the_changed_values_when_it_reloads(): void
+    {
+        $user = $this->coordinator();
+
+        $this->actingAs($user)->followingRedirects()
+            ->post(route('calendar.slots.store'), $this->slotFormPost(['refresh' => '1', 'weekday' => 5, 'valid_from' => '2026-10-23', 'start_time' => '09:00', 'end_time' => '12:00', 'frequency' => 'every_other_week']))
+            ->assertOk()
+            ->assertSee('Every other Friday, 9am to 12pm, starting Fri Oct 23.')
+            ->assertSee('Oct 23, Nov 6, Nov 20 and so on.');
+
+        $this->assertSame(0, WeeklySlot::query()->count());
+    }
+
+    public function test_the_preview_says_when_the_first_shifts_will_appear_if_the_slot_starts_beyond_the_window(): void
+    {
+        $this->actingAs($this->coordinator())
+            ->get(route('calendar.slots.create', ['date' => '2027-01-07', 'area' => $this->frontDesk->id]))
+            ->assertSee('The first shifts appear on the calendar on Thursday, November 12, 8 weeks before Thursday, January 7.');
+    }
+
+    public function test_the_preview_lists_only_dates_inside_the_window_and_skips_only_closures_inside_it(): void
+    {
+        // The window is Oct 14 to Dec 8. The closure on Dec 10 is outside it; the one on Nov 26 is inside.
+        AreaClosure::query()->create(['area_id' => $this->frontDesk->id, 'starts_on' => '2026-12-10', 'ends_on' => '2026-12-10', 'reason' => 'Holiday']);
+
+        $this->actingAs($this->coordinator())
+            ->get(route('calendar.slots.create', ['date' => '2026-10-22', 'area' => $this->frontDesk->id]))
+            ->assertSee('Oct 22, Oct 29, Nov 5 and so on.')
+            ->assertDontSee('Dec 10');
+    }
+
+    public function test_the_preview_and_the_save_agree_on_how_many_shifts_a_slot_gets(): void
+    {
+        $slot = WeeklySlot::factory()->make(['valid_from' => '2026-10-22']);
+        $window = $slot->datesWithin(CarbonImmutable::parse('2026-10-14', 'UTC'), CarbonImmutable::parse('2026-12-08', 'UTC'));
+
+        $saved = app(CreateWeeklySlot::class)->handle($this->coordinator(), $this->frontDesk, $this->slotAttributes());
+
+        $this->assertCount(7, $window);
+        $this->assertSame(count($window), $saved->shifts()->count());
+    }
+
+    public function test_more_options_posts_and_redirects_without_a_token_in_the_url(): void
+    {
+        $response = $this->actingAs($this->coordinator())->post(route('calendar.add.store'), $this->panelPost(['more' => '1', 'title' => 'Laser helper', '_token' => 'abc']));
+
+        $response->assertRedirect();
+        $location = $response->headers->get('Location');
+        $this->assertStringStartsWith(route('calendar.slots.create'), $location);
+        $this->assertStringNotContainsString('_token', $location);
+        $this->assertStringContainsString('title=Laser%20helper', $location);
+        $this->assertSame(0, Shift::query()->count());
+    }
+
+    public function test_the_area_filter_survives_saving_reloading_and_more_options(): void
+    {
+        $user = $this->coordinator();
+        $filter = ['areas' => [$this->frontDesk->id]];
+
+        $this->actingAs($user)->post(route('calendar.add.store'), $this->panelPost($filter))
+            ->assertRedirect(route('calendar.week', ['date' => '2026-10-21'] + $filter));
+        $this->actingAs($user)->post(route('calendar.add.store'), $this->panelPost($filter + ['refresh' => '1']))
+            ->assertRedirect(route('calendar.add', ['date' => '2026-10-21', 'area' => $this->frontDesk->id] + $filter));
+        $this->assertStringContainsString('areas%5B0%5D='.$this->frontDesk->id, $this->actingAs($user)->post(route('calendar.add.store'), $this->panelPost($filter + ['more' => '1']))->headers->get('Location'));
+        $this->actingAs($user)->post(route('calendar.slots.store'), $this->slotFormPost($filter))
+            ->assertRedirect(route('calendar.week', ['date' => '2026-10-22'] + $filter));
+
+        $this->actingAs($user)->get(route('calendar.add', ['date' => '2026-10-21'] + $filter))
+            ->assertSee('name="areas[]" value="'.$this->frontDesk->id.'"', false);
+    }
+
+    public function test_a_slot_describes_itself(): void
+    {
+        $weekly = WeeklySlot::factory()->make(['start_time' => '18:30', 'end_time' => '21:30']);
+        $other = WeeklySlot::factory()->everyOtherWeek('2026-10-21')->make(['start_time' => '11:30', 'end_time' => '14:30']);
+
+        $this->assertSame('Thursdays, 6:30 to 9:30pm', $weekly->describe());
+        $this->assertSame('Every other Wednesday, 11:30am to 2:30pm', $other->describe());
+    }
 }

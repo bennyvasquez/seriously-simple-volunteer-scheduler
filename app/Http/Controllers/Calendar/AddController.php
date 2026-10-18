@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
-use App\Calendar\TimeFormat;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
 use App\Models\Area;
@@ -66,8 +65,15 @@ class AddController extends Controller
     /** Creates a one-time shift, or a weekly slot when "Repeats" is chosen, and returns to the week with a note about what was added. */
     public function store(Request $request, CreateOneTimeShift $createShift, CreateWeeklySlot $createSlot): RedirectResponse
     {
+        $areaQuery = $this->areaQuery($request);
+
         if ($request->filled('refresh')) {
-            return redirect()->route('calendar.add', array_filter(['date' => $request->input('date'), 'area' => $request->input('area')]))->withInput();
+            return redirect()->route('calendar.add', array_filter(['date' => $request->input('date'), 'area' => $request->input('area')]) + $areaQuery)->withInput();
+        }
+
+        if ($request->filled('more')) {
+            // Sent as a POST so the CSRF token never lands in a URL; the typed values travel in the redirect's query.
+            return redirect()->route('calendar.slots.create', array_filter($request->only(['area', 'title', 'date', 'start_time', 'end_time', 'repeats', 'headcount', 'shadow_spots', 'ends', 'ends_on', 'fills_by']), fn ($value) => is_string($value) && $value !== '') + $areaQuery);
         }
 
         $area = $this->authorizedArea($request);
@@ -93,7 +99,7 @@ class AddController extends Controller
         if (! $repeating) {
             $shift = $createShift->handle($actor, $area, $data['date'], $data['start_time'], $data['end_time'], (int) $data['headcount'], (int) $data['shadow_spots'], $data['title'] ?? null);
 
-            return redirect()->route('calendar.week', ['date' => $data['date']])->with('status', 'Added '.($shift->title === null ? 'a shift for '.$area->name : 'the '.$this->lowerFirst($shift->title)).' on '.$date->format('l, F j').'.');
+            return redirect()->route('calendar.week', ['date' => $data['date']] + $areaQuery)->with('status', 'Added '.($shift->title === null ? 'a shift for '.$area->name : 'the '.$this->lowerFirst($shift->title)).' on '.$date->format('l, F j').'.');
         }
 
         $slot = $createSlot->handle($actor, $area, [
@@ -109,7 +115,7 @@ class AddController extends Controller
             'is_rotation' => ($data['fills_by'] ?? 'regulars') === 'rotation',
         ]);
 
-        return $this->slotAdded($slot);
+        return $this->slotAdded($slot, $areaQuery);
     }
 
     /** Screen 35: the full form for a new weekly slot. The quick panel's "More options" sends what was typed along. */
@@ -163,8 +169,10 @@ class AddController extends Controller
     /** Creates a weekly slot from the full form. */
     public function storeSlot(Request $request, CreateWeeklySlot $createSlot): RedirectResponse
     {
+        $areaQuery = $this->areaQuery($request);
+
         if ($request->filled('refresh')) {
-            return redirect()->route('calendar.slots.create')->withInput();
+            return redirect()->route('calendar.slots.create', $areaQuery)->withInput();
         }
 
         $area = $this->authorizedArea($request);
@@ -196,7 +204,7 @@ class AddController extends Controller
             'is_rotation' => $data['fills_by'] === 'rotation',
         ]);
 
-        return $this->slotAdded($slot);
+        return $this->slotAdded($slot, $areaQuery);
     }
 
     private function slotForm(Request $request, Collection $areas, array $defaults, ?WeeklySlot $slot): View
@@ -210,6 +218,7 @@ class AddController extends Controller
             'manageable' => $areas,
             'values' => $values,
             'slot' => $slot,
+            'areaQuery' => $this->areaQuery($request),
             'preview' => $this->preview($organization, $area, $values),
             'weekdays' => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
         ]);
@@ -244,21 +253,16 @@ class AddController extends Controller
             'valid_until' => $validUntil,
         ]);
 
-        $today = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC');
-        $first = $today->greaterThan(CarbonImmutable::parse($validFrom, 'UTC')) ? $today : CarbonImmutable::parse($validFrom, 'UTC');
-        $window = $organization->weeks_ahead * 7;
+        // The same window the nightly run and the save use: today for weeks_ahead * 7 days.
+        $windowStart = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC');
+        $windowEnd = $windowStart->addDays($organization->weeks_ahead * 7 - 1);
         $closures = AreaClosure::query()->where('area_id', $area->id)
-            ->where('starts_on', '<=', $first->addDays($window)->toDateString())->where('ends_on', '>=', $first->toDateString())->get();
+            ->where('starts_on', '<=', $windowEnd->toDateString())->where('ends_on', '>=', $windowStart->toDateString())->get();
 
         $dates = [];
         $skipped = [];
-        for ($offset = 0; $offset < $window; $offset++) {
-            $day = $first->addDays($offset);
-            $date = $day->toDateString();
-
-            if (! $slot->occursOn($date)) {
-                continue;
-            }
+        foreach ($slot->datesWithin($windowStart, $windowEnd) as $date) {
+            $day = CarbonImmutable::parse($date, 'UTC');
 
             if ($closures->contains(fn (AreaClosure $closure) => $closure->covers($date))) {
                 $skipped[] = $day->format('D M j');
@@ -269,12 +273,14 @@ class AddController extends Controller
             $dates[] = $day->format('M j');
         }
 
-        $start = CarbonImmutable::parse($values['start_time']);
-        $end = CarbonImmutable::parse($values['end_time']);
         $startsOn = CarbonImmutable::parse($validFrom, 'UTC');
-        $dayName = CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($weekday)->format('l');
-        $summary = ($frequency === SlotFrequency::Weekly ? $dayName.'s' : 'Every other '.$dayName).', '.TimeFormat::range($start, $end)
-            .($frequency === SlotFrequency::Weekly ? ', every week' : '').', starting '.$startsOn->format('D M j').'.';
+        $summary = $slot->describe().($frequency === SlotFrequency::Weekly ? ', every week' : '').', starting '.$startsOn->format('D M j').'.';
+
+        if ($startsOn->greaterThan($windowEnd)) {
+            $opens = $startsOn->subWeeks($organization->weeks_ahead);
+
+            return ['summary' => $summary, 'detail' => 'The first shifts appear on the calendar on '.$opens->format('l, F j').', '.$organization->weeks_ahead.' weeks before '.$startsOn->format('l, F j').'.'];
+        }
 
         $detail = 'Shifts appear on the calendar as soon as you save, '.$organization->weeks_ahead.' weeks ahead';
         $listed = array_slice($dates, 0, 3);
@@ -287,21 +293,34 @@ class AddController extends Controller
         return ['summary' => $summary, 'detail' => $detail];
     }
 
-    private function slotAdded(WeeklySlot $slot): RedirectResponse
+    private function slotAdded(WeeklySlot $slot, array $areaQuery): RedirectResponse
     {
         $organization = Organization::current();
         $date = CarbonImmutable::parse($slot->valid_from->toDateString(), 'UTC');
         $count = $slot->shifts()->count();
-        $weekday = CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($slot->weekday)->format('l');
-        $pattern = ($slot->frequency === SlotFrequency::Weekly ? $weekday.'s' : 'Every other '.$weekday).', '.TimeFormat::range(CarbonImmutable::parse($slot->start_time), CarbonImmutable::parse($slot->end_time));
         $onCalendar = match ($count) {
             0 => 'No shifts are on the calendar yet.',
             1 => '1 shift is on the calendar.',
             default => $count.' shifts are on the calendar.',
         };
+        $weekOf = max($organization->today()->toDateString(), $date->toDateString());
 
-        return redirect()->route('calendar.week', ['date' => $organization->today()->toDateString() > $date->toDateString() ? $organization->today()->toDateString() : $date->toDateString()])
-            ->with('status', 'Added '.$pattern.', starting '.$date->format('l, F j').'. '.$onCalendar);
+        return redirect()->route('calendar.week', ['date' => $weekOf] + $areaQuery)
+            ->with('status', 'Added '.$slot->describe().', starting '.$date->format('l, F j').'. '.$onCalendar);
+    }
+
+    /** The areas[] filter the person came from, so every redirect back to the week keeps it. Empty when no filter was in use. */
+    private function areaQuery(Request $request): array
+    {
+        $asked = $request->input('areas');
+
+        if (! is_array($asked)) {
+            return [];
+        }
+
+        $ids = array_values(array_filter(array_map('intval', array_filter($asked, fn ($id) => is_scalar($id) && ctype_digit((string) $id)))));
+
+        return ['areas' => $ids === [] ? [''] : $ids];
     }
 
     /** @return Collection<int, Area> */

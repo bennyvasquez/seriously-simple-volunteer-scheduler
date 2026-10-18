@@ -14,6 +14,9 @@
 <form method="POST" action="{{ route('calendar.add.store') }}">
 @csrf
 <input type="hidden" name="refresh" value="">
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
 <div class="field">
 <label for="area">Area</label>
 <select name="area" id="area" @error('area') aria-invalid="true" @enderror>
@@ -59,7 +62,7 @@
 </div>
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Save</button>
-<button type="submit" class="btn" formmethod="get" formaction="{{ route('calendar.slots.create') }}" name="more" value="1">More options</button>
+<button type="submit" class="btn" name="more" value="1">More options</button>
 <noscript><button type="submit" class="btn" name="refresh" value="1">Show repeat options</button></noscript>
 </div>
 </form>
