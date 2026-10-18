@@ -46,6 +46,7 @@ final class CalendarMonth
             ->whereIn('area_id', $areaIds)
             ->where('starts_on', '<=', $last->toDateString())
             ->where('ends_on', '>=', $first->toDateString())
+            ->with('area')
             ->orderBy('starts_on')
             ->get();
 
@@ -106,16 +107,7 @@ final class CalendarMonth
             }
         }
 
-        // One label per reason. It names the areas unless every area shown is closed for it.
-        $closed = [];
-        foreach ($closures->filter(fn (AreaClosure $closure) => $closure->covers($date))->groupBy('reason') as $reason => $group) {
-            $closedAreaIds = $group->pluck('area_id')->unique();
-            $text = 'Closed: '.$reason;
-            if ($closedAreaIds->count() < $areas->count()) {
-                $text .= ' ('.$areas->whereIn('id', $closedAreaIds)->pluck('name')->implode(', ').')';
-            }
-            $closed[] = $text;
-        }
+        $closed = ClosureLabels::on($closures, $date, $areas->count());
 
         return [
             'date' => $date,

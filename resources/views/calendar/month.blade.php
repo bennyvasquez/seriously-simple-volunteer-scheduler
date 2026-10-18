@@ -25,8 +25,8 @@
 <div class="cal-month">
 <div class="cal-month-actions">
 <a href="{{ route('calendar.add', ['date' => $date] + $areaQuery) }}" class="btn btn-primary">+ Add</a>
-@if (Route::has('calendar.closures.create'))
-<a href="{{ route('calendar.closures.create') }}" class="btn">Add a closure</a>
+@if ($canClose)
+<a href="{{ route('calendar.closures.create', $areaQuery) }}" class="btn">Add a closure</a>
 @endif
 <span class="muted">Each day shows how many shifts it has. Pick a day to see it in the week view.</span>
 </div>

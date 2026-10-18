@@ -50,6 +50,13 @@
 <div class="dh{{ $day === $today ? ' today' : '' }}" @if ($day === $today) aria-current="date" @endif><span class="muted">{{ strtoupper($carbonDay->format('D')) }}</span><b>{{ $carbonDay->day }}</b><a href="{{ route('calendar.add', ['date' => $day] + $areaQuery) }}" class="add" aria-label="Add on {{ $carbonDay->format('l, F j') }}">Add</a></div>
 @endforeach
 
+@if ($week->hasClosures())
+<div class="allday-label muted">All day</div>
+@foreach ($days as $day)
+<div class="allday">@foreach ($week->closuresOn($day) as $closure)<span class="closed">{{ $closure }}</span>@endforeach</div>
+@endforeach
+@endif
+
 <div class="hours" aria-hidden="true">@for ($hour = $firstHour; $hour < $lastHour; $hour++)<div>{{ \App\Calendar\TimeFormat::time(\Carbon\CarbonImmutable::today()->setTime($hour, 0)) }}</div>@endfor</div>
 @foreach ($days as $day)
 @php($shifts = $week->shiftsOn($day))
@@ -66,8 +73,12 @@
 <section class="cal-list" aria-label="Shifts by day">
 @foreach ($days as $day)
 @php($shifts = $week->shiftsOn($day))
-@if ($shifts->isNotEmpty())
+@php($closures = $week->closuresOn($day))
+@if ($shifts->isNotEmpty() || $closures !== [])
 <div class="day"><span>{{ \Carbon\CarbonImmutable::parse($day)->format('D M j') }}</span><a href="{{ route('calendar.add', ['date' => $day] + $areaQuery) }}" class="muted">Add</a></div>
+@foreach ($closures as $closure)
+<span class="closed">{{ $closure }}</span>
+@endforeach
 @foreach ($shifts as $shift)
 @php($info = $week->describe($shift, $now))
 <a class="{{ $info['classes'] }}" aria-label="{{ $info['label'] }}" href="{{ route('calendar.shift', [$shift] + $areaQuery) }}"><strong>{{ $info['time'] }}, {{ $info['area'] }}</strong>@foreach ($info['lines'] as $line)<span>{{ $line }}</span>@endforeach</a>

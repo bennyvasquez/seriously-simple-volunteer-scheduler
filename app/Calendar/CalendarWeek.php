@@ -3,6 +3,7 @@
 namespace App\Calendar;
 
 use App\Enums\AssignmentType;
+use App\Models\AreaClosure;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -31,11 +32,14 @@ final class CalendarWeek
     /**
      * @param  list<string>  $days
      * @param  Collection<string, Collection<int, Shift>>  $shiftsByDay
+     * @param  Collection<int, AreaClosure>  $closures  Closures of the areas shown that cover any of the days.
      */
     private function __construct(
         public readonly Organization $organization,
         private readonly array $days,
         private readonly Collection $shiftsByDay,
+        private readonly Collection $closures,
+        private readonly int $areasShown,
     ) {}
 
     /** The Sunday-to-Saturday week holding the given date. Only the date part is used. */
@@ -68,7 +72,16 @@ final class CalendarWeek
             ->orderBy('id')
             ->get();
 
-        return new self($organization, $days, $shifts->groupBy(fn (Shift $shift) => $shift->local_date->toDateString()));
+        $closures = AreaClosure::query()
+            ->whereIn('area_id', $areaIds)
+            ->where('starts_on', '<=', $days[count($days) - 1])
+            ->where('ends_on', '>=', $days[0])
+            ->with('area')
+            ->orderBy('starts_on')
+            ->orderBy('id')
+            ->get();
+
+        return new self($organization, $days, $shifts->groupBy(fn (Shift $shift) => $shift->local_date->toDateString()), $closures, count($areaIds));
     }
 
     /** @return list<string> Y-m-d dates, Sunday first (or the one day). */
@@ -81,6 +94,18 @@ final class CalendarWeek
     public function shiftsOn(string $date): Collection
     {
         return $this->shiftsByDay->get($date, new Collection);
+    }
+
+    /** @return list<string> "Closed: Thanksgiving (Front desk)" for each reason the areas shown are closed on a local date. */
+    public function closuresOn(string $date): array
+    {
+        return ClosureLabels::on($this->closures, $date, $this->areasShown);
+    }
+
+    /** Whether a closure covers any of the days, so the grid needs its all-day row. */
+    public function hasClosures(): bool
+    {
+        return $this->closures->isNotEmpty();
     }
 
     public function isEmpty(): bool

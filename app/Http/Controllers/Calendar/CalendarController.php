@@ -11,6 +11,7 @@ use App\Models\Organization;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 
 /**
@@ -69,6 +70,7 @@ class CalendarController extends Controller
             'previous' => $month->subMonth()->format('Y-m'),
             'next' => $month->addMonth()->format('Y-m'),
             'nothingShown' => $shown === [],
+            'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
         ]);
     }
 

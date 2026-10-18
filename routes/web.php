@@ -7,6 +7,7 @@ use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Http\Controllers\Calendar\AddController;
 use App\Http\Controllers\Calendar\CalendarController;
+use App\Http\Controllers\Calendar\ClosureController;
 use App\Http\Controllers\Calendar\RegularController;
 use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\EmailChangeController;
@@ -48,6 +49,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/slots/{slot}/regulars', [RegularController::class, 'store'])->name('calendar.slots.regulars.store');
         Route::get('/calendar/slots/{slot}/edit', [AddController::class, 'editSlot'])->name('calendar.slots.edit');
         Route::post('/calendar/slots/{slot}', [AddController::class, 'updateSlot'])->name('calendar.slots.update');
+        Route::get('/calendar/closures/create', [ClosureController::class, 'create'])->name('calendar.closures.create');
+        Route::post('/calendar/closures', [ClosureController::class, 'store'])->name('calendar.closures.store');
     });
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');
