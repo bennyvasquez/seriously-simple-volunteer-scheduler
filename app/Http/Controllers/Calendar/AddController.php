@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
+use App\Actions\Scheduling\SlotAttributes;
 use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
@@ -13,6 +14,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
+use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -182,42 +184,26 @@ class AddController extends Controller
         }
 
         // A first date in the past is fine when it is unchanged; the action refuses a changed one before today.
-        $data = $request->validate([
-            'title' => ['nullable', 'string', 'max:80'],
-            'weekday' => ['required', 'integer', 'between:0,6'],
-            'start_time' => ['required', 'date_format:H:i'],
-            'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
-            'headcount' => ['required', 'integer', 'min:1', 'max:200'],
-            'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
-            'frequency' => ['required', Rule::enum(SlotFrequency::class)],
-            'fills_by' => ['required', Rule::in(['regulars', 'rotation'])],
-            'valid_from' => ['required', 'date_format:'.self::DATE_FORMAT],
-            'valid_until' => ['nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:valid_from'],
-        ], $this->messages());
+        $data = $request->validate(SlotAttributes::formRules($slot), $this->messages());
 
-        $result = $updateSlot->handle($request->user(), $slot, [
-            'weekday' => $data['weekday'],
-            'start_time' => $data['start_time'],
-            'end_time' => $data['end_time'],
-            'headcount' => $data['headcount'],
-            'shadow_spots' => $data['shadow_spots'],
-            'frequency' => $data['frequency'],
-            'valid_from' => $data['valid_from'],
-            'valid_until' => $data['valid_until'] ?? null,
-            'title' => $data['title'] ?? null,
-            'is_rotation' => $data['fills_by'] === 'rotation',
-        ]);
+        try {
+            $result = $updateSlot->handle($request->user(), $slot, SlotAttributes::fromForm($data));
+        } catch (DomainException $e) {
+            return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->withErrors(['slot' => $e->getMessage()])->withInput();
+        }
 
-        [$staffed, $edited] = $result->keptShifts->partition(fn (Shift $shift) => $shift->assignments_count > 0);
+        // Split the kept shifts by why they matter: details that differ, or a date the slot no longer runs on.
+        $groups = ['staffed' => [], 'staffedOff' => [], 'edited' => [], 'editedOff' => []];
+        foreach ($result->keptShifts as $shift) {
+            $off = ! $slot->occursOn($shift->local_date->toDateString());
+            $groups[($shift->assignments_count > 0 ? 'staffed' : 'edited').($off ? 'Off' : '')][] = $shift->id;
+        }
 
         return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->with('slotSaved', [
             'updated' => $result->updatedShifts,
             'cancelled' => $result->cancelledShifts,
             'created' => $result->createdShifts,
-            'stillCancelled' => $result->stillCancelled,
-            'staffed' => $staffed->pluck('id')->values()->all(),
-            'edited' => $edited->pluck('id')->values()->all(),
-        ]);
+        ] + $groups);
     }
 
     /** Creates a weekly slot from the full form. */
@@ -230,33 +216,8 @@ class AddController extends Controller
         }
 
         $area = $this->authorizedArea($request);
-        $organization = Organization::current();
-
-        $data = $request->validate([
-            'title' => ['nullable', 'string', 'max:80'],
-            'weekday' => ['required', 'integer', 'between:0,6'],
-            'start_time' => ['required', 'date_format:H:i'],
-            'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
-            'headcount' => ['required', 'integer', 'min:1', 'max:200'],
-            'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
-            'frequency' => ['required', Rule::enum(SlotFrequency::class)],
-            'fills_by' => ['required', Rule::in(['regulars', 'rotation'])],
-            'valid_from' => ['bail', 'required', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:'.$organization->today()->toDateString()],
-            'valid_until' => ['nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:valid_from'],
-        ], $this->messages());
-
-        $slot = $createSlot->handle($request->user(), $area, [
-            'weekday' => $data['weekday'],
-            'start_time' => $data['start_time'],
-            'end_time' => $data['end_time'],
-            'headcount' => $data['headcount'],
-            'shadow_spots' => $data['shadow_spots'],
-            'frequency' => $data['frequency'],
-            'valid_from' => $data['valid_from'],
-            'valid_until' => $data['valid_until'] ?? null,
-            'title' => $data['title'] ?? null,
-            'is_rotation' => $data['fills_by'] === 'rotation',
-        ]);
+        $data = $request->validate(SlotAttributes::formRules(null), $this->messages());
+        $slot = $createSlot->handle($request->user(), $area, SlotAttributes::fromForm($data));
 
         return $this->slotAdded($slot, $areaQuery);
     }
@@ -348,25 +309,24 @@ class AddController extends Controller
             $summary[] = 'Added '.$plural($saved['created'], 'new shift.', 'new shifts.');
         }
 
-        if ($saved['stillCancelled'] > 0) {
-            $summary[] = $saved['stillCancelled'] === 1
-                ? '1 date was cancelled by an earlier change to this slot and stays cancelled. Add a one-time shift if you need it.'
-                : $saved['stillCancelled'].' dates were cancelled by an earlier change to this slot and stay cancelled. Add a one-time shift if you need one.';
-        }
+        $headings = [
+            'staffed' => fn (int $count) => $plural($count, 'shift with people on it kept its old details:', 'shifts with people on them kept their old details:'),
+            'staffedOff' => fn (int $count) => $plural($count, 'shift with people on it is no longer on this slot\'s schedule. Cancel it or move the people:', 'shifts with people on them are no longer on this slot\'s schedule. Cancel them or move the people:'),
+            'edited' => fn (int $count) => $plural($count, 'shift edited on its own kept its own details:', 'shifts edited on their own kept their own details:'),
+            'editedOff' => fn (int $count) => $plural($count, 'shift edited on its own is no longer on this slot\'s schedule. Cancel it if it isn\'t needed:', 'shifts edited on their own are no longer on this slot\'s schedule. Cancel them if they aren\'t needed:'),
+        ];
 
         $groups = [];
-        foreach (['staffed', 'edited'] as $kind) {
-            $count = count($saved[$kind]);
+        foreach ($headings as $kind => $heading) {
+            $ids = $saved[$kind] ?? [];
 
-            if ($count === 0) {
+            if ($ids === []) {
                 continue;
             }
 
             $groups[] = [
-                'heading' => $kind === 'staffed'
-                    ? $plural($count, 'shift with people on it kept its old details:', 'shifts with people on them kept their old details:')
-                    : $plural($count, 'shift edited on its own kept its own details:', 'shifts edited on their own kept their own details:'),
-                'shifts' => Shift::query()->whereKey($saved[$kind])->orderBy('local_date')->get()->map(fn (Shift $shift) => ['shift' => $shift, 'when' => $shift->whenText($organization->timezone)]),
+                'heading' => $heading(count($ids)),
+                'shifts' => Shift::query()->whereKey($ids)->orderBy('local_date')->get()->map(fn (Shift $shift) => ['shift' => $shift, 'when' => $shift->whenText($organization->timezone)]),
             ];
         }
 

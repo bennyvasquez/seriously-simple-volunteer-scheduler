@@ -30,6 +30,7 @@
 <div class="slot-layout">
 <form method="POST" action="{{ $saveUrl }}" class="panel slot-fields">
 @csrf
+@error('slot')<p role="alert" class="field-error">{{ $message }}</p>@enderror
 <input type="hidden" name="refresh" value="">
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
@@ -112,7 +113,7 @@
 <section class="panel slot-existing" aria-labelledby="existing-heading">
 <h2 id="existing-heading">Changes apply to shifts nobody is on yet</h2>
 <p class="muted">{{ implode(' ', $existing) }}</p>
-<p class="muted">If you change the day, how often, or the first or last date, shifts nobody is on that no longer fit are cancelled. They stay on the calendar, marked cancelled.</p>
+<p class="muted">If you change the day, how often, or the first or last date, shifts nobody is on that no longer fit are cancelled. They stay on the calendar, marked cancelled. The day and how often can't change while people work this slot.</p>
 </section>
 @endif
 @endsection

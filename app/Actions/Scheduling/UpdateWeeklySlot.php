@@ -2,26 +2,27 @@
 
 namespace App\Actions\Scheduling;
 
-use App\Enums\SlotFrequency;
+use App\Models\AreaClosure;
+use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
-use Carbon\CarbonImmutable;
+use DomainException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Validation\ValidationException;
 
 /**
- * Saves changes to a weekly slot and brings its future shifts up to date, as far as that is safe today.
+ * Saves changes to a weekly slot and brings its future shifts up to date, as far as that is safe without change notices.
  *
- * Future shifts that nobody is on and nobody edited by hand get the slot's new times, headcount, shadow spots and title. If the slot no longer runs on a shift's date (the day, how often, the first date or the last date changed), that shift is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it, and the generator then adds the new dates. Shifts someone is on, or that were edited on their own, keep their old details and are returned as kept when they differ from the slot. Shifts that have started or are cancelled are never touched.
+ * Future shifts that nobody is on and nobody edited by hand get the slot's new times, headcount, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), that shift is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A date the slot runs on again whose shift was cancelled that way, with nobody on it and no closure, is brought back with the slot's details. The generator then adds any new dates. Shifts someone is on, or that were edited on their own, keep their old details and are returned as kept when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
  *
- * Cancelled shifts stay on their dates, and a slot has at most one shift per date, so a date cancelled by an earlier change isn't made again if a later change brings that date back. The result counts those dates as stillCancelled.
+ * Changing the day or how often the slot repeats (including the first date of an every-other-week slot, which sets its weeks) is refused while the slot has current or future regulars or a future shift someone is on, since that changes when they work. Switching to a rotation is refused while it has current or future regulars. The refusals are written to be shown on screen.
  *
- * Attribute keys are the same as CreateWeeklySlot's. The area doesn't change. A first date in the past is accepted only when it is unchanged.
+ * Every shift this cancels, brings back or changes gets its own change log entry, and the slot gets one too, all in the same transaction. The area doesn't change. SlotAttributes checks the values.
  */
 class UpdateWeeklySlot
 {
@@ -35,52 +36,22 @@ class UpdateWeeklySlot
         Gate::forUser($actor)->authorize('manageSchedule', $slot->area);
 
         $organization = Organization::current();
-        $frequency = $attributes['frequency'] instanceof SlotFrequency ? $attributes['frequency'] : SlotFrequency::from($attributes['frequency']);
-        $validFrom = CarbonImmutable::parse($attributes['valid_from'])->toDateString();
-        $validUntil = ($attributes['valid_until'] ?? null) === null ? null : CarbonImmutable::parse($attributes['valid_until'])->toDateString();
-        $title = trim((string) ($attributes['title'] ?? ''));
-        $weekday = (int) $attributes['weekday'];
 
-        if ($validFrom !== $slot->valid_from->toDateString() && $validFrom < $organization->today()->toDateString()) {
-            throw ValidationException::withMessages(['valid_from' => 'Pick a date from today on.']);
-        }
+        return DB::transaction(function () use ($actor, $organization, $slot, $attributes) {
+            // Locked first, so two saves of the same slot can't interleave.
+            $locked = WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
+            $values = SlotAttributes::validate($attributes, $locked);
+            $locked->fill($values);
+            $this->refuseWhatChangesWhenPeopleWork($actor, $locked, $organization);
 
-        if ($validUntil !== null && $validUntil < $validFrom) {
-            throw ValidationException::withMessages(['valid_until' => 'The last date has to be on or after the first date.']);
-        }
+            $changes = ChangeLogEntry::changesOf($locked);
+            $locked->save();
 
-        if ($frequency === SlotFrequency::EveryOtherWeek && CarbonImmutable::parse($validFrom, 'UTC')->dayOfWeek !== $weekday) {
-            throw ValidationException::withMessages(['valid_from' => 'For every other week, the first date has to fall on the day the slot is for.']);
-        }
-
-        if (CarbonImmutable::parse($attributes['start_time'])->format('H:i') === CarbonImmutable::parse($attributes['end_time'])->format('H:i')) {
-            throw ValidationException::withMessages(['end_time' => 'A shift has to end at a different time than it starts.']);
-        }
-
-        if ((int) $attributes['headcount'] < 1) {
-            throw ValidationException::withMessages(['headcount' => 'At least 1 person is needed.']);
-        }
-
-        $slot->fill([
-            'weekday' => $weekday,
-            'start_time' => $attributes['start_time'],
-            'end_time' => $attributes['end_time'],
-            'headcount' => (int) $attributes['headcount'],
-            'shadow_spots' => (int) $attributes['shadow_spots'],
-            'frequency' => $frequency,
-            'anchor_date' => $frequency === SlotFrequency::EveryOtherWeek ? $validFrom : null,
-            'valid_from' => $validFrom,
-            'valid_until' => $validUntil,
-            'title' => $title === '' ? null : $title,
-            'is_rotation' => (bool) ($attributes['is_rotation'] ?? false),
-        ]);
-
-        return DB::transaction(function () use ($actor, $organization, $slot) {
-            $changes = ChangeLogEntry::changesOf($slot);
-            $slot->save();
+            $timezone = $organization->timezone;
+            $via = ['via' => 'slot.updated', 'weekly_slot_id' => $locked->id];
 
             // Locked so nobody is put on a shift between counting its people and changing it.
-            $shifts = $slot->shifts()->whereNull('cancelled_at')->where('starts_at', '>', now())
+            $shifts = $locked->shifts()->whereNull('cancelled_at')->where('starts_at', '>', now())
                 ->orderBy('local_date')->lockForUpdate()->withCount('assignments')->get();
 
             $updated = [];
@@ -90,10 +61,10 @@ class UpdateWeeklySlot
 
             foreach ($shifts as $shift) {
                 $date = $shift->local_date->toDateString();
-                $runs = $slot->occursOn($date);
+                $runs = $locked->occursOn($date);
 
                 if ($shift->assignments_count > 0 || $shift->edited_at !== null) {
-                    if (! $runs || $this->differs($shift, $slot, $date, $organization->timezone)) {
+                    if (! $runs || $this->differs($shift, $locked, $date, $timezone)) {
                         $kept->push($shift);
                     }
 
@@ -103,28 +74,25 @@ class UpdateWeeklySlot
                 if (! $runs) {
                     $shift->cancelled_at = now();
                     $shift->cancel_reason = self::CANCEL_REASON;
-                    $shift->save();
+                    $this->saveAndLog($actor, $shift, 'shift.cancelled', $via);
                     $cancelled[] = $shift->id;
 
                     continue;
                 }
 
-                $this->applySlot($shift, $slot, $date, $organization->timezone);
+                $this->applySlot($shift, $locked, $date, $timezone);
 
                 if ($shift->isDirty()) {
-                    $shift->save();
+                    $this->saveAndLog($actor, $shift, 'shift.updated', $via);
                     $updated[] = $shift->id;
                 }
             }
 
-            $created = $this->generator->forSlot($organization, $slot);
+            $updated = [...$updated, ...$this->revive($actor, $locked, $organization, $cancelled, $via)];
+            $created = $this->generator->forSlot($organization, $locked);
 
-            $stillCancelled = $slot->shifts()->whereNotNull('cancelled_at')->where('cancel_reason', self::CANCEL_REASON)
-                ->where('local_date', '>=', $organization->today()->toDateString())->whereNotIn('id', $cancelled)->get()
-                ->filter(fn (Shift $shift) => $slot->occursOn($shift->local_date->toDateString()))->count();
-
-            ChangeLogEntry::record($actor, 'slot.updated', $slot, [
-                'area_id' => $slot->area_id,
+            ChangeLogEntry::record($actor, 'slot.updated', $locked, [
+                'area_id' => $locked->area_id,
                 'updated_shifts' => count($updated),
                 'updated_shift_ids' => $updated,
                 'kept_shift_ids' => $kept->pluck('id')->all(),
@@ -132,8 +100,91 @@ class UpdateWeeklySlot
                 'created_shifts' => $created,
             ], $changes);
 
-            return new UpdateResult(count($updated), $kept, count($cancelled), $created, $stillCancelled);
+            $slot->setRawAttributes($locked->getAttributes(), true);
+
+            return new UpdateResult(count($updated), $kept, count($cancelled), $created);
         });
+    }
+
+    /** Refuses a change to when the slot runs while people work it, and a switch to a rotation while it has regulars. */
+    private function refuseWhatChangesWhenPeopleWork(User $actor, WeeklySlot $slot, Organization $organization): void
+    {
+        $today = $organization->today()->toDateString();
+        $regulars = $slot->regulars()->with('user')
+            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today))
+            ->orderBy('id')->get()->pluck('user');
+
+        if ($slot->isDirty(['weekday', 'frequency', 'anchor_date'])) {
+            $onShifts = Assignment::query()->with('user')->orderBy('id')
+                ->whereHas('shift', fn ($query) => $query->where('weekly_slot_id', $slot->id)->whereNull('cancelled_at')->where('starts_at', '>', now()))
+                ->get()->pluck('user');
+            $people = $regulars->concat($onShifts)->unique('id')->values();
+
+            if ($people->isNotEmpty()) {
+                throw new DomainException($this->names($actor, $people).' '.($people->count() === 1 ? 'works' : 'work').' this slot. Changing its day or how often it repeats changes when they work, and that needs the change notices coming in the next update. For now, set a last date on this slot and add a new one.');
+            }
+        }
+
+        if ($slot->is_rotation && ! $slot->getOriginal('is_rotation') && $regulars->isNotEmpty()) {
+            $people = $regulars->unique('id')->values();
+
+            throw new DomainException('End '.$this->names($actor, $people).'\'s time as '.($people->count() === 1 ? 'a regular' : 'regulars').' on this slot first.');
+        }
+    }
+
+    /**
+     * "Sam", "Sam and Robin", "Sam, Robin and Alex". Full names only for people the actor may see (spec section 13).
+     *
+     * @param  Collection<int, User>  $people
+     */
+    private function names(User $actor, Collection $people): string
+    {
+        return $people->map(fn (User $person) => $actor->canSee($person) ? $person->name : $person->shortName())->join(', ', ' and ');
+    }
+
+    /**
+     * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started.
+     *
+     * @param  list<int>  $justCancelled
+     * @return list<int> The ids brought back.
+     */
+    private function revive(User $actor, WeeklySlot $slot, Organization $organization, array $justCancelled, array $via): array
+    {
+        $candidates = $slot->shifts()->whereNotNull('cancelled_at')->where('cancel_reason', self::CANCEL_REASON)
+            ->whereNull('area_closure_id')->whereDoesntHave('assignments')
+            ->where('local_date', '>=', $organization->today()->toDateString())->whereNotIn('id', $justCancelled)
+            ->orderBy('local_date')->lockForUpdate()->get();
+
+        $revived = [];
+
+        foreach ($candidates as $shift) {
+            $date = $shift->local_date->toDateString();
+
+            if (! $slot->occursOn($date) || AreaClosure::query()->where('area_id', $slot->area_id)->where('starts_on', '<=', $date)->where('ends_on', '>=', $date)->exists()) {
+                continue;
+            }
+
+            $this->applySlot($shift, $slot, $date, $organization->timezone);
+
+            if ($shift->starts_at->lessThanOrEqualTo(now())) {
+                continue;
+            }
+
+            $shift->cancelled_at = null;
+            $shift->cancel_reason = null;
+            $this->saveAndLog($actor, $shift, 'shift.updated', $via);
+            $revived[] = $shift->id;
+        }
+
+        return $revived;
+    }
+
+    private function saveAndLog(User $actor, Shift $shift, string $action, array $via): void
+    {
+        $changes = ChangeLogEntry::changesOf($shift);
+        $shift->save();
+
+        ChangeLogEntry::record($actor, $action, $shift, $via, $changes);
     }
 
     private function applySlot(Shift $shift, WeeklySlot $slot, string $date, string $timezone): void

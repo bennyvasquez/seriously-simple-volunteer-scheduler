@@ -6,7 +6,7 @@ use App\Models\Shift;
 use Illuminate\Support\Collection;
 
 /**
- * What saving a weekly slot did to its shifts. Kept shifts are future shifts that kept their old details because someone is on them or they were edited on their own.
+ * What saving a weekly slot did to its shifts. Updated shifts include dates brought back after an earlier slot change cancelled them. Kept shifts are future shifts that kept their old details because someone is on them or they were edited on their own.
  */
 final class UpdateResult
 {
@@ -18,6 +18,5 @@ final class UpdateResult
         public readonly Collection $keptShifts,
         public readonly int $cancelledShifts = 0,
         public readonly int $createdShifts = 0,
-        public readonly int $stillCancelled = 0,
     ) {}
 }

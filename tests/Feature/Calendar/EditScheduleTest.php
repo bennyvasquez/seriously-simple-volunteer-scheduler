@@ -3,6 +3,7 @@
 namespace Tests\Feature\Calendar;
 
 use App\Actions\Accounts\GrantRole;
+use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
@@ -11,6 +12,7 @@ use App\Actions\Scheduling\UpdateShift;
 use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
+use App\Enums\SlotFrequency;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
@@ -18,7 +20,6 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
-use App\Notifications\ShiftCancelledNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -198,24 +199,34 @@ class EditScheduleTest extends TestCase
     public function test_changing_the_weekday_moves_unstaffed_shifts(): void
     {
         $slot = $this->thursdaySlot('18:30', '21:30');
-        $staffed = $slot->shifts()->orderBy('local_date')->first();
-        app(PutOnShift::class)->handle($this->coordinator(), $staffed, User::factory()->create(), AssignmentType::Regular);
+        $thursdays = $slot->shifts()->orderBy('local_date')->get();
 
-        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['weekday' => 5, 'valid_from' => '2026-10-16'] + $this->slotAttributes($slot));
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['weekday' => 5] + $this->slotAttributes($slot));
 
-        $thursdays = $slot->shifts()->whereKeyNot($staffed->id)->get()->filter(fn (Shift $shift) => $shift->local_date->dayOfWeek === 4);
-        $this->assertCount(7, $thursdays);
-        $this->assertTrue($thursdays->every(fn (Shift $shift) => $shift->cancelled_at !== null && $shift->cancel_reason === 'The weekly slot changed'));
-        $this->assertNull($staffed->fresh()->cancelled_at);
-        $this->assertTrue($result->keptShifts->contains($staffed));
+        $this->assertTrue($thursdays->every(fn (Shift $shift) => $shift->fresh()->cancelled_at !== null && $shift->fresh()->cancel_reason === 'The weekly slot changed'));
         $this->assertSame(8, $slot->shifts()->active()->get()->filter(fn (Shift $shift) => $shift->local_date->dayOfWeek === 5)->count());
-        $this->assertSame(7, $result->cancelledShifts);
-        $this->assertSame(8, $result->createdShifts);
-        $this->assertSame(0, $result->updatedShifts);
+        $this->assertSame([8, 8, 0], [$result->cancelledShifts, $result->createdShifts, $result->updatedShifts]);
         $entry = ChangeLogEntry::query()->ofAction('slot.updated')->sole();
-        $this->assertCount(7, $entry->details['cancelled_shift_ids']);
+        $this->assertCount(8, $entry->details['cancelled_shift_ids']);
         $this->assertSame(8, $entry->details['created_shifts']);
-        Notification::assertNothingSentTo($staffed->assignments()->first()->user, ShiftCancelledNotification::class);
+        Notification::assertNothingSent();
+    }
+
+    public function test_every_shift_a_slot_edit_changes_gets_its_own_change_log_entry(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $first = $slot->shifts()->orderBy('local_date')->first();
+
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['start_time' => '18:00', 'end_time' => '21:00'] + $this->slotAttributes($slot));
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['weekday' => 5] + $this->slotAttributes($slot->fresh()));
+
+        $retimed = ChangeLogEntry::query()->forSubject($first)->ofAction('shift.updated')->sole();
+        $this->assertSame(['via' => 'slot.updated', 'weekly_slot_id' => $slot->id], $retimed->details);
+        $this->assertArrayHasKey('starts_at', $retimed->changes);
+        $cancelled = ChangeLogEntry::query()->forSubject($first)->ofAction('shift.cancelled')->sole();
+        $this->assertSame(['via' => 'slot.updated', 'weekly_slot_id' => $slot->id], $cancelled->details);
+        $this->assertSame('The weekly slot changed', $cancelled->changes['cancel_reason']['new']);
+        $this->assertSame(16, ChangeLogEntry::query()->ofAction('shift.updated', 'shift.cancelled')->count());
     }
 
     public function test_changing_to_every_other_week_cancels_the_weeks_in_between(): void
@@ -231,18 +242,114 @@ class EditScheduleTest extends TestCase
         $this->assertSame(0, $result->createdShifts);
     }
 
-    public function test_changing_back_to_every_week_leaves_dates_the_slot_change_cancelled(): void
+    public function test_changing_back_to_every_week_brings_back_the_dates_the_slot_change_cancelled(): void
     {
         $slot = $this->thursdaySlot('18:30', '21:30');
+        $outage = $slot->shifts()->where('local_date', '2026-10-22')->sole();
+        app(CancelShift::class)->handle($this->coordinator(), $outage, 'Power outage');
         app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['frequency' => 'every_other_week'] + $this->slotAttributes($slot));
 
-        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['frequency' => 'weekly'] + $this->slotAttributes($slot->fresh()));
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['frequency' => 'weekly', 'headcount' => 2] + $this->slotAttributes($slot->fresh()));
 
-        // Cancelled shifts are never touched, and the unique date per slot means they can't be made again.
+        // Nov 5, Nov 19 and Dec 3 come back with the slot's new details; Oct 22 was cancelled by a person and stays cancelled.
         $this->assertSame(0, $result->createdShifts);
-        $this->assertSame(4, $result->stillCancelled);
-        $this->assertSame(4, $slot->shifts()->active()->count());
+        $this->assertSame(7, $result->updatedShifts);
+        $this->assertSame(7, $slot->shifts()->active()->count());
         $this->assertSame(8, $slot->shifts()->count());
+        $this->assertSame('Power outage', $outage->fresh()->cancel_reason);
+        $revived = $slot->shifts()->where('local_date', '2026-11-05')->sole();
+        $this->assertNull($revived->cancel_reason);
+        $this->assertSame(2, $revived->headcount);
+        $this->assertTrue(ChangeLogEntry::query()->forSubject($revived)->ofAction('shift.updated')->exists());
+    }
+
+    /** Runs a slot edit that has to be refused with $message, and checks nothing changed. */
+    private function assertRefused(WeeklySlot $slot, array $changes, string $message): void
+    {
+        $slotBefore = $slot->fresh()->getAttributes();
+        $shiftsBefore = Shift::query()->orderBy('id')->get()->map->getAttributes()->all();
+        $entriesBefore = ChangeLogEntry::query()->count();
+
+        try {
+            app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, $changes + $this->slotAttributes($slot));
+            $this->fail('The slot edit was allowed.');
+        } catch (DomainException $e) {
+            $this->assertSame($message, $e->getMessage());
+        }
+
+        $this->assertEquals($slotBefore, $slot->fresh()->getAttributes());
+        $this->assertEquals($shiftsBefore, Shift::query()->orderBy('id')->get()->map->getAttributes()->all());
+        // Only the coordinator made for the call was logged.
+        $this->assertSame($entriesBefore + 1, ChangeLogEntry::query()->count());
+        $this->assertFalse(ChangeLogEntry::query()->ofAction('slot.updated')->exists());
+    }
+
+    private function regular(WeeklySlot $slot, string $name, ?string $alternateFrom = null): User
+    {
+        $user = User::factory()->create(['name' => $name]);
+        app(AddRegular::class)->handle(null, $slot, $user, '2026-10-15', null, $alternateFrom === null ? SlotFrequency::Weekly : SlotFrequency::EveryOtherWeek, $alternateFrom);
+
+        return $user;
+    }
+
+    public function test_how_often_a_slot_repeats_cannot_change_while_a_regular_works_it(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $this->regular($slot, 'Sam Example');
+
+        $this->assertRefused($slot, ['frequency' => 'every_other_week'], 'Sam Example works this slot. Changing its day or how often it repeats changes when they work, and that needs the change notices coming in the next update. For now, set a last date on this slot and add a new one.');
+    }
+
+    public function test_the_day_cannot_move_earlier_while_alternating_regulars_work_it(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $this->regular($slot, 'Sam Example', '2026-10-15');
+        $this->regular($slot, 'Robin Example', '2026-10-22');
+
+        $this->assertRefused($slot, ['weekday' => 2], 'Sam Example and Robin Example work this slot. Changing its day or how often it repeats changes when they work, and that needs the change notices coming in the next update. For now, set a last date on this slot and add a new one.');
+    }
+
+    public function test_the_day_cannot_change_while_someone_is_on_a_future_shift(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $shift = $slot->shifts()->orderBy('local_date')->skip(3)->first();
+        app(PutOnShift::class)->handle($this->coordinator(), $shift, User::factory()->create(['name' => 'Alex Example']), AssignmentType::Regular);
+
+        $this->assertRefused($slot, ['weekday' => 5], 'Alex Example works this slot. Changing its day or how often it repeats changes when they work, and that needs the change notices coming in the next update. For now, set a last date on this slot and add a new one.');
+    }
+
+    public function test_a_slot_with_regulars_cannot_become_a_rotation(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $this->regular($slot, 'Sam Example');
+
+        $this->assertRefused($slot, ['is_rotation' => true], "End Sam Example's time as a regular on this slot first.");
+    }
+
+    public function test_a_regular_whose_time_has_ended_does_not_block_a_change(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $sam = User::factory()->create();
+        app(AddRegular::class)->handle(null, $slot, $sam, '2026-10-01', '2026-10-13');
+
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['weekday' => 5, 'is_rotation' => true] + $this->slotAttributes($slot));
+
+        $this->assertSame(5, $slot->fresh()->weekday);
+        $this->assertTrue($slot->fresh()->is_rotation);
+    }
+
+    public function test_the_slot_form_shows_why_a_change_is_refused(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $this->regular($slot, 'Sam Example');
+
+        $this->actingAs($this->coordinator())->followingRedirects()
+            ->post(route('calendar.slots.update', $slot), ['weekday' => 5, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => ''])
+            ->assertOk()
+            ->assertSee('Sam Example works this slot. Changing its day or how often it repeats changes when they work')
+            ->assertSee('<option value="5" selected', false);
+
+        $this->assertSame(4, $slot->fresh()->weekday);
     }
 
     public function test_a_changed_first_date_has_to_be_from_today_on(): void
@@ -294,6 +401,30 @@ class EditScheduleTest extends TestCase
             ->assertSee('Thursday, October 15, 6:30 to 9:30pm');
 
         $this->assertSame('18:00', $this->localStart($shifts[1]->fresh()));
+    }
+
+    public function test_an_earlier_last_date_lists_the_shifts_people_are_on_that_no_longer_fit(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $shifts = $slot->shifts()->orderBy('local_date')->get()->keyBy(fn (Shift $shift) => $shift->local_date->toDateString());
+        $user = $this->coordinator();
+        foreach (['2026-10-22', '2026-10-29', '2026-11-26', '2026-12-03'] as $date) {
+            app(PutOnShift::class)->handle($user, $shifts[$date], User::factory()->create(), AssignmentType::Regular);
+        }
+
+        $this->actingAs($user)->followingRedirects()
+            ->post(route('calendar.slots.update', $slot), [
+                'weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'headcount' => 1, 'shadow_spots' => 0,
+                'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => '2026-11-12',
+            ])
+            ->assertOk()
+            ->assertSee('Updated 3 shifts. Cancelled 1 date that no longer fit the slot. Nobody was on it. 2 shifts with people on them kept their old details:')
+            ->assertSee("2 shifts with people on them are no longer on this slot's schedule. Cancel them or move the people:")
+            ->assertSee('Thursday, November 26, 6:30 to 9:30pm')
+            ->assertSee(route('calendar.shift', $shifts['2026-12-03']), false);
+
+        $this->assertSame('The weekly slot changed', $shifts['2026-11-19']->fresh()->cancel_reason);
+        $this->assertNull($shifts['2026-11-26']->fresh()->cancelled_at);
     }
 
     public function test_the_slot_form_save_is_checked_against_the_area(): void

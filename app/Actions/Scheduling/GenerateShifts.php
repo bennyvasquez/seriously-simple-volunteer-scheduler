@@ -32,7 +32,6 @@ class GenerateShifts
         $slots = WeeklySlot::query()
             ->where('valid_from', '<=', $lastDay->toDateString())
             ->where(fn ($query) => $query->whereNull('valid_until')->orWhere('valid_until', '>=', $firstDay->toDateString()))
-            ->with('regulars')
             ->get();
 
         $created = 0;
@@ -53,7 +52,7 @@ class GenerateShifts
     }
 
     /**
-     * Generates one slot's shifts for the organization's window. Logs nothing itself; the caller's change log entry covers it.
+     * Generates one slot's shifts for the organization's window, from the slot as it is stored now. Logs nothing itself; the caller's change log entry covers it.
      *
      * @return int The number of shifts created.
      */
@@ -63,7 +62,12 @@ class GenerateShifts
         $days = $organization->weeks_ahead * 7;
         $lastDay = $firstDay->addDays($days - 1);
 
-        $slot->loadMissing('regulars');
+        // Read again, so a change saved since the caller loaded the slot (or a regular added meanwhile) is what gets generated.
+        $slot = $slot->fresh('regulars');
+
+        if ($slot === null) {
+            return 0;
+        }
 
         $closures = AreaClosure::query()
             ->where('area_id', $slot->area_id)
