@@ -3,10 +3,9 @@
 namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\AddRegular;
+use App\Calendar\PersonSearch;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
-use App\Models\Area;
-use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\SlotRegular;
 use App\Models\User;
@@ -29,8 +28,6 @@ class RegularController extends Controller
 {
     use KeepsAreaFilter;
 
-    private const MIN_SEARCH = 2;
-
     public function create(Request $request, CalendarController $calendar, WeeklySlot $slot): View
     {
         Gate::forUser($request->user())->authorize('manageSchedule', $slot->area);
@@ -39,10 +36,10 @@ class RegularController extends Controller
         $organization = Organization::current();
         $today = $organization->today();
         $viewer = $request->user();
-        $byEmail = Area::query()->get()->every(fn (Area $area) => $viewer->canManageArea($area));
+        $byEmail = PersonSearch::byEmail($viewer);
         $current = $this->currentRegulars($slot, $today);
         $person = $this->person($request, $viewer);
-        $search = $this->search($request, $viewer, $current, $byEmail);
+        $search = PersonSearch::find($viewer, (string) $request->query('q', ''), $byEmail, $current->pluck('user_id'));
         $firstDate = $this->nextSlotDate($slot, $today);
 
         return view('calendar.add-regular', $calendar->week($request)->getData() + [
@@ -55,10 +52,10 @@ class RegularController extends Controller
             'canChooseFrequency' => $slot->frequency === SlotFrequency::Weekly,
             'weekOptions' => $slot->frequency === SlotFrequency::Weekly ? $this->weekOptions($current, $today) : [],
             'values' => [
-                'frequency' => (string) $request->old('frequency', 'weekly'),
-                'weeks' => (string) $request->old('weeks', ''),
-                'starts_on' => (string) $request->old('starts_on', $firstDate),
-                'ends_on' => (string) $request->old('ends_on', ''),
+                'frequency' => (string) $request->old('frequency', $request->query('frequency', 'weekly')),
+                'weeks' => (string) $request->old('weeks', $request->query('weeks', '')),
+                'starts_on' => (string) $request->old('starts_on', $request->query('starts_on', $firstDate)),
+                'ends_on' => (string) $request->old('ends_on', $request->query('ends_on', '')),
             ],
         ]);
     }
@@ -121,14 +118,14 @@ class RegularController extends Controller
             return $back($person)->withErrors(['slot' => $e->getMessage()]);
         }
 
-        $entry = ChangeLogEntry::query()->where('subject_type', $regular->getMorphClass())->where('subject_id', $regular->id)->where('action', 'regular.added')->latest('id')->first();
-        $added = count($entry?->details['added_to_shift_ids'] ?? []);
+        $added = $regular->added_to_shifts;
+        $starts = $regular->firstWorkedDate() ?? CarbonImmutable::parse($data['starts_on'], 'UTC');
 
         $first = $regularUser->firstName();
         $how = $frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek ? 'every other week' : 'every week';
 
-        return redirect()->route('calendar.week', ['date' => $data['starts_on']] + $areaQuery)
-            ->with('status', $first.' is now a regular, '.$how.' from '.CarbonImmutable::parse($data['starts_on'])->format('M j').'. '.match ($added) {
+        return redirect()->route('calendar.week', ['date' => $starts->toDateString()] + $areaQuery)
+            ->with('status', $first.' is now a regular, '.$how.' from '.$starts->format('M j').'. '.match ($added) {
                 0 => 'No shifts are on the schedule for them yet.',
                 1 => 'We added them to 1 shift already on the schedule.',
                 default => 'We added them to '.$added.' shifts already on the schedule.',
@@ -168,30 +165,43 @@ class RegularController extends Controller
     }
 
     /**
-     * The choices under "Which weeks": for each regular who works every other week, the weeks they are off and the weeks they work. The value is the first date of that pattern from today, which becomes the anchor date.
+     * The choices under "Which weeks": the weeks the slot's alternating regulars are off and the weeks they work. The value is the earliest date in that pattern that is today or later, which becomes the anchor date. Regulars with the same pattern share one choice ("The weeks Carol and Dana are off").
      *
      * @return list<array{value: string, label: string, detail: string}>
      */
     private function weekOptions(Collection $current, CarbonImmutable $today): array
     {
-        $options = [];
+        $todayDate = $today->toDateString();
+        $groups = [];
 
         foreach ($current->where('frequency', SlotFrequency::EveryOtherWeek) as $regular) {
-            $name = $regular->user->firstName();
-
-            foreach ([['The weeks '.$name.' is off', 7], ['The same weeks as '.$name, 0]] as [$label, $shift]) {
+            foreach (['off' => 7, 'same' => 0] as $kind => $shift) {
                 $first = CarbonImmutable::parse($regular->anchor_date->toDateString(), 'UTC')->addDays($shift);
 
-                while ($first->lessThan($today)) {
-                    $first = $first->addDays(14);
+                if ($first->toDateString() < $todayDate) {
+                    $first = $first->addDays(14 * (int) ceil($first->diffInDays(CarbonImmutable::parse($todayDate, 'UTC')) / 14));
                 }
 
-                $options[] = [
-                    'value' => $first->toDateString(),
-                    'label' => $label,
-                    'detail' => 'Starting '.$first->format('D M j').', then '.$first->addDays(14)->format('M j').', '.$first->addDays(28)->format('M j'),
-                ];
+                while ($first->subDays(14)->toDateString() >= $todayDate) {
+                    $first = $first->subDays(14);
+                }
+
+                $groups[$kind.'|'.$first->toDateString()][] = $regular->user->firstName();
             }
+        }
+
+        $options = [];
+
+        foreach ($groups as $key => $names) {
+            [$kind, $date] = explode('|', $key);
+            $first = CarbonImmutable::parse($date, 'UTC');
+            $who = count($names) === 1 ? $names[0] : implode(', ', array_slice($names, 0, -1)).' and '.end($names);
+
+            $options[] = [
+                'value' => $date,
+                'label' => $kind === 'off' ? 'The weeks '.$who.(count($names) === 1 ? ' is' : ' are').' off' : 'The same weeks as '.$who,
+                'detail' => 'Starting '.$first->format('D M j').', then '.$first->addDays(14)->format('M j').', '.$first->addDays(28)->format('M j'),
+            ];
         }
 
         return $options;
@@ -210,35 +220,8 @@ class RegularController extends Controller
     {
         $id = $request->old('user', $request->query('person'));
         $person = is_numeric($id) ? User::query()->whereNull('deactivated_at')->find((int) $id) : null;
-        $person?->setAttribute('display_name', $person && $viewer->canSee($person) ? $person->name : $person?->shortName());
+        $person?->setAttribute('display_name', PersonSearch::displayName($viewer, $person));
 
         return $person;
-    }
-
-    /**
-     * The typed search and its matches: active people who aren't already regulars on this slot and whose name contains it. Someone who can manage every area also matches on email; anyone else (an area lead) matches by name only, and an email is shown only for people they may see (spec section 13).
-     *
-     * @return array{query: string, tooShort: bool, matches: Collection<int, User>}
-     */
-    private function search(Request $request, User $viewer, Collection $current, bool $byEmail): array
-    {
-        $query = trim((string) $request->query('q', ''));
-
-        if ($query === '' || mb_strlen($query) < self::MIN_SEARCH) {
-            return ['query' => $query, 'tooShort' => $query !== '', 'matches' => collect()];
-        }
-
-        $like = '%'.addcslashes($query, '%_\\').'%';
-        $matches = User::query()->whereNull('deactivated_at')
-            ->whereNotIn('id', $current->pluck('user_id'))
-            ->where(fn ($q) => $q->where('name', 'like', $like)->when($byEmail, fn ($q) => $q->orWhere('email', 'like', $like)))
-            ->orderBy('name')->limit(8)->get(['id', 'name', 'email'])
-            ->each(function (User $match) use ($viewer) {
-                $sees = $viewer->canSee($match);
-                $match->setAttribute('show_email', $sees);
-                $match->setAttribute('display_name', $sees ? $match->name : $match->shortName());
-            });
-
-        return ['query' => $query, 'tooShort' => false, 'matches' => $matches];
     }
 }

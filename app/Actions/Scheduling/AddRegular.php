@@ -26,6 +26,8 @@ use InvalidArgumentException;
  *
  * Shifts that have started, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone.
  *
+ * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on.
+ *
  * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one. The refusals are written to be shown on screen. The new regular is emailed after the response.
  */
 class AddRegular
@@ -116,6 +118,8 @@ class AddRegular
         });
 
         [$regular, $count] = $added;
+        // Not stored: how many existing shifts the person was added to, for the screen's confirmation.
+        $regular->setAttribute('added_to_shifts', $count);
 
         // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved.
         defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));

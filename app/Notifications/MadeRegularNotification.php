@@ -25,7 +25,7 @@ class MadeRegularNotification extends Notification
         $this->area = $slot->area->name;
         $this->slot = $slot->describe();
         $this->how = $regular->frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek ? 'every other week' : 'every week';
-        $this->startingOn = $this->firstDate($slot, $regular)->format('l, F j');
+        $this->startingOn = ($regular->firstWorkedDate() ?? CarbonImmutable::parse($regular->starts_on->toDateString(), 'UTC'))->format('l, F j');
     }
 
     public function via(object $notifiable): array
@@ -44,19 +44,5 @@ class MadeRegularNotification extends Notification
         }
 
         return $mail;
-    }
-
-    /** The first date the person works: the first one on or after their start date that the slot runs and their pattern includes. */
-    private function firstDate(WeeklySlot $slot, SlotRegular $regular): CarbonImmutable
-    {
-        $start = CarbonImmutable::parse($regular->starts_on->toDateString(), 'UTC');
-
-        for ($day = $start; $day->lessThanOrEqualTo($start->addDays(28)); $day = $day->addDay()) {
-            if ($slot->occursOn($day->toDateString()) && $regular->activeOn($day->toDateString())) {
-                return $day;
-            }
-        }
-
-        return $start;
     }
 }

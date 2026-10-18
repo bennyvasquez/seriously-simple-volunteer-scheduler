@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\PutOnShift;
+use App\Calendar\PersonSearch;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
-use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -27,8 +27,6 @@ class ShiftController extends Controller
 {
     use KeepsAreaFilter;
 
-    private const MIN_SEARCH = 2;
-
     public function show(Request $request, CalendarController $calendar, Shift $shift): View
     {
         $shift->load(['area', 'assignments.user', 'weeklySlot.regulars']);
@@ -39,10 +37,10 @@ class ShiftController extends Controller
         $open = $shift->cancelled_at === null && $shift->starts_at->greaterThan(now());
         $canAssign = $open && Gate::forUser($user)->allows('assign', $shift);
         $canCancel = $open && Gate::forUser($user)->allows('cancel', $shift);
-        $byEmail = Area::query()->get()->every(fn (Area $area) => $user->canManageArea($area));
+        $byEmail = PersonSearch::byEmail($user);
         $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         $canPut = $canAssign && ($shift->openPlaces() > 0 || $shift->shadow_spots > $shift->assignments->where('type', AssignmentType::Shadow)->count());
-        $search = $this->search($request, $shift, $canPut, $byEmail);
+        $search = PersonSearch::find($user, (string) $request->query('q', ''), $byEmail, $shift->assignments->pluck('user_id'), $canPut);
 
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
@@ -153,34 +151,5 @@ class ShiftController extends Controller
 
             return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week'];
         })->values();
-    }
-
-    /**
-     * The typed search and its matches: active people not already on this shift whose name contains it. Someone who can manage every area also matches on email; anyone else (an area lead) matches by name only, and an email is shown only for people they may see (spec section 13).
-     *
-     * @return array{query: string, tooShort: bool, matches: Collection<int, User>}
-     */
-    private function search(Request $request, Shift $shift, bool $canPut, bool $byEmail): array
-    {
-        $query = trim((string) $request->query('q', ''));
-        $matches = collect();
-
-        if ($query === '' || mb_strlen($query) < self::MIN_SEARCH || ! $canPut) {
-            return ['query' => $query, 'tooShort' => $query !== '' && mb_strlen($query) < self::MIN_SEARCH, 'matches' => $matches];
-        }
-
-        $viewer = $request->user();
-        $like = '%'.addcslashes($query, '%_\\').'%';
-        $matches = User::query()->whereNull('deactivated_at')
-            ->whereNotIn('id', $shift->assignments->pluck('user_id'))
-            ->where(fn ($q) => $q->where('name', 'like', $like)->when($byEmail, fn ($q) => $q->orWhere('email', 'like', $like)))
-            ->orderBy('name')->limit(8)->get(['id', 'name', 'email'])
-            ->each(function (User $match) use ($viewer) {
-                $sees = $viewer->canSee($match);
-                $match->setAttribute('show_email', $sees);
-                $match->setAttribute('display_name', $sees ? $match->name : $match->shortName());
-            });
-
-        return ['query' => $query, 'tooShort' => false, 'matches' => $matches];
     }
 }

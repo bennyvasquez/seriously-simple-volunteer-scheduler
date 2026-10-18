@@ -3,7 +3,8 @@
 
 @php
     $dateParam = $date->toDateString();
-    $keep = fn (array $extra = []) => $extra + ['slot' => $slot, 'date' => $dateParam] + $areaQuery;
+    $typed = array_filter(array_intersect_key($values, array_flip(['frequency', 'weeks', 'starts_on', 'ends_on'])), fn ($value) => $value !== '');
+    $keep = fn (array $extra = []) => $extra + ['slot' => $slot, 'date' => $dateParam] + $typed + $areaQuery;
     $backUrl = route('calendar.week', ['date' => $dateParam] + $areaQuery);
     $everyOther = $values['frequency'] === 'every_other_week';
     $picked = $values['weeks'] !== '' ? $values['weeks'] : ($weekOptions[0]['value'] ?? 'pick');
@@ -28,6 +29,9 @@
 @else
 <form method="GET" action="{{ route('calendar.slots.regulars.create', $slot) }}" role="search">
 <input type="hidden" name="date" value="{{ $dateParam }}">
+@foreach ($typed as $name => $value)
+<input type="hidden" name="{{ $name }}" value="{{ $value }}">
+@endforeach
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach

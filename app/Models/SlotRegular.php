@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\SlotFrequency;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use InvalidArgumentException;
@@ -71,5 +72,19 @@ class SlotRegular extends Model
         return $this->starts_on->toDateString() <= $localDate
             && ($this->ends_on === null || $localDate <= $this->ends_on->toDateString())
             && $this->frequency->includes($localDate, $this->anchor_date);
+    }
+
+    /** The first date the person actually works: the first one on or after their start date that the slot runs and their pattern includes, within the next 28 days. Null when there is none. */
+    public function firstWorkedDate(): ?CarbonImmutable
+    {
+        $start = CarbonImmutable::parse($this->starts_on->toDateString(), 'UTC');
+
+        for ($day = $start; $day->lessThanOrEqualTo($start->addDays(28)); $day = $day->addDay()) {
+            if ($this->weeklySlot->occursOn($day->toDateString()) && $this->activeOn($day->toDateString())) {
+                return $day;
+            }
+        }
+
+        return null;
     }
 }
