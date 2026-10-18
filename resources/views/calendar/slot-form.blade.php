@@ -1,9 +1,9 @@
-{{-- Screen 35: the full weekly slot form. $slot is set when editing; saving an edit comes with slot editing, so until then the fields are read-only. --}}
+{{-- Screen 35: the full weekly slot form. $slot is set when editing: the area stays, a box says what saving does to the shifts already on the calendar, and after a save the page says what it did and links the shifts that kept their old details. --}}
 @extends('layouts.app')
 
 @php
     $editing = $slot !== null;
-    $saveUrl = $editing ? (Route::has('calendar.slots.update') ? route('calendar.slots.update', $slot) : null) : route('calendar.slots.store');
+    $saveUrl = $editing ? route('calendar.slots.update', $slot) : route('calendar.slots.store');
     $heading = $editing ? 'Edit the weekly slot' : 'Add a weekly slot';
 @endphp
 
@@ -13,6 +13,19 @@
 @section('content')
 <nav aria-label="Breadcrumb" class="muted"><a href="{{ route('calendar.week', ['date' => $values['valid_from']] + $areaQuery) }}">Calendar</a> / {{ $heading }}</nav>
 <h1>{{ $heading }}</h1>
+@if ($saved)
+<div role="status" class="panel slot-saved">
+<p>{{ $saved['summary'] }}@if ($saved['groups'] !== []) {{ $saved['groups'][0]['heading'] }}@endif</p>
+@foreach ($saved['groups'] as $group)
+@if (! $loop->first)<p>{{ $group['heading'] }}</p>@endif
+<ul>
+@foreach ($group['shifts'] as $kept)
+<li><a href="{{ route('calendar.shift', [$kept['shift']] + $areaQuery) }}">{{ $kept['when'] }}</a></li>
+@endforeach
+</ul>
+@endforeach
+</div>
+@endif
 
 <div class="slot-layout">
 <form method="POST" action="{{ $saveUrl }}" class="panel slot-fields">
@@ -21,7 +34,13 @@
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
-<fieldset @disabled($saveUrl === null) class="slot-set">
+<fieldset class="slot-set">
+@if ($editing)
+<div class="field">
+<span>Area</span>
+<b>{{ $slot->area->name }}</b>
+</div>
+@else
 <div class="field">
 <label for="area">Area</label>
 <select name="area" id="area" onchange="this.form.elements.refresh.value='1';this.form.submit()" @error('area') aria-invalid="true" @enderror>
@@ -31,6 +50,7 @@
 </select>
 @error('area')<span class="field-error">{{ $message }}</span>@enderror
 </div>
+@endif
 <x-field name="title" label="What it's for (optional)" :value="$values['title']" maxlength="80" />
 <div class="slot-grid">
 <div class="field">
@@ -70,15 +90,11 @@
 <x-field name="valid_until" onchange="this.form.elements.refresh.value='1';this.form.submit()" type="date" label="Last date (optional)" :value="$values['valid_until']" />
 </div>
 </fieldset>
-@if ($saveUrl === null)
-<p class="muted">Saving changes to a slot isn't available yet.</p>
-@else
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Save the slot</button>
 <a href="{{ route('calendar.week', ['date' => $values['valid_from']] + $areaQuery) }}" class="btn">Cancel</a>
 <noscript><button type="submit" class="btn" name="refresh" value="1">Update the preview</button></noscript>
 </div>
-@endif
 </form>
 
 <aside class="panel slot-preview" aria-labelledby="preview-heading">
@@ -92,4 +108,11 @@
 <p class="muted">Two slots can overlap if you want more than one shift at the same time.</p>
 </aside>
 </div>
+@if ($existing)
+<section class="panel slot-existing" aria-labelledby="existing-heading">
+<h2 id="existing-heading">Changes apply to shifts nobody is on yet</h2>
+<p class="muted">{{ implode(' ', $existing) }}</p>
+<p class="muted">If you change the day, how often, or the first or last date, shifts nobody is on that no longer fit are cancelled. They stay on the calendar, marked cancelled.</p>
+</section>
+@endif
 @endsection

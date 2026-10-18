@@ -136,6 +136,9 @@ a{color:#1a1a1a}a:hover{color:#000}
 .slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
 .slot-preview{flex:1 1 280px}
 .slot-preview p{margin:0}
+.slot-existing,.slot-saved{max-width:720px}
+.slot-existing p,.slot-saved p{margin:0}
+.slot-saved ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
 
 /* A cancelled date stays on the calendar: striped gray, struck-through time, and the word Cancelled in its text */
 .ev.ev.cancelled{background:repeating-linear-gradient(135deg,#f0f0f0 0,#f0f0f0 6px,#e0e0e0 6px,#e0e0e0 12px);border:1px solid #6b6b6b;color:#444}

@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
+use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Organization;
+use App\Models\Shift;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +23,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
- * Adding to the calendar: the quick panel beside the week (screen 31) and the full weekly slot form (screen 35). Access to the calendar is checked by the route's can:viewAny middleware; each save is checked against the area it adds to.
+ * Adding to the calendar: the quick panel beside the week (screen 31) and the full weekly slot form (screen 35), which also edits an existing slot. Access to the calendar is checked by the route's can:viewAny middleware; each save is checked against the area it adds to.
  */
 class AddController extends Controller
 {
@@ -146,7 +148,7 @@ class AddController extends Controller
         return $this->slotForm($request, $areas, $values, null);
     }
 
-    /** The slot form for an existing slot. Saving changes comes with slot editing. */
+    /** The slot form for an existing slot, with what saving does to the shifts already on the calendar, and after a save, what it did. */
     public function editSlot(Request $request, WeeklySlot $slot): View
     {
         Gate::forUser($request->user())->authorize('manageSchedule', $slot->area);
@@ -166,6 +168,56 @@ class AddController extends Controller
             'valid_from' => $slot->valid_from->toDateString(),
             'valid_until' => $slot->valid_until?->toDateString() ?? '',
         ], $slot);
+    }
+
+    /** Saves the slot form for an existing slot and returns to it with what changed. The area stays; the action checks this person can change its schedule. */
+    public function updateSlot(Request $request, UpdateWeeklySlot $updateSlot, WeeklySlot $slot): RedirectResponse
+    {
+        Gate::forUser($request->user())->authorize('manageSchedule', $slot->area);
+
+        $areaQuery = $this->areaQuery($request);
+
+        if ($request->filled('refresh')) {
+            return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->withInput();
+        }
+
+        // A first date in the past is fine when it is unchanged; the action refuses a changed one before today.
+        $data = $request->validate([
+            'title' => ['nullable', 'string', 'max:80'],
+            'weekday' => ['required', 'integer', 'between:0,6'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
+            'headcount' => ['required', 'integer', 'min:1', 'max:200'],
+            'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
+            'frequency' => ['required', Rule::enum(SlotFrequency::class)],
+            'fills_by' => ['required', Rule::in(['regulars', 'rotation'])],
+            'valid_from' => ['required', 'date_format:'.self::DATE_FORMAT],
+            'valid_until' => ['nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:valid_from'],
+        ], $this->messages());
+
+        $result = $updateSlot->handle($request->user(), $slot, [
+            'weekday' => $data['weekday'],
+            'start_time' => $data['start_time'],
+            'end_time' => $data['end_time'],
+            'headcount' => $data['headcount'],
+            'shadow_spots' => $data['shadow_spots'],
+            'frequency' => $data['frequency'],
+            'valid_from' => $data['valid_from'],
+            'valid_until' => $data['valid_until'] ?? null,
+            'title' => $data['title'] ?? null,
+            'is_rotation' => $data['fills_by'] === 'rotation',
+        ]);
+
+        [$staffed, $edited] = $result->keptShifts->partition(fn (Shift $shift) => $shift->assignments_count > 0);
+
+        return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->with('slotSaved', [
+            'updated' => $result->updatedShifts,
+            'cancelled' => $result->cancelledShifts,
+            'created' => $result->createdShifts,
+            'stillCancelled' => $result->stillCancelled,
+            'staffed' => $staffed->pluck('id')->values()->all(),
+            'edited' => $edited->pluck('id')->values()->all(),
+        ]);
     }
 
     /** Creates a weekly slot from the full form. */
@@ -215,6 +267,12 @@ class AddController extends Controller
         $values = array_merge($defaults, array_intersect_key($request->old(), $defaults));
         $area = $areas->firstWhere('id', (int) $values['area']) ?? $areas->first();
 
+        if ($slot !== null) {
+            // The area of a slot doesn't change when editing.
+            $values['area'] = $slot->area_id;
+            $area = $slot->area;
+        }
+
         return view('calendar.slot-form', [
             'organization' => $organization,
             'manageable' => $areas,
@@ -223,7 +281,96 @@ class AddController extends Controller
             'areaQuery' => $this->areaQuery($request),
             'preview' => $this->preview($organization, $area, $values),
             'weekdays' => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+            'existing' => $slot === null ? null : $this->existingShifts($slot),
+            'saved' => $slot === null ? null : $this->savedNotice($request, $organization),
         ]);
+    }
+
+    /**
+     * What saving does to the slot's shifts already on the calendar, as sentences. Null when it has none from today on.
+     *
+     * @return list<string>|null
+     */
+    private function existingShifts(WeeklySlot $slot): ?array
+    {
+        $shifts = $slot->shifts()->whereNull('cancelled_at')->where('starts_at', '>', now())->withCount('assignments')->orderBy('local_date')->get();
+        $total = $shifts->count();
+
+        if ($total === 0) {
+            return null;
+        }
+
+        $staffed = $shifts->filter(fn (Shift $shift) => $shift->assignments_count > 0)->count();
+        $edited = $shifts->filter(fn (Shift $shift) => $shift->assignments_count === 0 && $shift->edited_at !== null)->count();
+        $changes = $total - $staffed - $edited;
+        $last = $shifts->last()->local_date->format('l, F j');
+
+        $sentences = [$total === 1 ? '1 shift from this slot is on the calendar, on '.$last.'.' : $total.' shifts from this slot are on the calendar, through '.$last.'.'];
+
+        if ($staffed === 0 && $edited === 0) {
+            $sentences[] = $total === 1 ? 'Saving changes it, since nobody is on it yet.' : 'Saving changes all of them, since nobody is on them yet.';
+        } else {
+            $sentences[] = $changes === 0 ? 'Saving doesn\'t change any of them.' : 'Saving changes the '.$changes.' that nobody is on yet.';
+
+            if ($staffed > 0) {
+                $sentences[] = $staffed === 1 ? 'The 1 with people on it keeps its old details.' : 'The '.$staffed.' with people on them keep their old details.';
+            }
+
+            if ($edited > 0) {
+                $sentences[] = $edited === 1 ? 'The 1 edited on its own keeps its own details.' : 'The '.$edited.' edited on their own keep their own details.';
+            }
+        }
+
+        return $sentences;
+    }
+
+    /**
+     * After saving: what changed, then links to the shifts that kept their old details.
+     *
+     * @return array{summary: string, groups: list<array{heading: string, shifts: Collection<int, Shift>}>}|null
+     */
+    private function savedNotice(Request $request, Organization $organization): ?array
+    {
+        $saved = $request->session()->get('slotSaved');
+
+        if (! is_array($saved)) {
+            return null;
+        }
+
+        $plural = fn (int $count, string $one, string $many) => $count === 1 ? '1 '.$one : $count.' '.$many;
+        $summary = [$saved['updated'] > 0 ? 'Updated '.$plural($saved['updated'], 'shift.', 'shifts.') : 'Saved the slot.'];
+
+        if ($saved['cancelled'] > 0) {
+            $summary[] = 'Cancelled '.$plural($saved['cancelled'], 'date', 'dates').' that no longer fit the slot. Nobody was on '.($saved['cancelled'] === 1 ? 'it.' : 'them.');
+        }
+
+        if ($saved['created'] > 0) {
+            $summary[] = 'Added '.$plural($saved['created'], 'new shift.', 'new shifts.');
+        }
+
+        if ($saved['stillCancelled'] > 0) {
+            $summary[] = $saved['stillCancelled'] === 1
+                ? '1 date was cancelled by an earlier change to this slot and stays cancelled. Add a one-time shift if you need it.'
+                : $saved['stillCancelled'].' dates were cancelled by an earlier change to this slot and stay cancelled. Add a one-time shift if you need one.';
+        }
+
+        $groups = [];
+        foreach (['staffed', 'edited'] as $kind) {
+            $count = count($saved[$kind]);
+
+            if ($count === 0) {
+                continue;
+            }
+
+            $groups[] = [
+                'heading' => $kind === 'staffed'
+                    ? $plural($count, 'shift with people on it kept its old details:', 'shifts with people on them kept their old details:')
+                    : $plural($count, 'shift edited on its own kept its own details:', 'shifts edited on their own kept their own details:'),
+                'shifts' => Shift::query()->whereKey($saved[$kind])->orderBy('local_date')->get()->map(fn (Shift $shift) => ['shift' => $shift, 'when' => $shift->whenText($organization->timezone)]),
+            ];
+        }
+
+        return ['summary' => implode(' ', $summary), 'groups' => $groups];
     }
 
     /**

@@ -43,9 +43,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/calendar/shifts/{shift}', [ShiftController::class, 'show'])->name('calendar.shift');
         Route::post('/calendar/shifts/{shift}/assign', [ShiftController::class, 'assign'])->name('calendar.shift.assign');
         Route::post('/calendar/shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('calendar.shift.cancel');
+        Route::post('/calendar/shifts/{shift}', [ShiftController::class, 'update'])->name('calendar.shift.update');
         Route::get('/calendar/slots/{slot}/regulars/create', [RegularController::class, 'create'])->name('calendar.slots.regulars.create');
         Route::post('/calendar/slots/{slot}/regulars', [RegularController::class, 'store'])->name('calendar.slots.regulars.store');
         Route::get('/calendar/slots/{slot}/edit', [AddController::class, 'editSlot'])->name('calendar.slots.edit');
+        Route::post('/calendar/slots/{slot}', [AddController::class, 'updateSlot'])->name('calendar.slots.update');
     });
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');

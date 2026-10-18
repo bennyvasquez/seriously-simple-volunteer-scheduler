@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\PutOnShift;
+use App\Actions\Scheduling\UpdateShift;
 use App\Calendar\PersonSearch;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
 use App\Models\Assignment;
+use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
@@ -18,16 +20,17 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
- * One shift's details beside the week (screen 32), with putting someone on it and cancelling the date. Access to the calendar is checked by the route's can:viewAny middleware; each action is checked against the shift's area.
+ * One shift's details beside the week (screen 32), with putting someone on it, editing it or its weekly slot, and cancelling the date. Access to the calendar is checked by the route's can:viewAny middleware; each action is checked against the shift's area.
  */
 class ShiftController extends Controller
 {
     use KeepsAreaFilter;
 
-    public function show(Request $request, CalendarController $calendar, Shift $shift): View
+    public function show(Request $request, CalendarController $calendar, Shift $shift): View|RedirectResponse
     {
         $shift->load(['area', 'assignments.user', 'weeklySlot.regulars']);
         $user = $request->user();
@@ -41,6 +44,20 @@ class ShiftController extends Controller
         $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         $canPut = $canAssign && ($shift->openPlaces() > 0 || $shift->shadow_spots > $shift->assignments->where('type', AssignmentType::Shadow)->count());
         $search = PersonSearch::find($user, (string) $request->query('q', ''), $byEmail, $shift->assignments->pluck('user_id'), $canPut);
+        $canEdit = $open && Gate::forUser($user)->allows('update', $shift);
+        $canEditSlot = $canEdit && $shift->weeklySlot !== null && Gate::forUser($user)->allows('manageSchedule', $shift->area);
+        $edit = $canEdit ? (string) $request->query('edit', '') : '';
+
+        if ($edit === 'slot' && $canEditSlot) {
+            return redirect()->route('calendar.slots.edit', [$shift->weeklySlot] + $this->areaQuery($request));
+        }
+
+        // Edit on a repeating shift first asks which shifts to change; a one-time shift goes straight to its form.
+        $editing = match (true) {
+            $edit === 'shift', $edit !== '' && ! $canEditSlot => 'shift',
+            $edit !== '' => 'choose',
+            default => null,
+        };
 
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
@@ -53,7 +70,18 @@ class ShiftController extends Controller
             'canPut' => $canPut,
             'canAddRegular' => $canAddRegular,
             'picking' => $canPut && ($request->boolean('pick') || $search['query'] !== ''),
-            'cancelling' => $canCancel && $request->boolean('cancel'),
+            'cancelling' => $canCancel && $editing === null && $request->boolean('cancel'),
+            'canEdit' => $canEdit,
+            'canEditSlot' => $canEditSlot,
+            'editing' => $editing,
+            'staffedMessage' => $shift->assignments->isNotEmpty() ? UpdateShift::STAFFED : null,
+            'editValues' => [
+                'start_time' => (string) $request->old('start_time', $shift->starts_at->setTimezone(Organization::current()->timezone)->format('H:i')),
+                'end_time' => (string) $request->old('end_time', $shift->ends_at->setTimezone(Organization::current()->timezone)->format('H:i')),
+                'headcount' => (string) $request->old('headcount', $shift->headcount),
+                'shadow_spots' => (string) $request->old('shadow_spots', $shift->shadow_spots),
+                'title' => (string) $request->old('title', (string) $shift->title),
+            ],
             'search' => $search,
             'byEmail' => $byEmail,
             'emailCount' => $shift->assignments->filter(fn (Assignment $assignment) => $assignment->user->isActive())->count(),
@@ -82,6 +110,41 @@ class ShiftController extends Controller
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
             ->with('status', $first.($data['type'] === 'shadow' ? ' is shadowing this shift.' : ' is on this shift.').' They were emailed.');
+    }
+
+    /** Saves the edit form for one shift. Errors go back to the form with what was typed. */
+    public function update(Request $request, UpdateShift $updateShift, Shift $shift): RedirectResponse
+    {
+        Gate::forUser($request->user())->authorize('update', $shift);
+
+        $areaQuery = $this->areaQuery($request);
+
+        try {
+            $data = $request->validate([
+                'title' => ['nullable', 'string', 'max:80'],
+                'start_time' => ['required', 'date_format:H:i'],
+                'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
+                'headcount' => ['required', 'integer', 'min:1', 'max:200'],
+                'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
+            ], [
+                'title.max' => 'Keep it to 80 characters or fewer.',
+                'start_time.*' => 'Pick a start time.',
+                'end_time.different' => 'A shift has to end at a different time than it starts.',
+                'end_time.*' => 'Pick an end time.',
+                'headcount.max' => 'That is more people than one shift can have. Use 200 or fewer.',
+                'headcount.*' => 'At least 1 person is needed.',
+                'shadow_spots.max' => 'That is more shadow spots than one shift can have. Use 200 or fewer.',
+                'shadow_spots.*' => 'Enter 0 if there are no shadow spots.',
+            ]);
+
+            $updateShift->handle($request->user(), $shift, ['title' => $data['title'] ?? null] + $data);
+        } catch (ValidationException $e) {
+            return redirect()->route('calendar.shift', [$shift, 'edit' => 'shift'] + $areaQuery)->withErrors($e->errors())->withInput();
+        } catch (DomainException $e) {
+            return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => $e->getMessage()]);
+        }
+
+        return redirect()->route('calendar.shift', [$shift] + $areaQuery)->with('status', 'Saved the changes to this shift.');
     }
 
     public function cancel(Request $request, CancelShift $cancelShift, Shift $shift): RedirectResponse

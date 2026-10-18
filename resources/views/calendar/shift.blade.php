@@ -1,4 +1,4 @@
-{{-- Screen 32: one shift's details beside the week. A shift that has started or been cancelled shows read-only. Searching and cancelling work without JavaScript through ?q= and ?cancel=1. --}}
+{{-- Screen 32: one shift's details beside the week. A shift that has started or been cancelled shows read-only. Searching, editing and cancelling work without JavaScript through ?q=, ?edit= and ?cancel=1. Edit on a repeating shift asks first whether to change this shift or the weekly slot; "This and following shifts" comes with the editing plan. --}}
 @extends('calendar.week')
 
 @php
@@ -68,7 +68,50 @@
 @endif
 @endif
 
-@if ($cancelling)
+@if ($editing === 'choose')
+<form method="GET" action="{{ route('calendar.shift', $shift) }}">
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<fieldset class="choices">
+<legend>Edit which shifts?</legend>
+<label class="check"><input type="radio" name="edit" value="shift" @checked($staffedMessage === null) @disabled($staffedMessage !== null)><span>This shift<br><span class="muted">{{ $staffedMessage ?? 'Only '.$shift->local_date->format('l, F j').'. Later changes to the weekly slot won\'t overwrite it.' }}</span></span></label>
+<label class="check"><input type="radio" name="edit" value="slot" @checked($staffedMessage !== null)><span>The weekly slot (shifts nobody is on yet)<br><span class="muted">{{ $shift->weeklySlot->describe() }}. Shifts with people on them keep their old details.</span></span></label>
+</fieldset>
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Continue</button>
+<a href="{{ $panelUrl() }}" class="btn">Back</a>
+</div>
+</form>
+@elseif ($editing === 'shift')
+@if ($staffedMessage !== null)
+<p>{{ $staffedMessage }}</p>
+<div class="add-actions">
+<a href="{{ $panelUrl() }}" class="btn">Back</a>
+</div>
+@else
+<form method="POST" action="{{ route('calendar.shift.update', $shift) }}">
+@csrf
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<x-field name="title" label="What it's for (optional)" :value="$editValues['title']" maxlength="80" />
+<div class="slot-grid">
+<x-field name="start_time" type="time" label="Starts at" :value="$editValues['start_time']" required />
+<x-field name="end_time" type="time" label="Ends at" :value="$editValues['end_time']" required />
+</div>
+<div class="slot-grid">
+<x-field name="headcount" type="number" label="People needed" :value="$editValues['headcount']" min="1" max="200" required />
+<x-field name="shadow_spots" type="number" label="Shadow spots" :value="$editValues['shadow_spots']" min="0" max="200" required />
+</div>
+@if ($shift->weeklySlot)<p class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.</p>@endif
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Save this shift</button>
+<a href="{{ $panelUrl() }}" class="btn">Back</a>
+</div>
+</form>
+@endif
+@elseif ($cancelling)
 <form method="POST" action="{{ route('calendar.shift.cancel', $shift) }}">
 @csrf
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
@@ -80,8 +123,9 @@
 <a href="{{ $panelUrl() }}" class="btn">Keep it</a>
 </div>
 </form>
-@elseif ($canPut || $canCancel || $canAddRegular)
+@elseif ($canEdit || $canPut || $canCancel || $canAddRegular)
 <div class="add-actions">
+@if ($canEdit)<a href="{{ $panelUrl(['edit' => 1]) }}" class="btn{{ $canPut ? '' : ' btn-primary' }}">Edit</a>@endif
 @if ($canPut && ! $picking)<a href="{{ $panelUrl(['pick' => 1]) }}" class="btn btn-primary">Put someone on it</a>@endif
 @if ($canAddRegular)<a href="{{ route('calendar.slots.regulars.create', [$shift->weeklySlot, 'date' => $shift->local_date->toDateString()] + $areaQuery) }}" class="btn">Add a regular</a>@endif
 @if ($canCancel)<a href="{{ $panelUrl(['cancel' => 1]) }}" class="btn">Cancel this date</a>@endif
