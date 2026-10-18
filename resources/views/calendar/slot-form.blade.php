@@ -31,6 +31,7 @@
 <form method="POST" action="{{ $saveUrl }}" class="panel slot-fields">
 @csrf
 @error('slot')<p role="alert" class="field-error">{{ $message }}</p>@enderror
+{{-- Changing a field sets this and submits. The save button sends refresh empty after it, so a form the browser restored on back or forward still saves. --}}
 <input type="hidden" name="refresh" value="">
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
@@ -44,7 +45,7 @@
 @else
 <div class="field">
 <label for="area">Area</label>
-<select name="area" id="area" onchange="this.form.elements.refresh.value='1';this.form.submit()" @error('area') aria-invalid="true" @enderror>
+<select name="area" id="area" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @error('area') aria-invalid="true" @enderror>
 @foreach ($manageable as $area)
 <option value="{{ $area->id }}" @selected((int) $values['area'] === $area->id)>{{ $area->name }}</option>
 @endforeach
@@ -56,15 +57,15 @@
 <div class="slot-grid">
 <div class="field">
 <label for="weekday">Day</label>
-<select name="weekday" id="weekday" onchange="this.form.elements.refresh.value='1';this.form.submit()">
+<select name="weekday" id="weekday" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()">
 @foreach ($weekdays as $number => $name)
 <option value="{{ $number }}" @selected((string) $values['weekday'] === (string) $number)>{{ $name }}</option>
 @endforeach
 </select>
 @error('weekday')<span class="field-error">{{ $message }}</span>@enderror
 </div>
-<x-field name="start_time" onchange="this.form.elements.refresh.value='1';this.form.submit()" type="time" label="Starts at" :value="$values['start_time']" required />
-<x-field name="end_time" onchange="this.form.elements.refresh.value='1';this.form.submit()" type="time" label="Ends at" :value="$values['end_time']" required />
+<x-field name="start_time" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" type="time" label="Starts at" :value="$values['start_time']" required />
+<x-field name="end_time" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" type="time" label="Ends at" :value="$values['end_time']" required />
 </div>
 <div class="slot-grid">
 <x-field name="headcount" type="number" label="People needed" :value="$values['headcount']" min="1" max="200" required />
@@ -74,8 +75,8 @@
 
 <fieldset class="choices">
 <legend>How often</legend>
-<label class="check"><input type="radio" name="frequency" value="weekly" onchange="this.form.elements.refresh.value='1';this.form.submit()" @checked($values['frequency'] !== 'every_other_week')><span>Every week</span></label>
-<label class="check"><input type="radio" name="frequency" value="every_other_week" onchange="this.form.elements.refresh.value='1';this.form.submit()" @checked($values['frequency'] === 'every_other_week')><span>Every other week<br><span class="muted">Starting the week of the first date below, which has to be on the day picked above.</span></span></label>
+<label class="check"><input type="radio" name="frequency" value="weekly" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @checked($values['frequency'] !== 'every_other_week')><span>Every week</span></label>
+<label class="check"><input type="radio" name="frequency" value="every_other_week" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @checked($values['frequency'] === 'every_other_week')><span>Every other week<br><span class="muted">Starting the week of the first date below, which has to be on the day picked above.</span></span></label>
 @error('frequency')<span class="field-error">{{ $message }}</span>@enderror
 </fieldset>
 
@@ -87,12 +88,12 @@
 </fieldset>
 
 <div class="slot-grid">
-<x-field name="valid_from" onchange="this.form.elements.refresh.value='1';this.form.submit()" type="date" label="First date" :value="$values['valid_from']" required />
-<x-field name="valid_until" onchange="this.form.elements.refresh.value='1';this.form.submit()" type="date" label="Last date (optional)" :value="$values['valid_until']" />
+<x-field name="valid_from" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" type="date" label="First date" :value="$values['valid_from']" required />
+<x-field name="valid_until" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" type="date" label="Last date (optional)" :value="$values['valid_until']" />
 </div>
 </fieldset>
 <div class="add-actions">
-<button type="submit" class="btn btn-primary">Save the slot</button>
+<button type="submit" class="btn btn-primary" name="refresh" value="">Save the slot</button>
 <a href="{{ route('calendar.week', ['date' => $values['valid_from']] + $areaQuery) }}" class="btn">Cancel</a>
 <noscript><button type="submit" class="btn" name="refresh" value="1">Update the preview</button></noscript>
 </div>

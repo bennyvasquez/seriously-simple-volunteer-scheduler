@@ -3,6 +3,7 @@
 namespace App\Calendar;
 
 use App\Enums\AssignmentType;
+use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Organization;
 use App\Models\Shift;
@@ -33,6 +34,7 @@ final class CalendarWeek
      * @param  list<string>  $days
      * @param  Collection<string, Collection<int, Shift>>  $shiftsByDay
      * @param  Collection<int, AreaClosure>  $closures  Closures of the areas shown that cover any of the days.
+     * @param  int  $areasShown  How many of the asked-for areas exist, so a closure label names its areas unless every area shown is closed.
      */
     private function __construct(
         public readonly Organization $organization,
@@ -81,7 +83,7 @@ final class CalendarWeek
             ->orderBy('id')
             ->get();
 
-        return new self($organization, $days, $shifts->groupBy(fn (Shift $shift) => $shift->local_date->toDateString()), $closures, count($areaIds));
+        return new self($organization, $days, $shifts->groupBy(fn (Shift $shift) => $shift->local_date->toDateString()), $closures, Area::query()->whereKey($areaIds)->count());
     }
 
     /** @return list<string> Y-m-d dates, Sunday first (or the one day). */

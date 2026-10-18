@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Closes one or more areas for a date range, both days included (spec section 8.5). Adds one closure per area and cancels every shift in those areas and dates that hasn't started and isn't already cancelled; the shifts stay, with the reason and the closure set, and the nightly run skips the dates from then on. A closure that overlaps an earlier one is allowed, but shifts the earlier one already cancelled are left as they are, so nobody is emailed twice for the same shift.
+ * Closes one or more areas for a date range, both days included (spec section 8.5). A range that started before today is stored from today; one that ended before today is refused. Adds one closure per area and cancels every shift in those areas and dates that hasn't started and isn't already cancelled; the shifts stay, with the reason and the closure set, and the nightly run skips the dates from then on. A closure that overlaps an earlier one is allowed, but shifts the earlier one already cancelled are left as they are, so nobody is emailed twice for the same shift.
  *
  * Each closure gets a closure.created change log entry listing the shifts it cancelled, and each of those shifts gets its own shift.cancelled entry (via closure.created, with the closure's id), all in one transaction. A slot edit never brings these shifts back, because it only undoes cancellations made by a slot edit. After the response, each active person on the cancelled shifts gets one email listing all of their cancelled shifts.
  */
@@ -38,7 +38,7 @@ class CreateClosure
         $areas = Area::query()->whereKey($areaIds)->get()->sortBy(fn (Area $area) => array_search($area->id, $areaIds, true))->values();
 
         if ($areas->count() !== count($areaIds)) {
-            throw new DomainException('Pick at least one area.');
+            throw new DomainException('One of those areas no longer exists.');
         }
 
         foreach ($areas as $area) {
@@ -56,9 +56,14 @@ class CreateClosure
             throw new DomainException('The last day closed has to be on or after the first day.');
         }
 
-        if ($last->toDateString() < Organization::current()->today()->toDateString()) {
+        $today = CarbonImmutable::parse(Organization::current()->today()->toDateString(), 'UTC');
+
+        if ($last->lessThan($today)) {
             throw new DomainException('Pick days from today on.');
         }
+
+        // Days already past can't be closed, so a closure that started earlier is stored from today.
+        $first = $first->max($today);
 
         $reason = trim($reason);
 
@@ -74,6 +79,9 @@ class CreateClosure
             $closures = new EloquentCollection;
             /** @var array<int, array{person: User, shifts: list<Shift>}> $cancelledByPerson */
             $cancelledByPerson = [];
+
+            // Lock the areas in id order before anything else, the same lock GenerateShifts takes before it makes a shift, so a shift can't be made on a day this closes after the sweep below has looked.
+            Area::query()->whereKey($areas->modelKeys())->orderBy('id')->lockForUpdate()->get();
 
             foreach ($areas as $area) {
                 $closure = new AreaClosure([

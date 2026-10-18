@@ -3,6 +3,7 @@
 namespace App\Actions\Scheduling;
 
 use App\Enums\AssignmentType;
+use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
@@ -107,6 +108,20 @@ class GenerateShifts
         }
 
         return DB::transaction(function () use ($slot, $date, $startsAt, $endsAt) {
+            // The same area lock CreateClosure takes, then a locking read of the closures, so a closure saved after the run read them still keeps this date empty.
+            Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
+
+            $closed = AreaClosure::query()
+                ->where('area_id', $slot->area_id)
+                ->where('starts_on', '<=', $date)
+                ->where('ends_on', '>=', $date)
+                ->lockForUpdate()
+                ->first();
+
+            if ($closed !== null) {
+                return false;
+            }
+
             $shift = Shift::query()->firstOrCreate(
                 ['weekly_slot_id' => $slot->id, 'local_date' => $date],
                 [

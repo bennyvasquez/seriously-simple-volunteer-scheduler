@@ -27,6 +27,9 @@ class CreateWeeklySlot
         $slot = new WeeklySlot(['area_id' => $area->id] + SlotAttributes::validate($attributes, null));
 
         return DB::transaction(function () use ($actor, $organization, $slot) {
+            // The area row first, as CreateClosure and the generator take it, so saving the slot (which reads the area for its foreign key) can't deadlock with a closure.
+            Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
+
             $changes = ChangeLogEntry::changesOf($slot);
             $slot->save();
 

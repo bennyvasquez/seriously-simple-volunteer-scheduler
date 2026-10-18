@@ -89,18 +89,26 @@ class ClosureController extends Controller
 
         $shifts = Shift::query()->whereIn('area_closure_id', $closures->modelKeys())->with('assignments.user')->get();
         $emailed = $this->activePeople($shifts)->count();
-        $first = CarbonImmutable::parse($values['from']);
-        $last = CarbonImmutable::parse($values['to']);
-        $days = $first->equalTo($last) ? 'on '.$first->format('l, F j') : 'from '.$first->format('l, F j').' to '.$last->format('l, F j');
+        // The action stores a closure that started before today from today, so read the days back from what it saved.
+        $first = $closures->first()->starts_on;
+        $last = $closures->first()->ends_on;
+        $names = $this->names($closures->pluck('area'));
         $cancelled = $shifts->isEmpty() ? 'No shifts were on the calendar for those days.' : 'Cancelled '.$shifts->count().' '.Str::plural('shift', $shifts->count()).' and '.match ($emailed) {
             0 => 'nobody was on them.',
             1 => 'emailed 1 person.',
             default => 'emailed '.$emailed.' people.',
         };
-        $weekOf = max($values['from'], Organization::current()->today()->toDateString());
 
-        return redirect()->route('calendar.week', ['date' => $weekOf] + $areaQuery)
-            ->with('status', 'Closed '.$this->names($closures->pluck('area')).' '.$days.'. '.$cancelled);
+        if ($first->toDateString() !== $values['from']) {
+            $verb = $closures->count() === 1 ? ' is closed ' : ' are closed ';
+            $days = $first->equalTo($last) ? 'today, '.$first->format('l, F j') : 'from today, '.$first->format('l, F j').', through '.$last->format('l, F j');
+            $status = $names.$verb.$days.'. '.$cancelled;
+        } else {
+            $days = $first->equalTo($last) ? 'on '.$first->format('l, F j') : 'from '.$first->format('l, F j').' to '.$last->format('l, F j');
+            $status = 'Closed '.$names.' '.$days.'. '.$cancelled;
+        }
+
+        return redirect()->route('calendar.week', ['date' => $first->toDateString()] + $areaQuery)->with('status', $status);
     }
 
     /**

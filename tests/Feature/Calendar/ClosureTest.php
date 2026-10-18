@@ -18,11 +18,14 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Models\WeeklySlot;
 use App\Notifications\ShiftCancelledNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
@@ -226,6 +229,7 @@ class ClosureTest extends TestCase
             [[$this->frontDesk->id], '2026-10-01', '2026-10-13', 'Thanksgiving'],
             [[$this->frontDesk->id], '2026-11-26', '2026-11-29', '  '],
             [[$this->frontDesk->id], '2026-11-26', '2026-11-29', str_repeat('a', 201)],
+            [[$this->frontDesk->id, 999999], '2026-11-26', '2026-11-29', 'Thanksgiving'],
         ] as [$areas, $from, $to, $reason]) {
             try {
                 app(CreateClosure::class)->handle($this->coordinator(), $areas, $from, $to, $reason);
@@ -240,6 +244,7 @@ class ClosureTest extends TestCase
             'Pick days from today on.',
             'Say why it\'s closed, so volunteers know.',
             'Keep it to 200 characters or fewer.',
+            'One of those areas no longer exists.',
         ], $messages);
         $this->assertSame(0, AreaClosure::query()->count());
     }
@@ -273,6 +278,8 @@ class ClosureTest extends TestCase
             ->assertSee('We\'ll email the 3 people on these shifts that they\'re cancelled.')
             ->assertSee('Close Front desk and cancel 3 shifts')
             ->assertSee('Check what this cancels')
+            // The save button sends refresh empty, so a form the browser restored with refresh set still saves.
+            ->assertSee('class="btn btn-primary" name="refresh" value=""', false)
             ->assertDontSee('WHEN');
     }
 
@@ -343,5 +350,55 @@ class ClosureTest extends TestCase
             ->assertSee('href="'.route('calendar.closures.create').'"', false);
         $this->actingAs($this->withRole(Role::AreaLead, $this->frontDesk))->get(route('calendar.month', ['month' => '2026-11']))
             ->assertDontSee('Add a closure');
+    }
+
+    public function test_a_closure_saved_while_the_generator_runs_still_keeps_its_days_empty(): void
+    {
+        WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'valid_from' => '2026-10-15']);
+        $inserted = false;
+
+        // Right after the generator reads the area's closures, a coordinator saves one for Thursday, October 22, as if it committed in between.
+        DB::listen(function (QueryExecuted $query) use (&$inserted) {
+            if (! $inserted && str_contains($query->sql, 'area_closures')) {
+                $inserted = true;
+                DB::table('area_closures')->insert(['area_id' => $this->frontDesk->id, 'starts_on' => '2026-10-22', 'ends_on' => '2026-10-22', 'reason' => 'Holiday', 'created_at' => now(), 'updated_at' => now()]);
+            }
+        });
+
+        app(GenerateShifts::class)->handle(Organization::current());
+
+        $this->assertTrue($inserted);
+        $this->assertFalse(Shift::query()->where('local_date', '2026-10-22')->exists());
+        $this->assertTrue(Shift::query()->where('local_date', '2026-10-29')->exists());
+    }
+
+    public function test_a_closure_that_started_before_today_is_stored_from_today(): void
+    {
+        Notification::fake();
+        $this->travelTo(CarbonImmutable::parse('2026-11-27 09:00', self::TIMEZONE));
+
+        $closure = app(CreateClosure::class)->handle($this->coordinator(), [$this->frontDesk->id], '2026-11-26', '2026-11-29', 'Thanksgiving')->sole();
+        $this->assertSame('2026-11-27', $closure->starts_on->toDateString());
+
+        $this->actingAs($this->coordinator())->post(route('calendar.closures.store'), ['area' => [$this->hostedEvents->id], 'from' => '2026-11-26', 'to' => '2026-11-29', 'reason' => 'Thanksgiving'])
+            ->assertRedirect(route('calendar.week', ['date' => '2026-11-27']))
+            ->assertSessionHas('status', 'Hosted events is closed from today, Friday, November 27, through Sunday, November 29. No shifts were on the calendar for those days.');
+        $this->assertSame('2026-11-27', AreaClosure::query()->where('area_id', $this->hostedEvents->id)->sole()->starts_on->toDateString());
+    }
+
+    public function test_a_closure_across_the_end_of_daylight_saving_time_shows_local_times_and_cancels_each_day(): void
+    {
+        Notification::fake();
+        // Daylight saving time ends in Detroit on Sunday, November 1, 2026.
+        $shifts = collect(['2026-10-31', '2026-11-01', '2026-11-02'])->map(fn (string $date) => $this->shiftOn($date, '18:30', '21:30'));
+
+        $this->actingAs($this->coordinator())->get(route('calendar.closures.create', ['area' => $this->frontDesk->id, 'from' => '2026-10-31', 'to' => '2026-11-02']))
+            ->assertOk()
+            ->assertSeeInOrder(['Sat Oct 31, 6:30 to 9:30pm', 'Sun Nov 1, 6:30 to 9:30pm', 'Mon Nov 2, 6:30 to 9:30pm'])
+            ->assertSee('Close Front desk and cancel 3 shifts');
+
+        app(CreateClosure::class)->handle($this->coordinator(), [$this->frontDesk->id], '2026-10-31', '2026-11-02', 'Repairs');
+
+        $shifts->each(fn (Shift $shift) => $this->assertNotNull($shift->fresh()->cancelled_at));
     }
 }

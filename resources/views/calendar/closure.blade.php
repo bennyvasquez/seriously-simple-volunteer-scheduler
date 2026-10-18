@@ -15,6 +15,7 @@
 <form method="POST" action="{{ route('calendar.closures.store') }}" class="panel slot-fields">
 @csrf
 @error('closure')<p role="alert" class="field-error">{{ $message }}</p>@enderror
+{{-- Changing a field sets this and submits. The save button sends refresh empty after it, so a form the browser restored on back or forward still saves. --}}
 <input type="hidden" name="refresh" value="">
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
@@ -22,17 +23,17 @@
 <fieldset class="choices" @error('area') aria-describedby="area-error" @enderror>
 <legend>Which areas</legend>
 @foreach ($areas as $area)
-<label class="check"><input type="checkbox" name="area[]" value="{{ $area->id }}" onchange="this.form.elements.refresh.value='1';this.form.submit()" @checked(in_array($area->id, $values['area'], true))><span>{{ $area->name }}</span></label>
+<label class="check"><input type="checkbox" name="area[]" value="{{ $area->id }}" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @checked(in_array($area->id, $values['area'], true))><span>{{ $area->name }}</span></label>
 @endforeach
 @error('area')<span class="field-error" id="area-error">{{ $message }}</span>@enderror
 </fieldset>
 <div class="slot-grid">
-<x-field name="from" type="date" label="First day closed" :value="$values['from']" onchange="this.form.elements.refresh.value='1';this.form.submit()" required />
-<x-field name="to" type="date" label="Last day closed" :value="$values['to']" onchange="this.form.elements.refresh.value='1';this.form.submit()" required />
+<x-field name="from" type="date" label="First day closed" :value="$values['from']" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" required />
+<x-field name="to" type="date" label="Last day closed" :value="$values['to']" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" required />
 </div>
 <x-field name="reason" label="Reason" :value="$values['reason']" hint="Volunteers see the reason in the email and on the schedule." maxlength="200" required />
 <div class="add-actions">
-<button type="submit" class="btn btn-primary">{{ $preview['button'] ?? 'Add the closure' }}</button>
+<button type="submit" class="btn btn-primary" name="refresh" value="">{{ $preview['button'] ?? 'Add the closure' }}</button>
 <a href="{{ route('calendar.week', ['date' => $backDate] + $areaQuery) }}" class="btn">Cancel</a>
 <noscript><button type="submit" class="btn" name="refresh" value="1">Check what this cancels</button></noscript>
 </div>

@@ -3,6 +3,7 @@
 namespace App\Actions\Scheduling;
 
 use App\Enums\AssignmentType;
+use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
@@ -40,7 +41,9 @@ class UpdateWeeklySlot
         $organization = Organization::current();
 
         return DB::transaction(function () use ($actor, $organization, $slot, $attributes) {
-            // Locked first, so two saves of the same slot can't interleave.
+            // The area row first, the same order CreateClosure and the generator use, so a slot save and a closure can't deadlock on the shifts.
+            Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
+            // Then the slot, so two saves of the same slot can't interleave.
             $locked = WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
             $values = SlotAttributes::validate($attributes, $locked);
             $locked->fill($values);
