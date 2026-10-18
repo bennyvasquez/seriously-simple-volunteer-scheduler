@@ -80,9 +80,10 @@
 <a href="{{ $panelUrl() }}" class="btn">Keep it</a>
 </div>
 </form>
-@elseif ($canPut || $canCancel)
+@elseif ($canPut || $canCancel || $canAddRegular)
 <div class="add-actions">
 @if ($canPut && ! $picking)<a href="{{ $panelUrl(['pick' => 1]) }}" class="btn btn-primary">Put someone on it</a>@endif
+@if ($canAddRegular)<a href="{{ route('calendar.slots.regulars.create', [$shift->weeklySlot, 'date' => $shift->local_date->toDateString()] + $areaQuery) }}" class="btn">Add a regular</a>@endif
 @if ($canCancel)<a href="{{ $panelUrl(['cancel' => 1]) }}" class="btn">Cancel this date</a>@endif
 </div>
 @endif

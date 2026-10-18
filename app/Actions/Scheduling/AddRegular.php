@@ -9,10 +9,12 @@ use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
+use App\Notifications\MadeRegularNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
 
 /**
@@ -23,6 +25,8 @@ use InvalidArgumentException;
  * A regular can work every week or, on a weekly slot, every other week from an anchor date. Headcount is checked date by date, so two people alternating weeks don't count against each other.
  *
  * Shifts that have started, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone.
+ *
+ * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one. The refusals are written to be shown on screen. The new regular is emailed after the response.
  */
 class AddRegular
 {
@@ -35,6 +39,18 @@ class AddRegular
         SlotFrequency $frequency = SlotFrequency::Weekly,
         ?string $anchorDate = null,
     ): SlotRegular {
+        if ($actor !== null) {
+            Gate::forUser($actor)->authorize('manageSchedule', $slot->area);
+        }
+
+        if ($slot->is_rotation) {
+            throw new DomainException('A rotation has no regulars. Volunteers sign up for it one date at a time.');
+        }
+
+        if (! $user->isActive()) {
+            throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
+        }
+
         $startsOn = CarbonImmutable::parse($startsOn)->toDateString();
         $endsOn = $endsOn === null ? null : CarbonImmutable::parse($endsOn)->toDateString();
         // Only every-other-week regulars count weeks from an anchor.
@@ -54,7 +70,7 @@ class AddRegular
         $regular->weeklySlot()->associate($slot);
         $regular->ensureValid();
 
-        return DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn) {
+        $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn) {
             $overlapping = $slot->regulars()
                 ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))
                 ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $startsOn))
@@ -68,7 +84,7 @@ class AddRegular
             $fullOn = $this->firstFullDate($slot, $regular, $overlapping);
 
             if ($fullOn !== null) {
-                throw new DomainException('This slot already has as many regulars as it needs, starting '.CarbonImmutable::parse($fullOn)->format('l j F Y').'.');
+                throw new DomainException('This slot already has as many regulars as it needs on '.CarbonImmutable::parse($fullOn)->format('l, F j').'.');
             }
 
             $changes = ChangeLogEntry::changesOf($regular);
@@ -96,8 +112,15 @@ class AddRegular
                 'added_to_shift_ids' => $shifts->pluck('id')->values()->all(),
             ], $changes, about: $user);
 
-            return $regular;
+            return [$regular, $shifts->count()];
         });
+
+        [$regular, $count] = $added;
+
+        // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved.
+        defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));
+
+        return $regular;
     }
 
     /**

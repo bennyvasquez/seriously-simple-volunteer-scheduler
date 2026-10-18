@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Actions\Accounts\GrantRole;
 use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Enums\AssignmentType;
+use App\Enums\Role;
 use App\Enums\SlotFrequency;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
@@ -167,7 +169,7 @@ class AddRegularTest extends TestCase
         $this->addRegular(User::factory()->create(), '2026-10-01');
 
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Thursday 22 October 2026');
+        $this->expectExceptionMessage('Thursday, October 22');
 
         $this->addRegular(User::factory()->create(), '2026-10-20');
     }
@@ -282,6 +284,7 @@ class AddRegularTest extends TestCase
     public function test_adding_a_regular_is_logged_about_the_person(): void
     {
         $coordinator = User::factory()->create(['name' => 'Alex']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
         $robin = User::factory()->create();
 
         $regular = app(AddRegular::class)->handle($coordinator, $this->slot, $robin, '2026-10-01');

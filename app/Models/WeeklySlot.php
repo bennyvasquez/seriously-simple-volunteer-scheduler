@@ -130,10 +130,16 @@ class WeeklySlot extends Model
         return $dates;
     }
 
+    /** "Thursday". */
+    public function weekdayName(): string
+    {
+        return CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($this->weekday)->format('l');
+    }
+
     /** The slot in words: "Thursdays, 6:30 to 9:30pm" or "Every other Thursday, 6:30 to 9:30pm". */
     public function describe(): string
     {
-        $weekday = CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($this->weekday)->format('l');
+        $weekday = $this->weekdayName();
         $when = $this->frequency === SlotFrequency::Weekly ? $weekday.'s' : 'Every other '.$weekday;
 
         return $when.', '.TimeFormat::range(CarbonImmutable::parse($this->start_time), CarbonImmutable::parse($this->end_time));

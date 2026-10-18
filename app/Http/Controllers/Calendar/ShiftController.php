@@ -40,6 +40,7 @@ class ShiftController extends Controller
         $canAssign = $open && Gate::forUser($user)->allows('assign', $shift);
         $canCancel = $open && Gate::forUser($user)->allows('cancel', $shift);
         $byEmail = Area::query()->get()->every(fn (Area $area) => $user->canManageArea($area));
+        $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         $canPut = $canAssign && ($shift->openPlaces() > 0 || $shift->shadow_spots > $shift->assignments->where('type', AssignmentType::Shadow)->count());
         $search = $this->search($request, $shift, $canPut, $byEmail);
 
@@ -52,6 +53,7 @@ class ShiftController extends Controller
             'canAssign' => $canAssign,
             'canCancel' => $canCancel,
             'canPut' => $canPut,
+            'canAddRegular' => $canAddRegular,
             'picking' => $canPut && ($request->boolean('pick') || $search['query'] !== ''),
             'cancelling' => $canCancel && $request->boolean('cancel'),
             'search' => $search,

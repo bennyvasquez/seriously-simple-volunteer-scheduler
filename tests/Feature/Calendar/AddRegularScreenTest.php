@@ -1,0 +1,289 @@
+<?php
+
+namespace Tests\Feature\Calendar;
+
+use App\Actions\Accounts\GrantRole;
+use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\CreateOneTimeShift;
+use App\Actions\Scheduling\GenerateShifts;
+use App\Enums\Role;
+use App\Enums\SlotFrequency;
+use App\Models\Area;
+use App\Models\ChangeLogEntry;
+use App\Models\Organization;
+use App\Models\Shift;
+use App\Models\SlotRegular;
+use App\Models\User;
+use App\Models\WeeklySlot;
+use App\Notifications\MadeRegularNotification;
+use Carbon\CarbonImmutable;
+use DomainException;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
+use Tests\Concerns\InteractsWithTwoFactor;
+use Tests\TestCase;
+
+class AddRegularScreenTest extends TestCase
+{
+    use InteractsWithTwoFactor, RefreshDatabase;
+
+    private const TIMEZONE = 'America/Detroit';
+
+    private Area $frontDesk;
+
+    private Area $hostedEvents;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // The emails are deferred until after the response; calling an action directly has no response, so run them right away.
+        $this->withoutDefer();
+
+        // Wednesday, October 14, 2026, 9am in Detroit.
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 09:00', self::TIMEZONE));
+        $organization = Organization::factory()->create(['timezone' => self::TIMEZONE, 'weeks_ahead' => 4]);
+        $this->frontDesk = Area::factory()->create(['name' => 'Front desk']);
+        $this->hostedEvents = Area::factory()->create(['name' => 'Hosted events']);
+    }
+
+    private function coordinator(Role $role = Role::Coordinator, ?Area $area = null): User
+    {
+        $user = User::factory()->create();
+        app(GrantRole::class)->handle(null, $user, $role, $area);
+        $this->enableTwoFactor($user);
+
+        return $user;
+    }
+
+    /** Fridays, 3:30 to 6:30pm, with its shifts generated for the next four weeks (October 16, 23, 30 and November 6). */
+    private function fridaySlot(int $headcount = 1, bool $rotation = false, ?Area $area = null): WeeklySlot
+    {
+        $slot = WeeklySlot::factory()->create(['area_id' => ($area ?? $this->frontDesk)->id, 'weekday' => 5, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => $headcount, 'is_rotation' => $rotation]);
+        app(GenerateShifts::class)->handle(Organization::current());
+
+        return $slot;
+    }
+
+    private function addRegular(WeeklySlot $slot, string $name, string $every = 'weekly', string $from = '2026-10-09'): User
+    {
+        $user = User::factory()->create(['name' => $name]);
+
+        if ($every === 'other') {
+            app(AddRegular::class)->handle(null, $slot, $user, '2026-10-01', null, SlotFrequency::EveryOtherWeek, $from);
+        } else {
+            app(AddRegular::class)->handle(null, $slot, $user, $from);
+        }
+
+        return $user;
+    }
+
+    private function postRegular(WeeklySlot $slot, User $by, array $data)
+    {
+        return $this->actingAs($by)->post(route('calendar.slots.regulars.store', $slot), $data);
+    }
+
+    public function test_the_screen_offers_the_alternate_weeks_of_an_existing_regular(): void
+    {
+        $slot = $this->fridaySlot(headcount: 2);
+        $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
+
+        $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', $slot))
+            ->assertOk()
+            ->assertSee('The weeks Carol is off')->assertSee('Fri Oct 16')
+            ->assertSee('The same weeks as Carol')->assertSee('Fri Oct 23')
+            ->assertSee('Starting a date I pick')
+            ->assertSee('Fridays, 3:30 to 6:30pm')
+            ->assertSee('Needs 2 people every week.')
+            ->assertSee('Carol every other week from Oct 9');
+    }
+
+    public function test_the_screen_shows_no_design_note_captions(): void
+    {
+        $slot = $this->fridaySlot();
+
+        $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', $slot))
+            ->assertDontSee('After adding')->assertDontSee('When the slot is already full');
+    }
+
+    public function test_adding_a_regular_adds_them_to_shifts_logs_it_and_emails_them(): void
+    {
+        Notification::fake();
+        $slot = $this->fridaySlot();
+        $avery = User::factory()->create(['name' => 'Avery Stone']);
+
+        $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
+            ->assertRedirect(route('calendar.week', ['date' => '2026-10-23']))
+            ->assertSessionHas('status', 'Avery is now a regular, every week from Oct 23. We added them to 3 shifts already on the schedule. We\'ll email Avery to let them know.');
+
+        Notification::assertSentTo($avery, MadeRegularNotification::class);
+        $this->assertSame(3, Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $avery->id))->count());
+        $this->assertSame(1, ChangeLogEntry::query()->about($avery)->ofAction('regular.added')->count());
+    }
+
+    public function test_the_email_says_what_they_are_regular_for(): void
+    {
+        $slot = $this->fridaySlot();
+        $avery = User::factory()->create(['name' => 'Avery Stone']);
+
+        $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23']);
+
+        $mail = (new MadeRegularNotification($slot->load('area'), SlotRegular::query()->sole(), 3))->toMail($avery);
+        $this->assertSame("You're now the regular for Front desk on Fridays, 3:30 to 6:30pm, every week, starting Friday, October 23.", $mail->introLines[0]);
+        $this->assertSame("We've put you on 3 shifts already on the schedule.", $mail->introLines[1]);
+    }
+
+    public function test_an_every_other_week_choice_becomes_the_anchor_date(): void
+    {
+        $slot = $this->fridaySlot(headcount: 2);
+        $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
+        $avery = User::factory()->create(['name' => 'Avery Stone']);
+
+        $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'every_other_week', 'weeks' => '2026-10-16', 'starts_on' => '2026-10-14'])
+            ->assertSessionHas('status', 'Avery is now a regular, every other week from Oct 14. We added them to 2 shifts already on the schedule. We\'ll email Avery to let them know.');
+
+        $regular = SlotRegular::query()->where('user_id', $avery->id)->sole();
+        $this->assertSame(SlotFrequency::EveryOtherWeek, $regular->frequency);
+        $this->assertSame('2026-10-16', $regular->anchor_date->toDateString());
+        $this->assertSame(['2026-10-16', '2026-10-30'], Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $avery->id))->orderBy('starts_at')->get()->map(fn (Shift $shift) => $shift->local_date->toDateString())->all());
+    }
+
+    public function test_starting_a_date_i_pick_anchors_on_the_first_date(): void
+    {
+        $slot = $this->fridaySlot();
+        $avery = User::factory()->create();
+
+        $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'every_other_week', 'weeks' => 'pick', 'starts_on' => '2026-10-23']);
+
+        $this->assertSame('2026-10-23', SlotRegular::query()->sole()->anchor_date->toDateString());
+    }
+
+    public function test_every_other_week_needs_a_weekday_that_matches_the_slot(): void
+    {
+        $slot = $this->fridaySlot();
+        $avery = User::factory()->create();
+
+        $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'every_other_week', 'weeks' => 'pick', 'starts_on' => '2026-10-22'])
+            ->assertSessionHasErrors(['starts_on' => 'Pick a Friday.']);
+        $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'every_other_week', 'starts_on' => '2026-10-23'])
+            ->assertSessionHasErrors('weeks');
+
+        $this->assertSame(0, SlotRegular::query()->count());
+    }
+
+    public function test_the_full_slot_message_uses_us_date_order(): void
+    {
+        $slot = $this->fridaySlot(headcount: 1);
+        $this->addRegular($slot, 'Jordan', from: '2026-10-09');
+        $avery = User::factory()->create();
+        $coordinator = $this->coordinator();
+
+        $this->postRegular($slot, $coordinator, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
+            ->assertRedirect(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $avery->id]))
+            ->assertSessionHasErrors(['slot' => 'This slot already has as many regulars as it needs on Friday, October 23.']);
+
+        $this->followingRedirects()->actingAs($coordinator)->post(route('calendar.slots.regulars.store', $slot), ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
+            ->assertSee('This slot already has as many regulars as it needs on Friday, October 23.');
+        $this->assertSame(1, SlotRegular::query()->count());
+    }
+
+    public function test_rotation_slots_take_no_regulars(): void
+    {
+        $slot = $this->fridaySlot(rotation: true);
+        $avery = User::factory()->create();
+        $coordinator = $this->coordinator();
+
+        $this->postRegular($slot, $coordinator, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])->assertSessionHasErrors('slot');
+        $this->actingAs($coordinator)->get(route('calendar.slots.regulars.create', $slot))->assertNotFound();
+
+        $this->assertSame(0, SlotRegular::query()->count());
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('regular.added')->count());
+    }
+
+    public function test_the_action_refuses_a_rotation_and_a_person_who_is_turned_off(): void
+    {
+        $rotation = $this->fridaySlot(rotation: true);
+        $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 5]);
+        $off = User::factory()->create(['name' => 'Sam Rivera', 'deactivated_at' => now()]);
+
+        try {
+            app(AddRegular::class)->handle(null, $rotation, User::factory()->create(), '2026-10-23');
+            $this->fail('A rotation took a regular.');
+        } catch (DomainException) {
+            // Expected.
+        }
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Sam has been turned off');
+
+        app(AddRegular::class)->handle(null, $slot, $off, '2026-10-23');
+    }
+
+    public function test_the_action_checks_the_actor_can_manage_the_area(): void
+    {
+        $slot = $this->fridaySlot();
+        $lead = $this->coordinator(Role::AreaLead, $this->hostedEvents);
+
+        $this->expectException(AuthorizationException::class);
+
+        app(AddRegular::class)->handle($lead, $slot, User::factory()->create(), '2026-10-23');
+    }
+
+    public function test_an_area_lead_can_add_to_their_own_area_and_not_another(): void
+    {
+        $lead = $this->coordinator(Role::AreaLead, $this->frontDesk);
+        $own = $this->fridaySlot();
+        $other = WeeklySlot::factory()->create(['area_id' => $this->hostedEvents->id, 'weekday' => 5]);
+        $avery = User::factory()->create();
+
+        $this->actingAs($lead)->get(route('calendar.slots.regulars.create', $own))->assertOk();
+        $this->actingAs($lead)->get(route('calendar.slots.regulars.create', $other))->assertForbidden();
+        $this->postRegular($other, $lead, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])->assertForbidden();
+        $this->postRegular($own, $lead, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, SlotRegular::query()->count());
+    }
+
+    public function test_search_matches_names_only_for_a_lead_and_shows_short_names(): void
+    {
+        $lead = $this->coordinator(Role::AreaLead, $this->frontDesk);
+        $slot = $this->fridaySlot();
+        User::factory()->create(['name' => 'Robin Example', 'email' => 'robin@example.org']);
+        User::factory()->create(['name' => 'Someone Else', 'email' => 'robin.secret@example.org']);
+        User::factory()->create(['name' => 'Robin Gone', 'deactivated_at' => now()]);
+
+        $this->actingAs($lead)->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'q' => 'Robin']))
+            ->assertSee('Robin E.')->assertDontSee('Robin Example')->assertDontSee('robin@example.org')
+            ->assertDontSee('Robin G.')->assertDontSee('Someone');
+        $this->actingAs($lead)->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'q' => 'secret']))
+            ->assertSee('Nobody matches');
+        $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'q' => 'secret']))
+            ->assertSee('Someone Else')->assertSee('robin.secret@example.org');
+    }
+
+    public function test_a_chosen_person_is_carried_into_the_form(): void
+    {
+        $slot = $this->fridaySlot();
+        $avery = User::factory()->create(['name' => 'Avery Stone']);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $avery->id]))
+            ->assertSee('Avery Stone')->assertSee('name="user" value="'.$avery->id.'"', false)->assertSee('Add Avery');
+    }
+
+    public function test_the_shift_panel_offers_add_a_regular_only_for_weekly_slots_that_are_not_rotations(): void
+    {
+        $coordinator = $this->coordinator();
+        $slot = $this->fridaySlot();
+        $rotation = $this->fridaySlot(rotation: true);
+        $slotShift = $slot->shifts()->orderBy('starts_at')->first();
+        $rotationShift = $rotation->shifts()->orderBy('starts_at')->first();
+        $oneTime = app(CreateOneTimeShift::class)->handle($coordinator, $this->frontDesk, '2026-10-24', '10:00', '14:00', 1, 0, null);
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', $slotShift))
+            ->assertSee('Add a regular')->assertSee(route('calendar.slots.regulars.create', [$slot, 'date' => $slotShift->local_date->toDateString()]), false);
+        $this->actingAs($coordinator)->get(route('calendar.shift', $rotationShift))->assertDontSee('Add a regular');
+        $this->actingAs($coordinator)->get(route('calendar.shift', $oneTime))->assertDontSee('Add a regular');
+        $this->actingAs($this->coordinator(Role::AreaLead, $this->hostedEvents))->get(route('calendar.shift', $slotShift))->assertDontSee('Add a regular');
+    }
+}
