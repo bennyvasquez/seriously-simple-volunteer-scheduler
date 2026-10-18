@@ -1,0 +1,394 @@
+<?php
+
+namespace App\Http\Controllers\Calendar;
+
+use App\Actions\Scheduling\CreateOneTimeShift;
+use App\Actions\Scheduling\CreateWeeklySlot;
+use App\Calendar\TimeFormat;
+use App\Enums\SlotFrequency;
+use App\Http\Controllers\Controller;
+use App\Models\Area;
+use App\Models\AreaClosure;
+use App\Models\Organization;
+use App\Models\WeeklySlot;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+
+/**
+ * Adding to the calendar: the quick panel beside the week (screen 31) and the full weekly slot form (screen 35). Access to the calendar is checked by the route's can:viewAny middleware; each save is checked against the area it adds to.
+ */
+class AddController extends Controller
+{
+    private const DATE_FORMAT = 'Y-m-d';
+
+    /** Screen 31: the week with the add panel beside it. */
+    public function panel(Request $request, CalendarController $calendar): View
+    {
+        $areas = $this->manageableAreas($request);
+        $organization = Organization::current();
+        $date = $this->dateAsked($request, $organization);
+        $areaId = (int) $request->old('area', $request->query('area'));
+
+        $values = [
+            'area' => $areas->contains('id', $areaId) ? $areaId : $areas->first()->id,
+            'title' => (string) $request->old('title', ''),
+            'date' => (string) $request->old('date', $date),
+            'start_time' => (string) $request->old('start_time', '18:00'),
+            'end_time' => (string) $request->old('end_time', '21:00'),
+            'repeats' => (string) $request->old('repeats', 'none'),
+            'headcount' => (string) $request->old('headcount', '1'),
+            'shadow_spots' => (string) $request->old('shadow_spots', '0'),
+            'ends' => (string) $request->old('ends', 'never'),
+            'ends_on' => (string) $request->old('ends_on', ''),
+            'fills_by' => (string) $request->old('fills_by', 'regulars'),
+        ];
+
+        $weekday = $this->weekdayName($values['date']);
+
+        return view('calendar.add', $calendar->week($request)->getData() + [
+            'manageable' => $areas,
+            'values' => $values,
+            'repeatOptions' => [
+                'none' => "Doesn't repeat",
+                'weekly' => 'Every week on '.$weekday,
+                'every_other_week' => 'Every other week on '.$weekday,
+            ],
+        ]);
+    }
+
+    /** Creates a one-time shift, or a weekly slot when "Repeats" is chosen, and returns to the week with a note about what was added. */
+    public function store(Request $request, CreateOneTimeShift $createShift, CreateWeeklySlot $createSlot): RedirectResponse
+    {
+        if ($request->filled('refresh')) {
+            return redirect()->route('calendar.add', array_filter(['date' => $request->input('date'), 'area' => $request->input('area')]))->withInput();
+        }
+
+        $area = $this->authorizedArea($request);
+        $organization = Organization::current();
+        $repeating = in_array($request->input('repeats'), ['weekly', 'every_other_week'], true);
+
+        $data = $request->validate([
+            'title' => ['nullable', 'string', 'max:80'],
+            'date' => ['bail', 'required', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:'.$organization->today()->toDateString()],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
+            'repeats' => ['required', Rule::in(['none', 'weekly', 'every_other_week'])],
+            'headcount' => ['required', 'integer', 'min:1', 'max:200'],
+            'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
+            'ends' => [Rule::requiredIf($repeating), Rule::in(['never', 'on'])],
+            'ends_on' => [Rule::requiredIf($repeating && $request->input('ends') === 'on'), 'nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:date'],
+            'fills_by' => [Rule::requiredIf($repeating), Rule::in(['regulars', 'rotation'])],
+        ], $this->messages());
+
+        $actor = $request->user();
+        $date = CarbonImmutable::parse($data['date'], 'UTC');
+
+        if (! $repeating) {
+            $shift = $createShift->handle($actor, $area, $data['date'], $data['start_time'], $data['end_time'], (int) $data['headcount'], (int) $data['shadow_spots'], $data['title'] ?? null);
+
+            return redirect()->route('calendar.week', ['date' => $data['date']])->with('status', 'Added '.($shift->title === null ? 'a shift for '.$area->name : 'the '.$this->lowerFirst($shift->title)).' on '.$date->format('l, F j').'.');
+        }
+
+        $slot = $createSlot->handle($actor, $area, [
+            'weekday' => $date->dayOfWeek,
+            'start_time' => $data['start_time'],
+            'end_time' => $data['end_time'],
+            'headcount' => $data['headcount'],
+            'shadow_spots' => $data['shadow_spots'],
+            'frequency' => $data['repeats'],
+            'valid_from' => $data['date'],
+            'valid_until' => ($data['ends'] ?? 'never') === 'on' ? $data['ends_on'] : null,
+            'title' => $data['title'] ?? null,
+            'is_rotation' => ($data['fills_by'] ?? 'regulars') === 'rotation',
+        ]);
+
+        return $this->slotAdded($slot);
+    }
+
+    /** Screen 35: the full form for a new weekly slot. The quick panel's "More options" sends what was typed along. */
+    public function createSlot(Request $request): View
+    {
+        $areas = $this->manageableAreas($request);
+        $organization = Organization::current();
+        $date = $this->dateAsked($request, $organization);
+        $areaId = (int) $request->query('area');
+        $repeats = $request->query('repeats') === 'every_other_week' ? 'every_other_week' : 'weekly';
+
+        $values = [
+            'area' => $areas->contains('id', $areaId) ? $areaId : $areas->first()->id,
+            'title' => (string) $request->query('title', ''),
+            'weekday' => (string) CarbonImmutable::parse($date, 'UTC')->dayOfWeek,
+            'start_time' => (string) $request->query('start_time', '18:00'),
+            'end_time' => (string) $request->query('end_time', '21:00'),
+            'headcount' => (string) $request->query('headcount', '1'),
+            'shadow_spots' => (string) $request->query('shadow_spots', '0'),
+            'frequency' => $repeats,
+            'fills_by' => $request->query('fills_by') === 'rotation' ? 'rotation' : 'regulars',
+            'valid_from' => $date,
+            'valid_until' => $request->query('ends') === 'on' ? (string) $request->query('ends_on', '') : '',
+        ];
+
+        return $this->slotForm($request, $areas, $values, null);
+    }
+
+    /** The slot form for an existing slot. Saving changes comes with slot editing. */
+    public function editSlot(Request $request, WeeklySlot $slot): View
+    {
+        Gate::forUser($request->user())->authorize('manageSchedule', $slot->area);
+
+        $areas = $this->manageableAreas($request);
+
+        return $this->slotForm($request, $areas, [
+            'area' => $slot->area_id,
+            'title' => (string) $slot->title,
+            'weekday' => (string) $slot->weekday,
+            'start_time' => substr($slot->start_time, 0, 5),
+            'end_time' => substr($slot->end_time, 0, 5),
+            'headcount' => (string) $slot->headcount,
+            'shadow_spots' => (string) $slot->shadow_spots,
+            'frequency' => $slot->frequency->value,
+            'fills_by' => $slot->is_rotation ? 'rotation' : 'regulars',
+            'valid_from' => $slot->valid_from->toDateString(),
+            'valid_until' => $slot->valid_until?->toDateString() ?? '',
+        ], $slot);
+    }
+
+    /** Creates a weekly slot from the full form. */
+    public function storeSlot(Request $request, CreateWeeklySlot $createSlot): RedirectResponse
+    {
+        if ($request->filled('refresh')) {
+            return redirect()->route('calendar.slots.create')->withInput();
+        }
+
+        $area = $this->authorizedArea($request);
+        $organization = Organization::current();
+
+        $data = $request->validate([
+            'title' => ['nullable', 'string', 'max:80'],
+            'weekday' => ['required', 'integer', 'between:0,6'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
+            'headcount' => ['required', 'integer', 'min:1', 'max:200'],
+            'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
+            'frequency' => ['required', Rule::enum(SlotFrequency::class)],
+            'fills_by' => ['required', Rule::in(['regulars', 'rotation'])],
+            'valid_from' => ['bail', 'required', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:'.$organization->today()->toDateString()],
+            'valid_until' => ['nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:valid_from'],
+        ], $this->messages());
+
+        $slot = $createSlot->handle($request->user(), $area, [
+            'weekday' => $data['weekday'],
+            'start_time' => $data['start_time'],
+            'end_time' => $data['end_time'],
+            'headcount' => $data['headcount'],
+            'shadow_spots' => $data['shadow_spots'],
+            'frequency' => $data['frequency'],
+            'valid_from' => $data['valid_from'],
+            'valid_until' => $data['valid_until'] ?? null,
+            'title' => $data['title'] ?? null,
+            'is_rotation' => $data['fills_by'] === 'rotation',
+        ]);
+
+        return $this->slotAdded($slot);
+    }
+
+    private function slotForm(Request $request, Collection $areas, array $defaults, ?WeeklySlot $slot): View
+    {
+        $organization = Organization::current();
+        $values = array_merge($defaults, array_intersect_key($request->old(), $defaults));
+        $area = $areas->firstWhere('id', (int) $values['area']) ?? $areas->first();
+
+        return view('calendar.slot-form', [
+            'organization' => $organization,
+            'manageable' => $areas,
+            'values' => $values,
+            'slot' => $slot,
+            'preview' => $this->preview($organization, $area, $values),
+            'weekdays' => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+        ]);
+    }
+
+    /**
+     * What the slot would make: a one-line description, then the first three dates and any closures that skip a date. Null when the values can't describe a slot yet.
+     *
+     * @return array{summary: string, detail: string}|null
+     */
+    private function preview(Organization $organization, Area $area, array $values): ?array
+    {
+        $validFrom = $values['valid_from'];
+
+        if (! $this->isDate($validFrom) || ! in_array((string) $values['weekday'], ['0', '1', '2', '3', '4', '5', '6'], true)
+            || ! preg_match('/^\d{2}:\d{2}$/', $values['start_time']) || ! preg_match('/^\d{2}:\d{2}$/', $values['end_time'])
+            || $values['start_time'] === $values['end_time']) {
+            return null;
+        }
+
+        $frequency = SlotFrequency::tryFrom($values['frequency']) ?? SlotFrequency::Weekly;
+        $weekday = (int) $values['weekday'];
+        $validUntil = $this->isDate($values['valid_until']) ? $values['valid_until'] : null;
+
+        $slot = new WeeklySlot([
+            'weekday' => $weekday,
+            'start_time' => $values['start_time'],
+            'end_time' => $values['end_time'],
+            'frequency' => $frequency,
+            'anchor_date' => $frequency === SlotFrequency::EveryOtherWeek ? $validFrom : null,
+            'valid_from' => $validFrom,
+            'valid_until' => $validUntil,
+        ]);
+
+        $today = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC');
+        $first = $today->greaterThan(CarbonImmutable::parse($validFrom, 'UTC')) ? $today : CarbonImmutable::parse($validFrom, 'UTC');
+        $window = $organization->weeks_ahead * 7;
+        $closures = AreaClosure::query()->where('area_id', $area->id)
+            ->where('starts_on', '<=', $first->addDays($window)->toDateString())->where('ends_on', '>=', $first->toDateString())->get();
+
+        $dates = [];
+        $skipped = [];
+        for ($offset = 0; $offset < $window; $offset++) {
+            $day = $first->addDays($offset);
+            $date = $day->toDateString();
+
+            if (! $slot->occursOn($date)) {
+                continue;
+            }
+
+            if ($closures->contains(fn (AreaClosure $closure) => $closure->covers($date))) {
+                $skipped[] = $day->format('D M j');
+
+                continue;
+            }
+
+            $dates[] = $day->format('M j');
+        }
+
+        $start = CarbonImmutable::parse($values['start_time']);
+        $end = CarbonImmutable::parse($values['end_time']);
+        $startsOn = CarbonImmutable::parse($validFrom, 'UTC');
+        $dayName = CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($weekday)->format('l');
+        $summary = ($frequency === SlotFrequency::Weekly ? $dayName.'s' : 'Every other '.$dayName).', '.TimeFormat::range($start, $end)
+            .($frequency === SlotFrequency::Weekly ? ', every week' : '').', starting '.$startsOn->format('D M j').'.';
+
+        $detail = 'Shifts appear on the calendar as soon as you save, '.$organization->weeks_ahead.' weeks ahead';
+        $listed = array_slice($dates, 0, 3);
+        $detail .= $listed === [] ? ', but none of the dates in that time fall on this slot.' : ': '.implode(', ', $listed).(count($dates) > 3 ? ' and so on.' : '.');
+        $skippedNames = collect($skipped);
+        if ($skippedNames->isNotEmpty()) {
+            $detail .= ' '.$skippedNames->join(', ', ' and ').($skippedNames->count() === 1 ? ' is' : ' are').' skipped because '.$area->name.' is closed '.($skippedNames->count() === 1 ? 'that day.' : 'those days.');
+        }
+
+        return ['summary' => $summary, 'detail' => $detail];
+    }
+
+    private function slotAdded(WeeklySlot $slot): RedirectResponse
+    {
+        $organization = Organization::current();
+        $date = CarbonImmutable::parse($slot->valid_from->toDateString(), 'UTC');
+        $count = $slot->shifts()->count();
+        $weekday = CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($slot->weekday)->format('l');
+        $pattern = ($slot->frequency === SlotFrequency::Weekly ? $weekday.'s' : 'Every other '.$weekday).', '.TimeFormat::range(CarbonImmutable::parse($slot->start_time), CarbonImmutable::parse($slot->end_time));
+        $onCalendar = match ($count) {
+            0 => 'No shifts are on the calendar yet.',
+            1 => '1 shift is on the calendar.',
+            default => $count.' shifts are on the calendar.',
+        };
+
+        return redirect()->route('calendar.week', ['date' => $organization->today()->toDateString() > $date->toDateString() ? $organization->today()->toDateString() : $date->toDateString()])
+            ->with('status', 'Added '.$pattern.', starting '.$date->format('l, F j').'. '.$onCalendar);
+    }
+
+    /** @return Collection<int, Area> */
+    private function manageableAreas(Request $request): Collection
+    {
+        $user = $request->user();
+        $areas = Area::query()->orderBy('id')->get()->filter(fn (Area $area) => Gate::forUser($user)->allows('manageSchedule', $area))->values();
+
+        abort_if($areas->isEmpty(), 403);
+
+        return $areas;
+    }
+
+    /** The area posted, after checking this person can change its schedule. */
+    private function authorizedArea(Request $request): Area
+    {
+        $areaId = $request->input('area');
+        $area = is_scalar($areaId) && ctype_digit((string) $areaId) ? Area::query()->find((int) $areaId) : null;
+
+        if ($area === null) {
+            throw ValidationException::withMessages(['area' => 'Pick an area.']);
+        }
+
+        Gate::forUser($request->user())->authorize('manageSchedule', $area);
+
+        return $area;
+    }
+
+    private function dateAsked(Request $request, Organization $organization): string
+    {
+        $value = $request->query('date');
+
+        return $this->isDate($value) ? $value : $organization->today()->toDateString();
+    }
+
+    private function isDate(mixed $value): bool
+    {
+        if (! is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) !== 1) {
+            return false;
+        }
+
+        $date = CarbonImmutable::createFromFormat('!Y-m-d', $value, 'UTC');
+
+        return $date !== false && $date->toDateString() === $value;
+    }
+
+    private function weekdayName(string $date): string
+    {
+        return $this->isDate($date) ? CarbonImmutable::parse($date, 'UTC')->format('l') : 'that day';
+    }
+
+    private function lowerFirst(string $title): string
+    {
+        return preg_match('/^\p{Lu}\p{Ll}/u', $title) === 1 ? Str::lcfirst($title) : $title;
+    }
+
+    /** @return array<string, string> */
+    private function messages(): array
+    {
+        return [
+            'date.required' => 'Pick a date.',
+            'date.date_format' => 'Pick a date.',
+            'date.after_or_equal' => 'Pick a date from today on.',
+            'valid_from.required' => 'Pick a first date.',
+            'valid_from.date_format' => 'Pick a first date.',
+            'valid_from.after_or_equal' => 'Pick a date from today on.',
+            'valid_until.after_or_equal' => 'The last date has to be on or after the first date.',
+            'valid_until.date_format' => 'Pick a last date, or leave it empty.',
+            'ends_on.required' => 'Pick the last date, or choose "No end date yet".',
+            'ends_on.after_or_equal' => 'The last date has to be on or after the first date.',
+            'ends_on.date_format' => 'Pick the last date, or choose "No end date yet".',
+            'start_time.required' => 'Pick a start time.',
+            'start_time.date_format' => 'Pick a start time.',
+            'end_time.required' => 'Pick an end time.',
+            'end_time.date_format' => 'Pick an end time.',
+            'end_time.different' => 'A shift has to end at a different time than it starts.',
+            'headcount.required' => 'At least 1 person is needed.',
+            'headcount.integer' => 'At least 1 person is needed.',
+            'headcount.min' => 'At least 1 person is needed.',
+            'headcount.max' => 'That is more people than one shift can have. Use 200 or fewer.',
+            'shadow_spots.required' => 'Enter 0 if there are no shadow spots.',
+            'shadow_spots.integer' => 'Enter 0 if there are no shadow spots.',
+            'shadow_spots.min' => 'Enter 0 if there are no shadow spots.',
+            'shadow_spots.max' => 'That is more shadow spots than one shift can have. Use 200 or fewer.',
+            'title.max' => 'Keep it to 80 characters or fewer.',
+            'weekday.between' => 'Pick a day of the week.',
+            'weekday.required' => 'Pick a day of the week.',
+        ];
+    }
+}

@@ -1,7 +1,5 @@
 {{-- The week and day sidebar: add, the area filter, Needs attention, the border key and settings. Links to screens built later only show once their routes exist. --}}
-@if (Route::has('calendar.add'))
-<a href="{{ route('calendar.add', ['date' => $date->toDateString()]) }}" class="btn btn-primary cal-add">+ Add</a>
-@endif
+<a href="{{ route('calendar.add', ['date' => $date->toDateString()] + $areaQuery) }}" class="btn btn-primary cal-add">+ Add</a>
 
 <section class="cal-side-section">
 <h2>Areas</h2>

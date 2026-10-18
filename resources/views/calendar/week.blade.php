@@ -47,7 +47,7 @@
 <div></div>
 @foreach ($days as $day)
 @php($carbonDay = \Carbon\CarbonImmutable::parse($day))
-<div class="dh{{ $day === $today ? ' today' : '' }}" @if ($day === $today) aria-current="date" @endif><span class="muted">{{ strtoupper($carbonDay->format('D')) }}</span><b>{{ $carbonDay->day }}</b>@if (Route::has('calendar.add'))<a href="{{ route('calendar.add', ['date' => $day]) }}" class="add" aria-label="Add on {{ $carbonDay->format('l, F j') }}">Add</a>@endif</div>
+<div class="dh{{ $day === $today ? ' today' : '' }}" @if ($day === $today) aria-current="date" @endif><span class="muted">{{ strtoupper($carbonDay->format('D')) }}</span><b>{{ $carbonDay->day }}</b><a href="{{ route('calendar.add', ['date' => $day] + $areaQuery) }}" class="add" aria-label="Add on {{ $carbonDay->format('l, F j') }}">Add</a></div>
 @endforeach
 
 <div class="hours" aria-hidden="true">@for ($hour = $firstHour; $hour < $lastHour; $hour++)<div>{{ \App\Calendar\TimeFormat::time(\Carbon\CarbonImmutable::today()->setTime($hour, 0)) }}</div>@endfor</div>
@@ -67,7 +67,7 @@
 @foreach ($days as $day)
 @php($shifts = $week->shiftsOn($day))
 @if ($shifts->isNotEmpty())
-<div class="day"><span>{{ \Carbon\CarbonImmutable::parse($day)->format('D M j') }}</span>@if (Route::has('calendar.add'))<a href="{{ route('calendar.add', ['date' => $day]) }}" class="muted">Add</a>@endif</div>
+<div class="day"><span>{{ \Carbon\CarbonImmutable::parse($day)->format('D M j') }}</span><a href="{{ route('calendar.add', ['date' => $day] + $areaQuery) }}" class="muted">Add</a></div>
 @foreach ($shifts as $shift)
 @php($info = $week->describe($shift, $now))
 <a class="{{ $info['classes'] }}" aria-label="{{ $info['label'] }}" @if (Route::has('calendar.shift')) href="{{ route('calendar.shift', $shift) }}" @endif><strong>{{ $info['time'] }}, {{ $info['area'] }}</strong>@foreach ($info['lines'] as $line)<span>{{ $line }}</span>@endforeach</a>
