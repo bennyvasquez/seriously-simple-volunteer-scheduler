@@ -26,7 +26,7 @@ class PersonSecurityController extends Controller
 
         return view('people.security', [
             'person' => $user,
-            'firstName' => $this->firstName($user),
+            'firstName' => $user->firstName(),
             'roles' => $user->roles->map(fn ($assignment) => match ($assignment->role) {
                 Role::Admin => 'Admin',
                 Role::Coordinator => 'Coordinator',
@@ -51,7 +51,7 @@ class PersonSecurityController extends Controller
             throw ValidationException::withMessages(['identity_checked' => $e->getMessage()]);
         }
 
-        return redirect()->route('people.security', $user)->with('status', $this->firstName($user).'\'s second step is reset. They\'ll set it up again next time they log in.');
+        return redirect()->route('people.security', $user)->with('status', $user->firstName().'\'s second step is reset. They\'ll set it up again next time they log in.');
     }
 
     private function authorizeAdmin(Request $request): void
@@ -59,10 +59,5 @@ class PersonSecurityController extends Controller
         $admin = $request->user();
 
         abort_unless($admin->isActive() && $admin->hasRole(Role::Admin), 403);
-    }
-
-    private function firstName(User $user): string
-    {
-        return explode(' ', trim($user->name))[0];
     }
 }

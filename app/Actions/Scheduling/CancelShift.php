@@ -11,11 +11,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Cancels one date. The shift stays (the nightly run would only recreate it) with cancelled_at and the reason set, and everyone on it is emailed after the response. Refuses a shift that has started or is already cancelled.
+ * Cancels one date (reason up to 200 characters). The shift stays (the nightly run would only recreate it) with cancelled_at and the reason set, and everyone on it is emailed after the response. Refuses a shift that has started or is already cancelled.
  */
 class CancelShift
 {
-    public function handle(User $actor, Shift $shift, string $reason): void
+    /** Returns how many people were emailed. */
+    public function handle(User $actor, Shift $shift, string $reason): int
     {
         Gate::forUser($actor)->authorize('cancel', $shift);
 
@@ -23,6 +24,10 @@ class CancelShift
 
         if ($reason === '') {
             throw new DomainException('Say why it\'s cancelled, so the people on it know.');
+        }
+
+        if (mb_strlen($reason) > 200) {
+            throw new DomainException('Keep it to 200 characters or fewer.');
         }
 
         $people = DB::transaction(function () use ($actor, $shift, $reason) {
@@ -52,5 +57,7 @@ class CancelShift
 
         $shifts = collect([$shift->loadMissing('area')]);
         defer(fn () => $people->each(fn (User $person) => $person->notify(new ShiftCancelledNotification($shifts, $reason))));
+
+        return $people->count();
     }
 }

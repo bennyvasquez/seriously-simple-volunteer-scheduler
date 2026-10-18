@@ -61,7 +61,6 @@ final class CalendarWeek
     private static function load(Organization $organization, array $days, array $areaIds): self
     {
         $shifts = Shift::query()
-            ->active()
             ->whereIn('area_id', $areaIds)
             ->whereBetween('local_date', [$days[0], $days[count($days) - 1]])
             ->with(['area', 'assignments.user', 'weeklySlot.regulars'])
@@ -78,7 +77,7 @@ final class CalendarWeek
         return $this->days;
     }
 
-    /** @return Collection<int, Shift> Active shifts on a local date, ordered by start. */
+    /** @return Collection<int, Shift> Shifts on a local date, cancelled ones included, ordered by start. */
     public function shiftsOn(string $date): Collection
     {
         return $this->shiftsByDay->get($date, new Collection);
@@ -193,14 +192,22 @@ final class CalendarWeek
         $open = $shift->openPlaces();
         $urgent = $shift->isUrgent($now);
 
-        $regulars = $shift->assignments->where('type', AssignmentType::Regular)->map(fn ($assignment) => self::firstName($assignment->user->name));
-        $shadows = $shift->assignments->where('type', AssignmentType::Shadow)->map(fn ($assignment) => self::firstName($assignment->user->name));
+        $regulars = $shift->assignments->where('type', AssignmentType::Regular)->map(fn ($assignment) => $assignment->user->firstName());
+        $shadows = $shift->assignments->where('type', AssignmentType::Shadow)->map(fn ($assignment) => $assignment->user->firstName());
 
+        $cancelled = $shift->cancelled_at !== null;
         $lines = [];
 
         $title = $shift->title ?? ($shift->weeklySlot?->is_rotation ? 'Rotation' : null);
         if ($title !== null) {
             $lines[] = $title;
+        }
+
+        if ($cancelled) {
+            // A cancelled date shows only what happened. Nobody is open, urgent or missing a regular on it.
+            $lines = [...$lines, 'Cancelled: '.$shift->cancel_reason];
+            $regulars = collect();
+            $shadows = collect();
         }
 
         $people = $regulars->values()->all();
@@ -219,17 +226,20 @@ final class CalendarWeek
             $lines[] = ($shadows->count() === 1 ? 'Shadow: ' : 'Shadows: ').$shadows->implode(', ');
         }
 
-        $openShadowSpots = max(0, $shift->shadow_spots - $shadows->count());
+        $openShadowSpots = $cancelled ? 0 : max(0, $shift->shadow_spots - $shadows->count());
         if ($openShadowSpots > 0) {
             $lines[] = $openShadowSpots === 1 ? '1 shadow spot open' : "{$openShadowSpots} shadow spots open";
         }
 
         $slot = $shift->weeklySlot;
-        if ($slot !== null && ! $slot->is_rotation && ! $slot->regulars->contains(fn (SlotRegular $regular) => $regular->activeOn($date))) {
+        if (! $cancelled && $slot !== null && ! $slot->is_rotation && ! $slot->regulars->contains(fn (SlotRegular $regular) => $regular->activeOn($date))) {
             $lines[] = 'No regular';
         }
 
         $classes = 'ev '.$shift->area->color->cssClass();
+        if ($cancelled) {
+            $classes .= ' cancelled';
+        }
         if ($open > 0) {
             $classes .= ' open';
         }
@@ -270,10 +280,5 @@ final class CalendarWeek
         }
 
         return $end->hour * 60 + $end->minute;
-    }
-
-    private static function firstName(string $name): string
-    {
-        return strtok($name, ' ') ?: $name;
     }
 }

@@ -49,6 +49,9 @@
 @foreach ($day['counts'] as $count)
 <a href="{{ route('calendar.week', ['date' => $day['date']] + $areaQuery) }}" class="cnt {{ $count['area']->color->cssClass() }}">{{ $count['text'] }}</a>
 @endforeach
+@foreach ($day['cancelled'] as $text)
+<span class="cancelled-count">{{ $text }}</span>
+@endforeach
 @if ($day['open'] > 0)
 <span class="op">{{ $day['open'] }} open</span>
 @endif

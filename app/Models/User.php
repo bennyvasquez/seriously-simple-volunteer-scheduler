@@ -115,6 +115,12 @@ class User extends Authenticatable
         return $this->roles()->exists();
     }
 
+    /** The first word of the name, for places that show a person to someone who can't see their full name. */
+    public function firstName(): string
+    {
+        return explode(' ', trim($this->name))[0];
+    }
+
     public function isActive(): bool
     {
         return $this->deactivated_at === null;

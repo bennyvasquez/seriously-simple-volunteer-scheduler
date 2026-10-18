@@ -7,6 +7,7 @@ use App\Actions\Scheduling\PutOnShift;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
+use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -38,19 +39,23 @@ class ShiftController extends Controller
         $open = $shift->cancelled_at === null && $shift->starts_at->greaterThan(now());
         $canAssign = $open && Gate::forUser($user)->allows('assign', $shift);
         $canCancel = $open && Gate::forUser($user)->allows('cancel', $shift);
-        $search = $this->search($request, $shift);
+        $byEmail = Area::query()->get()->every(fn (Area $area) => $user->canManageArea($area));
+        $canPut = $canAssign && ($shift->openPlaces() > 0 || $shift->shadow_spots > $shift->assignments->where('type', AssignmentType::Shadow)->count());
+        $search = $this->search($request, $shift, $canPut, $byEmail);
 
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
             'when' => $shift->whenText(),
             'repeats' => $this->repeats($shift),
-            'people' => $this->people($shift),
+            'people' => $this->people($shift, $user),
             'shadowsTaken' => $shift->assignments->where('type', AssignmentType::Shadow)->count(),
             'canAssign' => $canAssign,
             'canCancel' => $canCancel,
-            'picking' => $canAssign && ($request->boolean('pick') || $search['query'] !== ''),
+            'canPut' => $canPut,
+            'picking' => $canPut && ($request->boolean('pick') || $search['query'] !== ''),
             'cancelling' => $canCancel && $request->boolean('cancel'),
             'search' => $search,
+            'byEmail' => $byEmail,
         ]);
     }
 
@@ -72,7 +77,7 @@ class ShiftController extends Controller
             return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => $e->getMessage()]);
         }
 
-        $first = explode(' ', trim($person->name))[0];
+        $first = $person->firstName();
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
             ->with('status', $first.($data['type'] === 'shadow' ? ' is shadowing this shift.' : ' is on this shift.').' They were emailed.');
@@ -90,10 +95,8 @@ class ShiftController extends Controller
                 ->withErrors(['reason' => $reason === '' ? 'Say why it\'s cancelled, so the people on it know.' : 'Keep it to 200 characters or fewer.']);
         }
 
-        $people = $shift->assignments()->count();
-
         try {
-            $cancelShift->handle($request->user(), $shift, $reason);
+            $people = $cancelShift->handle($request->user(), $shift, $reason);
         } catch (DomainException $e) {
             return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => $e->getMessage()]);
         }
@@ -123,49 +126,53 @@ class ShiftController extends Controller
         return 'Repeats '.$every.', since '.$slot->valid_from->format('M j').'. '.($slot->valid_until === null ? 'No end date.' : 'Ends '.$slot->valid_until->format('M j').'.');
     }
 
-    /** @return Collection<int, array{name: string, role: string}> */
-    private function people(Shift $shift): Collection
+    /** @return Collection<int, array{name: string, role: string}> The full name only for people the viewer may see (spec section 13); a first name otherwise. */
+    private function people(Shift $shift, User $viewer): Collection
     {
         $date = $shift->local_date->toDateString();
         $slot = $shift->weeklySlot;
 
-        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date) {
+        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer) {
+            $name = $viewer->canSee($assignment->user) ? $assignment->user->name : $assignment->user->firstName();
+
             if ($assignment->type === AssignmentType::Shadow) {
-                return ['name' => $assignment->user->name, 'role' => 'Shadowing'];
+                return ['name' => $name, 'role' => 'Shadowing'];
             }
 
             $regular = $slot?->regulars->first(fn (SlotRegular $regular) => $regular->user_id === $assignment->user_id && $regular->activeOn($date));
 
             if ($regular === null) {
-                return ['name' => $assignment->user->name, 'role' => 'Regular'];
+                return ['name' => $name, 'role' => 'Regular'];
             }
 
             // On a slot that already runs every other week, its regulars work every date it runs.
             $everyOther = $regular->frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek;
 
-            return ['name' => $assignment->user->name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week'];
+            return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week'];
         })->values();
     }
 
     /**
-     * The typed search and its matches: active people not already on this shift whose name or email contains it.
+     * The typed search and its matches: active people not already on this shift whose name contains it. Someone who can manage every area also matches on email; anyone else (an area lead) matches by name only, and an email is shown only for people they may see (spec section 13).
      *
      * @return array{query: string, tooShort: bool, matches: Collection<int, User>}
      */
-    private function search(Request $request, Shift $shift): array
+    private function search(Request $request, Shift $shift, bool $canPut, bool $byEmail): array
     {
         $query = trim((string) $request->query('q', ''));
         $matches = collect();
 
-        if ($query === '' || mb_strlen($query) < self::MIN_SEARCH || ! Gate::forUser($request->user())->allows('assign', $shift)) {
+        if ($query === '' || mb_strlen($query) < self::MIN_SEARCH || ! $canPut) {
             return ['query' => $query, 'tooShort' => $query !== '' && mb_strlen($query) < self::MIN_SEARCH, 'matches' => $matches];
         }
 
+        $viewer = $request->user();
         $like = '%'.addcslashes($query, '%_\\').'%';
         $matches = User::query()->whereNull('deactivated_at')
             ->whereNotIn('id', $shift->assignments->pluck('user_id'))
-            ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('email', 'like', $like))
-            ->orderBy('name')->limit(8)->get(['id', 'name', 'email']);
+            ->where(fn ($q) => $q->where('name', 'like', $like)->when($byEmail, fn ($q) => $q->orWhere('email', 'like', $like)))
+            ->orderBy('name')->limit(8)->get(['id', 'name', 'email'])
+            ->each(fn (User $match) => $match->setAttribute('show_email', $viewer->canSee($match)));
 
         return ['query' => $query, 'tooShort' => false, 'matches' => $matches];
     }

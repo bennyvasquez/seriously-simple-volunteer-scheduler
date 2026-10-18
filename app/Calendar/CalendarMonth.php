@@ -36,7 +36,6 @@ final class CalendarMonth
         $areaIds = $areas->modelKeys();
 
         $shifts = Shift::query()
-            ->active()
             ->whereIn('area_id', $areaIds)
             ->whereBetween('local_date', [$first->toDateString(), $last->toDateString()])
             ->with('assignments')
@@ -65,7 +64,7 @@ final class CalendarMonth
         return new self($month, $weeks);
     }
 
-    /** @return list<list<array{date: string, label: string, inMonth: bool, counts: list<array{area: Area, text: string}>, open: int, closures: list<string>}>> */
+    /** @return list<list<array{date: string, label: string, inMonth: bool, counts: list<array{area: Area, text: string}>, cancelled: list<string>, open: int, closures: list<string>}>> */
     public function weeks(): array
     {
         return $this->weeks;
@@ -85,16 +84,25 @@ final class CalendarMonth
         $label = ! $inMonth && ($day->day === 1 || $firstCell) ? $day->format('M j') : (string) $day->day;
 
         if (! $inMonth) {
-            return ['date' => $date, 'label' => $label, 'inMonth' => false, 'counts' => [], 'open' => 0, 'closures' => []];
+            return ['date' => $date, 'label' => $label, 'inMonth' => false, 'counts' => [], 'cancelled' => [], 'open' => 0, 'closures' => []];
         }
 
         $onDay = $shifts->get($date, new Collection);
 
         $counts = [];
         foreach ($areas as $area) {
-            $count = $onDay->where('area_id', $area->id)->count();
+            $count = $onDay->where('area_id', $area->id)->whereNull('cancelled_at')->count();
             if ($count > 0) {
                 $counts[] = ['area' => $area, 'text' => $count.' '.$area->name.' '.Str::plural('shift', $count)];
+            }
+        }
+
+        // Cancelled dates are counted apart from the shifts, so a cancelled date never looks like a shift someone must cover.
+        $cancelled = [];
+        foreach ($areas as $area) {
+            $count = $onDay->where('area_id', $area->id)->whereNotNull('cancelled_at')->count();
+            if ($count > 0) {
+                $cancelled[] = $count.' '.$area->name.' '.Str::plural('shift', $count).' cancelled';
             }
         }
 
@@ -114,6 +122,7 @@ final class CalendarMonth
             'label' => $label,
             'inMonth' => true,
             'counts' => $counts,
+            'cancelled' => $cancelled,
             'open' => $onDay->sum(fn (Shift $shift) => $shift->openPlaces()),
             'closures' => $closed,
         ];

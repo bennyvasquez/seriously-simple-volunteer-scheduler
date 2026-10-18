@@ -39,7 +39,7 @@
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
 <div class="field">
-<label for="q">Find a person by name or email</label>
+<label for="q">Find a person by name{{ $byEmail ? ' or email' : '' }}</label>
 <input type="search" name="q" id="q" value="{{ $search['query'] }}" minlength="2" autocomplete="off" @if ($search['tooShort']) aria-invalid="true" aria-describedby="q-error" @endif>
 @if ($search['tooShort'])<span class="field-error" id="q-error">Type at least 2 letters.</span>@endif
 </div>
@@ -56,7 +56,7 @@
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
 <input type="hidden" name="person" value="{{ $match->id }}">
-<div class="row"><span>{{ $match->name }}<br><span class="muted">{{ $match->email }}</span></span></div>
+<div class="row"><span>{{ $match->name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
 <div class="add-actions">
 @if ($shift->openPlaces() > 0)<button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->name }} on this shift">Put on shift</button>@endif
 @if ($shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->name }} on this shift as a shadow">Shadow</button>@endif
@@ -65,7 +65,6 @@
 @empty
 <p class="muted">Nobody matches "{{ $search['query'] }}". Only people with an active account who aren't already on this shift are listed.</p>
 @endforelse
-@if ($shift->openPlaces() === 0 && $shift->shadow_spots <= $shadowsTaken)<p class="muted">This shift is full. Raise the number of people needed first.</p>@endif
 @endif
 @endif
 
@@ -81,9 +80,9 @@
 <a href="{{ $panelUrl() }}" class="btn">Keep it</a>
 </div>
 </form>
-@elseif ($canAssign || $canCancel)
+@elseif ($canPut || $canCancel)
 <div class="add-actions">
-@if ($canAssign && ! $picking)<a href="{{ $panelUrl(['pick' => 1]) }}" class="btn btn-primary">Put someone on it</a>@endif
+@if ($canPut && ! $picking)<a href="{{ $panelUrl(['pick' => 1]) }}" class="btn btn-primary">Put someone on it</a>@endif
 @if ($canCancel)<a href="{{ $panelUrl(['cancel' => 1]) }}" class="btn">Cancel this date</a>@endif
 </div>
 @endif

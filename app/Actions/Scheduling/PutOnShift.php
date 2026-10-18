@@ -34,11 +34,11 @@ class PutOnShift
             }
 
             if (! $person->isActive()) {
-                throw new DomainException(self::firstName($person).' has been turned off and can\'t be put on a shift.');
+                throw new DomainException($person->firstName().' has been turned off and can\'t be put on a shift.');
             }
 
             if ($shift->assignments()->where('user_id', $person->id)->exists()) {
-                throw new DomainException(self::firstName($person).' is already on this shift.');
+                throw new DomainException($person->firstName().' is already on this shift.');
             }
 
             if ($type === AssignmentType::Regular && $shift->openPlaces() === 0) {
@@ -61,10 +61,5 @@ class PutOnShift
         defer(fn () => $person->notify(new PutOnShiftNotification($shift->loadMissing('area'))));
 
         return $assignment;
-    }
-
-    private static function firstName(User $person): string
-    {
-        return explode(' ', trim($person->name))[0];
     }
 }

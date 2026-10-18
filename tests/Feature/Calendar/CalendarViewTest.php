@@ -101,12 +101,34 @@ class CalendarViewTest extends TestCase
             ->assertSee('1 open, tomorrow');
     }
 
-    public function test_cancelled_shifts_are_left_off(): void
+    public function test_cancelled_shifts_show_as_cancelled_and_are_not_open_or_urgent(): void
     {
-        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30');
-        $shift->forceFill(['cancelled_at' => now()])->save();
+        $shift = $this->shiftOn('2026-10-15', '18:30', '21:30');
+        $shift->forceFill(['cancelled_at' => now(), 'cancel_reason' => 'Power outage'])->save();
+        $coordinator = $this->coordinator();
 
-        $this->actingAs($this->coordinator())->get(route('calendar.week', ['date' => '2026-10-22']))->assertDontSee('6:30 to 9:30');
+        $this->actingAs($coordinator)->get(route('calendar.week', ['date' => '2026-10-15']))
+            ->assertOk()
+            ->assertSee('6:30 to 9:30pm')
+            ->assertSee('Cancelled: Power outage')
+            ->assertSee('Front desk, Thursday, October 15, 6:30 to 9:30pm, Cancelled: Power outage', false)
+            ->assertSee('class="ev area-blue cancelled"', false)
+            ->assertDontSee('1 open')
+            ->assertDontSee('urgent')
+            ->assertDontSee('No regular');
+
+        $this->actingAs($coordinator)->get(route('calendar.week'))->assertDontSee('Front desk, 1 open');
+        $this->assertSame(0, $shift->fresh()->openPlaces());
+    }
+
+    public function test_the_month_counts_cancelled_dates_apart_from_shifts(): void
+    {
+        $this->shiftOn('2026-10-22', '10:00', '12:00');
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30');
+        $shift->forceFill(['cancelled_at' => now(), 'cancel_reason' => 'Power outage'])->save();
+
+        $this->actingAs($this->coordinator())->get(route('calendar.month', ['month' => '2026-10']))
+            ->assertOk()->assertSee('1 Front desk shift')->assertSee('1 Front desk shift cancelled')->assertSee('1 open');
     }
 
     public function test_the_area_filter_hides_unticked_areas(): void

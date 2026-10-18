@@ -213,7 +213,7 @@ class ShiftDetailsTest extends TestCase
 
         $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))
             ->assertOk()->assertSee('Sam')->assertSee('Shadowing')->assertSee('1 of 1 place filled')->assertSee('1 of 1 shadow spot taken')
-            ->assertSee('One time')->assertSee('Thursday, October 22')->assertSee('Put someone on it')->assertSee('Cancel this date');
+            ->assertSee('One time')->assertSee('Thursday, October 22')->assertSee('Cancel this date');
     }
 
     public function test_the_panel_describes_a_repeating_slot_and_its_regulars(): void
@@ -306,5 +306,71 @@ class ShiftDetailsTest extends TestCase
 
         $this->actingAs($this->coordinator())->get(route('calendar.week', ['date' => '2026-10-22']))
             ->assertOk()->assertSee(route('calendar.shift', $shift), false);
+    }
+
+    public function test_a_reason_over_200_characters_is_refused_by_the_action(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30');
+
+        try {
+            app(CancelShift::class)->handle($this->coordinator(), $shift, str_repeat('a', 201));
+            $this->fail('A 201 character reason was accepted.');
+        } catch (DomainException $e) {
+            $this->assertSame('Keep it to 200 characters or fewer.', $e->getMessage());
+        }
+
+        $this->assertNull($shift->fresh()->cancelled_at);
+    }
+
+    public function test_cancelling_returns_how_many_active_people_were_emailed(): void
+    {
+        Notification::fake();
+        $shift = $this->shiftWithPerson(name: 'Sam', shadow: 'Robin');
+        User::query()->where('name', 'Robin')->update(['deactivated_at' => now()]);
+
+        $count = app(CancelShift::class)->handle($this->coordinator(), $shift, 'Power outage');
+
+        $this->assertSame(1, $count);
+        $this->actingAs($this->coordinator())->post(route('calendar.shift.cancel', $this->shiftWithPerson('Pat')), ['reason' => 'Snow'])
+            ->assertSessionHas('status', fn (string $status) => str_contains($status, '1 person was emailed.'));
+    }
+
+    public function test_put_someone_on_it_is_hidden_when_nothing_is_left_to_fill(): void
+    {
+        $shift = $this->shiftWithPerson();
+
+        $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))
+            ->assertOk()->assertDontSee('Put someone on it')->assertSee('Cancel this date');
+    }
+
+    public function test_a_lead_searches_by_name_only_and_sees_emails_only_of_people_they_may_see(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30');
+        User::factory()->create(['name' => 'Robin Example', 'email' => 'robin.secret@example.org']);
+        $lead = $this->coordinator(Role::AreaLead, $this->frontDesk);
+
+        $this->actingAs($lead)->get(route('calendar.shift', [$shift, 'q' => 'robin']))
+            ->assertOk()->assertSee('Robin Example')->assertDontSee('robin.secret@example.org');
+
+        $this->actingAs($lead)->get(route('calendar.shift', [$shift, 'q' => 'secret']))
+            ->assertOk()->assertDontSee('Robin Example');
+
+        $this->actingAs($this->coordinator())->get(route('calendar.shift', [$shift, 'q' => 'secret']))
+            ->assertOk()->assertSee('Robin Example')->assertSee('robin.secret@example.org');
+    }
+
+    public function test_the_panel_shows_a_full_name_only_for_people_the_viewer_may_see(): void
+    {
+        $shift = $this->shiftWithPerson(name: 'Sam Example');
+        $outsideLead = $this->coordinator(Role::AreaLead, $this->hostedEvents);
+        $areaLead = $this->coordinator(Role::AreaLead, $this->frontDesk);
+
+        $this->actingAs($outsideLead)->get(route('calendar.shift', $shift))->assertOk()->assertSee('Sam')->assertDontSee('Sam Example');
+        $this->actingAs($areaLead)->get(route('calendar.shift', $shift))->assertOk()->assertSee('Sam Example');
+    }
+
+    public function test_user_first_name(): void
+    {
+        $this->assertSame('Robin', User::factory()->make(['name' => ' Robin Example '])->firstName());
     }
 }

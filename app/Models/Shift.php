@@ -71,6 +71,11 @@ class Shift extends Model
 
     public function openPlaces(): int
     {
+        // A cancelled date has no places to fill.
+        if ($this->cancelled_at !== null) {
+            return 0;
+        }
+
         return max(0, $this->headcount - $this->filledCount());
     }
 
