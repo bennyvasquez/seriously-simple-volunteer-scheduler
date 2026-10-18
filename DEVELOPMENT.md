@@ -14,7 +14,7 @@ The app is at http://localhost:8000. The database isn't published to your machin
 
 ## Setting up an organization
 
-Run `docker compose exec app php artisan ssvs:setup`. It asks for the organization's name and time zone and the first admin's name and email, then prints a one-time link (and emails it). That link is how the first admin logs in. Opening it asks them to choose a password and connect an authenticator app before anything else. The schedule screens aren't built yet, so after setup the home page is a placeholder.
+Run `docker compose exec app php artisan ssvs:setup`. It asks for the organization's name and time zone and the first admin's name and email, then prints a one-time link (and emails it). That link is how the first admin logs in. Opening it asks them to choose a password and connect an authenticator app before anything else. Once you're logged in, go to http://localhost:8000/calendar to reach the coordinator calendar. Anyone with a role can open it; admins and coordinators can change everything. The people pages don't exist yet, so the only way to add more people is the command line (for example `docker compose exec app php artisan tinker`) until they do.
 
 Signing out of all devices relies on `SESSION_DRIVER=database`, which `.env.example` sets, so keep it on any server.
 
