@@ -6,12 +6,14 @@ use App\Http\Controllers\Auth\InitialPasswordController;
 use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Http\Controllers\Calendar\AddController;
+use App\Http\Controllers\Calendar\AreaController;
 use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Calendar\ClosureController;
 use App\Http\Controllers\Calendar\RegularController;
 use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\PersonSecurityController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -51,7 +53,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/slots/{slot}', [AddController::class, 'updateSlot'])->name('calendar.slots.update');
         Route::get('/calendar/closures/create', [ClosureController::class, 'create'])->name('calendar.closures.create');
         Route::post('/calendar/closures', [ClosureController::class, 'store'])->name('calendar.closures.store');
+        Route::get('/calendar/areas/create', [AreaController::class, 'create'])->name('calendar.areas.create');
+        Route::post('/calendar/areas', [AreaController::class, 'store'])->name('calendar.areas.store');
+        Route::get('/calendar/areas/{area}/edit', [AreaController::class, 'edit'])->name('calendar.areas.edit');
+        Route::post('/calendar/areas/{area}', [AreaController::class, 'update'])->name('calendar.areas.update');
     });
+    Route::get('/settings', [SettingsController::class, 'edit'])->name('settings');
+    Route::put('/settings', [SettingsController::class, 'update']);
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');
     // The reset screens are for logged-out people, so "Forgot your password?" on the confirm screen logs out first.

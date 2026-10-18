@@ -298,6 +298,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-16 | Login, invitations and two-factor are built backend first; their screens follow a quick volunteer check of new wireframes (UX principle 6). |
 | 2026-10-16 | Two-factor for coordinators and admins: authenticator app plus recovery codes, with an emailed code as a fallback after password login only. |
 | 2026-10-16 | Laravel Fortify provides login, password reset, rate limiting and two-factor. Passkeys stay off for now (Fortify's passkey package is pre-1.0). |
+| 2026-10-17 | Organization settings built so far are name, time zone and weeks to generate ahead (1 to 26), changed by admins only; the other organization settings in section 14 come with their features. Changing the time zone doesn't move or regenerate shifts already made; raising weeks ahead makes the extra shifts right away. Coordinators and admins add and edit areas from the calendar sidebar; a new area takes the next unused color, and names are unique ignoring case. |
 | 2026-10-16 | Area leads also need two-factor and a password: they can see contact details for their areas. |
 | 2026-10-16 | Screens use one plain CSS file with no build step; the skeleton's Vite, Tailwind and npm setup is removed, and the font is self-hosted. |
 | 2026-10-16 | Minimum password length is 10 characters, with no check against breached-password lists, because that needs an outside service call on every password change. |
