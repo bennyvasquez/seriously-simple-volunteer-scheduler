@@ -23,16 +23,21 @@
 <div class="field">
 <label for="timezone">Time zone</label>
 <select name="timezone" id="timezone" aria-describedby="timezone-hint @error('timezone') timezone-error @enderror" @error('timezone') aria-invalid="true" @enderror>
-@foreach ($timezones as $timezone)
-<option value="{{ $timezone }}" @selected(old('timezone', $organization->timezone) === $timezone)>{{ $timezone }}</option>
+@php $current = old('timezone', $organization->timezone); @endphp
+@foreach ($timezones as $group => $zones)
+<optgroup label="{{ $group }}">
+@foreach ($zones as $timezone)
+<option value="{{ $timezone }}" @selected($current === $timezone)>{{ $timezone }}</option>
+@endforeach
+</optgroup>
 @endforeach
 </select>
-<span class="field-hint" id="timezone-hint">Changing the time zone doesn't move shifts already on the schedule. New shifts use the new time zone.</span>
+<span class="field-hint" id="timezone-hint">Shifts already made keep their exact time, so after a change they show at different clock times. New shifts use the new time zone.</span>
 @error('timezone')<span class="field-error" id="timezone-error">{{ $message }}</span>@enderror
 </div>
 
 <h2>The schedule</h2>
-<x-field name="weeks_ahead" type="number" label="Make shifts this many weeks ahead" :value="old('weeks_ahead', $organization->weeks_ahead)" hint="Every night, weekly slots turn into dated shifts this far ahead. More weeks lets volunteers plan further, and means more shifts to fix if a slot changes. You can choose from 1 to 26 weeks." min="1" max="26" step="1" required />
+<x-field name="weeks_ahead" type="number" label="Make shifts this many weeks ahead" :value="old('weeks_ahead', $organization->weeks_ahead)" hint="Every night, weekly slots turn into dated shifts this far ahead. More weeks lets volunteers plan further, and means more shifts to fix if a slot changes. You can choose from 1 to 26 weeks. Lowering it doesn't remove shifts already made." min="1" max="26" step="1" required />
 
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Save settings</button>

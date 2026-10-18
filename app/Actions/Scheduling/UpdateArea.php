@@ -6,6 +6,8 @@ use App\Enums\AreaColor;
 use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -22,9 +24,10 @@ class UpdateArea
         $name = self::cleanName($name);
 
         return DB::transaction(function () use ($actor, $area, $name, $color) {
-            // The area row first, the same lock order as everything that touches an area's shifts.
-            $area = Area::query()->whereKey($area->id)->lockForUpdate()->firstOrFail();
-            self::ensureNameIsFree($name, $area->id);
+            // Every area row, once, in id order, so two people editing different areas at once can't deadlock. The area rows come before anything else in the lock order.
+            $areas = Area::query()->orderBy('id')->lockForUpdate()->get();
+            $area = $areas->firstWhere('id', $area->id) ?? throw (new ModelNotFoundException)->setModel(Area::class, [$area->id]);
+            self::assertNameIsFree($areas, $name, $area->id);
 
             $area->name = $name;
             $area->color = $color;
@@ -57,8 +60,13 @@ class UpdateArea
     /** Locks every area name while it checks, so two people adding the same name at once can't both succeed. */
     public static function ensureNameIsFree(string $name, ?int $exceptId): void
     {
-        $taken = Area::query()->lockForUpdate()->get(['id', 'name'])
-            ->first(fn (Area $other) => $other->id !== $exceptId && mb_strtolower($other->name) === mb_strtolower($name));
+        self::assertNameIsFree(Area::query()->orderBy('id')->lockForUpdate()->get(['id', 'name']), $name, $exceptId);
+    }
+
+    /** @param  Collection<int, Area>  $areas */
+    private static function assertNameIsFree(Collection $areas, string $name, ?int $exceptId): void
+    {
+        $taken = $areas->first(fn (Area $other) => $other->id !== $exceptId && mb_strtolower($other->name) === mb_strtolower($name));
 
         if ($taken !== null) {
             throw ValidationException::withMessages(['name' => "There's already an area called {$taken->name}."]);

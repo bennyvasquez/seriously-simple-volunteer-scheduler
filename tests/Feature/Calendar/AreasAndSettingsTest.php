@@ -173,6 +173,19 @@ class AreasAndSettingsTest extends TestCase
         $this->assertSame(['Example Makers', 'America/Chicago', 6], [$organization->name, $organization->timezone, $organization->weeks_ahead]);
     }
 
+    public function test_the_time_zone_list_is_grouped_with_the_united_states_first(): void
+    {
+        $html = $this->actingAs($this->withRole(Role::Admin))->get(route('settings'))->assertOk()
+            ->assertSee('Shifts already made keep their exact time', false)
+            ->assertSee("Lowering it doesn't remove shifts already made.")
+            ->getContent();
+
+        $this->assertLessThan(strpos($html, '<optgroup label="Africa">'), strpos($html, '<optgroup label="United States">'));
+        $this->assertSame(1, substr_count($html, 'value="America/Detroit"'));
+        $this->assertMatchesRegularExpression('/value="America\/Detroit" selected/', $html);
+        $this->assertStringContainsString('<optgroup label="Europe">', $html);
+    }
+
     public function test_the_action_refuses_non_admins_and_bad_values(): void
     {
         try {

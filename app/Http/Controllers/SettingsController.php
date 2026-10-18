@@ -27,7 +27,7 @@ class SettingsController extends Controller
 
         return view('settings', [
             'organization' => $organization,
-            'timezones' => DateTimeZone::listIdentifiers(),
+            'timezones' => $this->groupedTimezones(),
             'areaQuery' => $this->areaQuery($request),
             'backDate' => $organization->today()->toDateString(),
         ]);
@@ -52,5 +52,22 @@ class SettingsController extends Controller
         $updateSettings->handle($request->user(), (string) $request->input('name'), (string) $request->input('timezone'), (int) $request->input('weeks_ahead'));
 
         return redirect()->route('settings', $this->areaQuery($request))->with('status', 'Saved the settings.');
+    }
+
+    /**
+     * United States zones first, then every other zone grouped by the part before the first slash.
+     *
+     * @return array<string, list<string>>
+     */
+    private function groupedTimezones(): array
+    {
+        $us = ['America/New_York', 'America/Detroit', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu'];
+        $groups = ['United States' => $us];
+
+        foreach (array_diff(DateTimeZone::listIdentifiers(), $us) as $identifier) {
+            $groups[str_contains($identifier, '/') ? strstr($identifier, '/', true) : 'Other'][] = $identifier;
+        }
+
+        return $groups;
     }
 }
