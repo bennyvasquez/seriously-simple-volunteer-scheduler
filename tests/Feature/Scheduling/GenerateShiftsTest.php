@@ -204,4 +204,33 @@ class GenerateShiftsTest extends TestCase
         $this->assertSame('2026-10-15', $entry->details['from']);
         $this->assertSame('2026-10-28', $entry->details['to']);
     }
+
+    public function test_it_leaves_out_regulars_who_have_been_turned_off(): void
+    {
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 2]);
+        $active = User::factory()->create();
+        $turnedOff = User::factory()->create(['deactivated_at' => now()]);
+        $slot->regulars()->create(['user_id' => $active->id, 'starts_on' => '2026-01-01']);
+        $slot->regulars()->create(['user_id' => $turnedOff->id, 'starts_on' => '2026-01-01']);
+
+        $this->generate();
+
+        $this->assertSame(2, Assignment::count());
+        $this->assertFalse(Assignment::query()->where('user_id', $turnedOff->id)->exists());
+    }
+
+    public function test_it_adds_no_more_regulars_than_the_shift_needs(): void
+    {
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1]);
+        $first = User::factory()->create();
+        $second = User::factory()->create();
+        $slot->regulars()->create(['user_id' => $first->id, 'starts_on' => '2026-01-01']);
+        $slot->regulars()->create(['user_id' => $second->id, 'starts_on' => '2026-01-01']);
+
+        $this->generate();
+
+        foreach (Shift::query()->get() as $shift) {
+            $this->assertSame([$first->id], $shift->assignments()->pluck('user_id')->all());
+        }
+    }
 }

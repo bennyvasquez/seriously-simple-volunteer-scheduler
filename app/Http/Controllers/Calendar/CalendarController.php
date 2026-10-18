@@ -89,6 +89,7 @@ class CalendarController extends Controller
             'now' => CarbonImmutable::now(),
             'today' => $organization->today()->toDateString(),
             'nothingShown' => $shown === [],
+            'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
         ];
     }
 

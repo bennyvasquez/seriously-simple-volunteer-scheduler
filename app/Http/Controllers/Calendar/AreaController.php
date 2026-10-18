@@ -15,7 +15,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * Adding and editing areas from the calendar sidebar. The route's can:viewAny middleware lets area leads reach the calendar, and the policy refuses them here: only coordinators and admins add or edit areas.
+ * Adding and editing areas from the calendar sidebar. The route's can:viewAny middleware lets area leads reach the calendar, and the policy refuses them here: only coordinators and admins add or edit areas. The edit page also lists the area's weekly slots that haven't ended, with links to edit each one and add a regular, so a slot with no shifts on the calendar yet can still be reached.
  */
 class AreaController extends Controller
 {
@@ -27,6 +27,7 @@ class AreaController extends Controller
 
         return view('calendar.area', [
             'area' => null,
+            'slots' => collect(),
             'colors' => AreaColor::cases(),
             'areaQuery' => $this->areaQuery($request),
             'backDate' => Organization::current()->today()->toDateString(),
@@ -52,8 +53,15 @@ class AreaController extends Controller
     {
         Gate::forUser($request->user())->authorize('update', $area);
 
+        $today = Organization::current()->today()->toDateString();
+
         return view('calendar.area', [
             'area' => $area,
+            // Slots that haven't ended, so a slot with no shifts on the calendar yet can still be found.
+            'slots' => $area->weeklySlots()
+                ->where(fn ($query) => $query->whereNull('valid_until')->orWhere('valid_until', '>=', $today))
+                ->orderBy('weekday')->orderBy('start_time')->orderBy('id')->get(),
+            'today' => $today,
             'colors' => AreaColor::cases(),
             'areaQuery' => $this->areaQuery($request),
             'backDate' => Organization::current()->today()->toDateString(),

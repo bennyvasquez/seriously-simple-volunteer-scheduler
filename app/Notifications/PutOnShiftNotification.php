@@ -28,6 +28,6 @@ class PutOnShiftNotification extends Notification
     {
         return (new MailMessage)
             ->subject("You're on a {$this->area} shift")
-            ->line("You're on the {$this->area} shift on {$this->when}. If you can't make it, release it from your shifts.");
+            ->line("You're on the {$this->area} shift on {$this->when}. If you can't make it, let your coordinator know.");
     }
 }

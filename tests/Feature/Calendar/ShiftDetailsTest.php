@@ -64,6 +64,16 @@ class ShiftDetailsTest extends TestCase
         return app(CreateOneTimeShift::class)->handle($this->coordinator(), $area ?? $this->frontDesk, $date, $start, $end, $headcount, $shadowSpots, null);
     }
 
+    /** A shift from 8am to noon today, which started an hour ago. CreateOneTimeShift refuses a start time that has passed, so it's made earlier in the morning. */
+    private function startedShift(): Shift
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 07:00', self::TIMEZONE));
+        $shift = $this->shiftOn('2026-10-14', '08:00', '12:00');
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 09:00', self::TIMEZONE));
+
+        return $shift;
+    }
+
     private function shiftWithPerson(string $name = 'Sam', ?string $shadow = null): Shift
     {
         $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', shadowSpots: $shadow === null ? 0 : 1);
@@ -125,10 +135,49 @@ class ShiftDetailsTest extends TestCase
 
         $this->assertSame([
             'Robin is already on this shift.',
-            'This shift is full. Raise the number of people needed first.',
+            'This shift is full.',
             "There's no shadow spot left on this shift.",
         ], array_slice($messages, 0, 3));
         $this->assertCount(4, $messages);
+    }
+
+    public function test_putting_someone_on_a_shift_that_overlaps_another_of_theirs_is_refused(): void
+    {
+        $woodShop = Area::factory()->create(['name' => 'Wood shop']);
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $coordinator = $this->coordinator();
+        app(PutOnShift::class)->handle($coordinator, $this->shiftOn('2026-10-22', '18:00', '21:00', area: $woodShop), $robin, AssignmentType::Regular);
+        $cancelled = $this->shiftOn('2026-10-23', '18:00', '21:00', area: $woodShop);
+        app(PutOnShift::class)->handle($coordinator, $cancelled, $robin, AssignmentType::Regular);
+        app(CancelShift::class)->handle($coordinator, $cancelled, 'Power outage');
+
+        try {
+            app(PutOnShift::class)->handle($coordinator, $this->shiftOn('2026-10-22', '18:30', '21:30', shadowSpots: 1), $robin, AssignmentType::Shadow);
+            $this->fail('An overlapping shift was allowed.');
+        } catch (DomainException $e) {
+            $this->assertSame('Robin is already on Wood shop, Thursday, October 22, 6 to 9pm.', $e->getMessage());
+        }
+
+        // Back to back is fine, and so is a cancelled shift at the same time.
+        app(PutOnShift::class)->handle($coordinator, $this->shiftOn('2026-10-22', '21:00', '22:00'), $robin, AssignmentType::Regular);
+        app(PutOnShift::class)->handle($coordinator, $this->shiftOn('2026-10-23', '18:30', '21:30'), $robin, AssignmentType::Regular);
+        $this->assertSame(4, Assignment::query()->where('user_id', $robin->id)->count());
+    }
+
+    public function test_putting_someone_on_a_shift_is_logged_against_the_shift_with_the_assignment(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', shadowSpots: 1);
+        $robin = User::factory()->create();
+        $coordinator = $this->coordinator();
+
+        $assignment = app(PutOnShift::class)->handle($coordinator, $shift, $robin, AssignmentType::Shadow);
+
+        $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.added')->sole();
+        $this->assertSame($coordinator->id, $entry->actor_id);
+        $this->assertSame($robin->id, $entry->affected_user_id);
+        $this->assertSame(['assignment_id' => $assignment->id, 'type' => 'shadow'], $entry->details);
+        $this->assertSame(['old' => null, 'new' => $robin->id], $entry->changes['user_id']);
+        $this->assertSame(['old' => null, 'new' => 'shadow'], $entry->changes['type']);
     }
 
     public function test_a_shadow_goes_in_a_shadow_spot_and_not_in_a_place(): void
@@ -142,7 +191,7 @@ class ShiftDetailsTest extends TestCase
 
     public function test_a_started_or_cancelled_shift_takes_nobody(): void
     {
-        $started = $this->shiftOn('2026-10-14', '08:00', '12:00');
+        $started = $this->startedShift();
         $cancelled = $this->shiftOn('2026-10-22', '18:30', '21:30');
         app(CancelShift::class)->handle($this->coordinator(), $cancelled, 'Power outage');
 
@@ -188,7 +237,7 @@ class ShiftDetailsTest extends TestCase
 
     public function test_a_shift_that_has_started_cannot_be_cancelled(): void
     {
-        $started = $this->shiftOn('2026-10-14', '08:00', '12:00');
+        $started = $this->startedShift();
 
         $this->expectException(DomainException::class);
         app(CancelShift::class)->handle($this->coordinator(), $started, 'Too late');
@@ -204,7 +253,21 @@ class ShiftDetailsTest extends TestCase
         $this->assertStringContainsString('The Front desk shift on Thursday, October 22, 6:30 to 9:30pm is cancelled: Power outage. You don\'t need to do anything.', $text);
 
         $mail = (new PutOnShiftNotification($shift))->toMail($person);
-        $this->assertStringContainsString("You're on the Front desk shift on Thursday, October 22, 6:30 to 9:30pm. If you can't make it, release it from your shifts.", implode(' ', $mail->introLines));
+        $this->assertStringContainsString("You're on the Front desk shift on Thursday, October 22, 6:30 to 9:30pm. If you can't make it, let your coordinator know.", implode(' ', $mail->introLines));
+    }
+
+    public function test_a_reason_that_ends_with_a_period_is_not_doubled(): void
+    {
+        $shift = $this->shiftWithPerson()->load('area');
+        $person = $shift->assignments()->first()->user;
+
+        $one = implode(' ', (new ShiftCancelledNotification(collect([$shift]), 'Power outage.'))->toMail($person)->introLines);
+        $several = implode(' ', (new ShiftCancelledNotification(collect([$shift, $shift]), 'Is the heat back on?'))->toMail($person)->introLines);
+
+        $this->assertStringContainsString('is cancelled: Power outage. You don\'t need to do anything.', $one);
+        $this->assertStringContainsString('These shifts are cancelled: Is the heat back on? ', $several.' ');
+        $this->assertStringNotContainsString('..', $one);
+        $this->assertStringNotContainsString('?.', $several);
     }
 
     public function test_the_panel_shows_people_and_places(): void
@@ -234,7 +297,7 @@ class ShiftDetailsTest extends TestCase
 
     public function test_a_started_shift_is_read_only(): void
     {
-        $shift = $this->shiftOn('2026-10-14', '08:00', '12:00');
+        $shift = $this->startedShift();
 
         $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))
             ->assertOk()->assertDontSee('Put someone on it')->assertDontSee('Cancel this date');
@@ -365,7 +428,8 @@ class ShiftDetailsTest extends TestCase
         $outsideLead = $this->coordinator(Role::AreaLead, $this->hostedEvents);
         $areaLead = $this->coordinator(Role::AreaLead, $this->frontDesk);
 
-        $this->actingAs($outsideLead)->get(route('calendar.shift', $shift))->assertOk()->assertSee('Sam')->assertDontSee('Sam Example');
+        // A first name and last initial, as in the person search, so two people called Sam can be told apart.
+        $this->actingAs($outsideLead)->get(route('calendar.shift', $shift))->assertOk()->assertSee('Sam E.')->assertDontSee('Sam Example');
         $this->actingAs($areaLead)->get(route('calendar.shift', $shift))->assertOk()->assertSee('Sam Example');
     }
 

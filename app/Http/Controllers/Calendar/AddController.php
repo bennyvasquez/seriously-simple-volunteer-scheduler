@@ -311,7 +311,7 @@ class AddController extends Controller
 
         $headings = [
             'staffed' => fn (int $count) => $plural($count, 'shift with people on it kept its old details:', 'shifts with people on them kept their old details:'),
-            'staffedOff' => fn (int $count) => $plural($count, 'shift with people on it is no longer on this slot\'s schedule. Cancel it or move the people:', 'shifts with people on them are no longer on this slot\'s schedule. Cancel them or move the people:'),
+            'staffedOff' => fn (int $count) => $plural($count, 'shift with people on it is no longer on this slot\'s schedule. Cancel that date from the calendar if nobody should work it.', 'shifts with people on them are no longer on this slot\'s schedule. Cancel those dates from the calendar if nobody should work them.'),
             'edited' => fn (int $count) => $plural($count, 'shift edited on its own kept its own details:', 'shifts edited on their own kept their own details:'),
             'editedOff' => fn (int $count) => $plural($count, 'shift edited on its own is no longer on this slot\'s schedule. Cancel it if it isn\'t needed:', 'shifts edited on their own are no longer on this slot\'s schedule. Cancel them if they aren\'t needed:'),
         ];
@@ -385,10 +385,15 @@ class AddController extends Controller
         $startsOn = CarbonImmutable::parse($validFrom, 'UTC');
         $summary = $slot->describe().($frequency === SlotFrequency::Weekly ? ', every week' : '').', starting '.$startsOn->format('D M j').'.';
 
-        if ($startsOn->greaterThan($windowEnd)) {
-            $opens = $startsOn->subWeeks($organization->weeks_ahead);
+        // The first date the slot runs on is within two weeks of its first date, unless its last date comes first.
+        $firstShift = $slot->datesWithin($startsOn, $startsOn->addDays(13))[0] ?? null;
 
-            return ['summary' => $summary, 'detail' => 'The first shifts appear on the calendar on '.$opens->format('l, F j').', '.$organization->weeks_ahead.' weeks before '.$startsOn->format('l, F j').'.'];
+        if ($firstShift !== null && $firstShift > $windowEnd->toDateString()) {
+            $first = CarbonImmutable::parse($firstShift, 'UTC');
+            // The window is today plus weeks_ahead * 7 - 1 days, so the first shift joins it that many days before.
+            $opens = $first->subDays($organization->weeks_ahead * 7 - 1);
+
+            return ['summary' => $summary, 'detail' => 'The first shift is on '.$first->format('l, F j').'. It appears on the calendar on '.$opens->format('l, F j').', since the calendar shows '.$organization->weeks_ahead.($organization->weeks_ahead === 1 ? ' week' : ' weeks').' ahead.'];
         }
 
         $detail = 'Shifts appear on the calendar as soon as you save, '.$organization->weeks_ahead.' weeks ahead';
@@ -414,8 +419,15 @@ class AddController extends Controller
         };
         $weekOf = max($organization->today()->toDateString(), $date->toDateString());
 
+        // With no shifts on the calendar yet, nothing on the week leads back to the slot, so the status links to it.
+        $links = $count > 0 ? [] : array_values(array_filter([
+            ['label' => 'Edit the slot', 'url' => route('calendar.slots.edit', ['slot' => $slot] + $areaQuery)],
+            $slot->is_rotation ? null : ['label' => 'Add a regular', 'url' => route('calendar.slots.regulars.create', ['slot' => $slot] + $areaQuery)],
+        ]));
+
         return redirect()->route('calendar.week', ['date' => $weekOf] + $areaQuery)
-            ->with('status', 'Added '.$slot->describe().', starting '.$date->format('l, F j').'. '.$onCalendar);
+            ->with('status', 'Added '.$slot->describe().', starting '.$date->format('l, F j').'. '.$onCalendar)
+            ->with('statusLinks', $links);
     }
 
     /** @return Collection<int, Area> */

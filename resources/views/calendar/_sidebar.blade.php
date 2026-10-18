@@ -1,5 +1,8 @@
-{{-- The week and day sidebar: add, the area filter, Needs attention, the border key and settings. --}}
+{{-- The week and day sidebar: add, add a closure (for people who can close an area), the area filter, Needs attention, the border key and settings. --}}
 <a href="{{ route('calendar.add', ['date' => $date->toDateString()] + $areaQuery) }}" class="btn btn-primary cal-add">+ Add</a>
+@if ($canClose)
+<a href="{{ route('calendar.closures.create', $areaQuery) }}" class="btn cal-add">Add a closure</a>
+@endif
 
 <section class="cal-side-section">
 <h2>Areas</h2>

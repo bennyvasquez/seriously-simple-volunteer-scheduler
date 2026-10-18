@@ -283,6 +283,16 @@ class ClosureTest extends TestCase
             ->assertDontSee('WHEN');
     }
 
+    public function test_the_days_never_reload_the_form_and_the_check_button_is_always_there(): void
+    {
+        $html = $this->actingAs($this->coordinator())->get(route('calendar.closures.create'))->assertOk()->getContent();
+
+        $this->assertDoesNotMatchRegularExpression('/<input type="date"[^>]*onchange/', $html);
+        $this->assertMatchesRegularExpression('/<input type="checkbox" name="area\[\]"[^>]*onchange/', $html);
+        $this->assertStringContainsString('<button type="submit" class="btn" name="refresh" value="1">Check what this cancels</button>', $html);
+        $this->assertStringNotContainsString('<noscript>', $html);
+    }
+
     public function test_the_form_names_the_area_of_each_shift_when_closing_several(): void
     {
         $this->shiftOn('2026-11-26');
@@ -350,6 +360,25 @@ class ClosureTest extends TestCase
             ->assertSee('href="'.route('calendar.closures.create').'"', false);
         $this->actingAs($this->withRole(Role::AreaLead, $this->frontDesk))->get(route('calendar.month', ['month' => '2026-11']))
             ->assertDontSee('Add a closure');
+    }
+
+    public function test_the_week_sidebar_links_to_closures_only_for_people_who_can_close_an_area(): void
+    {
+        $this->actingAs($this->coordinator())->get(route('calendar.week', ['date' => '2026-11-26']))
+            ->assertSee('href="'.route('calendar.closures.create').'"', false)->assertSee('Add a closure');
+        $this->actingAs($this->coordinator())->get(route('calendar.day', ['date' => '2026-11-26']))
+            ->assertSee('Add a closure');
+        $this->actingAs($this->withRole(Role::AreaLead, $this->frontDesk))->get(route('calendar.week', ['date' => '2026-11-26']))
+            ->assertDontSee('Add a closure');
+    }
+
+    public function test_the_month_cancelled_count_is_not_styled_like_a_link(): void
+    {
+        $css = file_get_contents(public_path('css/app.css'));
+
+        $this->assertMatchesRegularExpression('/\.cancelled-count\{[^}]*\}/', $css);
+        preg_match('/\.cancelled-count\{([^}]*)\}/', $css, $rule);
+        $this->assertStringNotContainsString('underline', $rule[1]);
     }
 
     public function test_a_closure_saved_while_the_generator_runs_still_keeps_its_days_empty(): void

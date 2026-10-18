@@ -283,6 +283,24 @@ class EditScheduleTest extends TestCase
         Notification::assertNotSentTo($sam, PutOnShiftNotification::class);
     }
 
+    public function test_dates_brought_back_leave_out_regulars_who_have_been_turned_off(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['valid_until' => '2026-11-12'] + $this->slotAttributes($slot));
+        $sam = $this->regular($slot->fresh(), 'Sam Example');
+        $sam->forceFill(['deactivated_at' => now()])->save();
+
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['valid_until' => null] + $this->slotAttributes($slot->fresh()));
+
+        $this->assertSame(3, $result->updatedShifts);
+        foreach (['2026-11-19', '2026-11-26', '2026-12-03'] as $date) {
+            $shift = $slot->shifts()->where('local_date', $date)->sole();
+            $this->assertNull($shift->cancelled_at);
+            $this->assertSame(0, $shift->assignments()->count());
+            $this->assertSame([], ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.updated')->sole()->details['added_regular_ids']);
+        }
+    }
+
     public function test_a_cancellation_typed_by_hand_with_the_same_words_is_never_undone(): void
     {
         $slot = $this->thursdaySlot('18:30', '21:30');
@@ -355,7 +373,16 @@ class EditScheduleTest extends TestCase
         $slot = $this->thursdaySlot('18:30', '21:30');
         $this->regular($slot, 'Sam Example');
 
-        $this->assertRefused($slot, ['is_rotation' => true], "End Sam Example's time as a regular on this slot first.");
+        $this->assertRefused($slot, ['is_rotation' => true], 'Sam Example is a regular on this slot. Ask an admin to end their time as a regular before making it a rotation.');
+    }
+
+    public function test_the_rotation_refusal_names_every_regular(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $this->regular($slot, 'Sam Example', '2026-10-15');
+        $this->regular($slot, 'Robin Example', '2026-10-22');
+
+        $this->assertRefused($slot, ['is_rotation' => true], 'Sam Example and Robin Example are regulars on this slot. Ask an admin to end their time as regulars before making it a rotation.');
     }
 
     public function test_a_regular_whose_time_has_ended_does_not_block_a_change(): void
@@ -451,7 +478,7 @@ class EditScheduleTest extends TestCase
             ])
             ->assertOk()
             ->assertSee('Updated 3 shifts. Cancelled 1 date that no longer fit the slot. Nobody was on it. 2 shifts with people on them kept their old details:')
-            ->assertSee("2 shifts with people on them are no longer on this slot's schedule. Cancel them or move the people:")
+            ->assertSee("2 shifts with people on them are no longer on this slot's schedule. Cancel those dates from the calendar if nobody should work them.")
             ->assertSee('Thursday, November 26, 6:30 to 9:30pm')
             ->assertSee(route('calendar.shift', $shifts['2026-12-03']), false);
 

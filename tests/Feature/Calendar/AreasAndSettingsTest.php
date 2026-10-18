@@ -141,6 +141,34 @@ class AreasAndSettingsTest extends TestCase
         $this->actingAs($lead)->post(route('calendar.areas.update', $area), ['name' => 'Nope', 'color' => 'teal'])->assertForbidden();
     }
 
+    public function test_the_area_page_lists_its_weekly_slots_with_links_to_edit_them_and_add_a_regular(): void
+    {
+        $coordinator = $this->coordinator();
+        $area = app(CreateArea::class)->handle($coordinator, 'Front desk');
+        $other = app(CreateArea::class)->handle($coordinator, 'Wood shop');
+        $slotAttributes = ['weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'valid_from' => '2027-01-07', 'valid_until' => null, 'title' => null, 'is_rotation' => false];
+        // Starts beyond the window, so it has no shifts on the calendar yet.
+        $later = app(CreateWeeklySlot::class)->handle($coordinator, $area, $slotAttributes);
+        $rotation = app(CreateWeeklySlot::class)->handle($coordinator, $area, ['weekday' => 6, 'start_time' => '10:00', 'end_time' => '12:00', 'valid_from' => '2026-10-17', 'is_rotation' => true] + $slotAttributes);
+        $elsewhere = app(CreateWeeklySlot::class)->handle($coordinator, $other, ['weekday' => 1] + $slotAttributes);
+        $ended = app(CreateWeeklySlot::class)->handle($coordinator, $area, ['weekday' => 2, 'valid_from' => '2026-10-20', 'valid_until' => '2026-10-20'] + $slotAttributes);
+        $this->travelTo(CarbonImmutable::parse('2026-10-22 09:00', 'America/Detroit'));
+
+        $this->actingAs($coordinator)->get(route('calendar.areas.edit', $area))
+            ->assertOk()
+            ->assertSee('Weekly slots')
+            ->assertSeeInOrder(['Thursdays, 6:30 to 9:30pm', 'Starts Thursday, January 7', 'Saturdays, 10am to 12pm', 'A rotation'])
+            ->assertSee(route('calendar.slots.edit', $later), false)
+            ->assertSee(route('calendar.slots.regulars.create', $later), false)
+            ->assertSee(route('calendar.slots.edit', $rotation), false)
+            ->assertDontSee(route('calendar.slots.regulars.create', $rotation), false)
+            ->assertDontSee(route('calendar.slots.edit', $elsewhere), false)
+            ->assertDontSee(route('calendar.slots.edit', $ended), false);
+
+        $this->actingAs($coordinator)->get(route('calendar.areas.edit', $other))->assertSee('Mondays, 6:30 to 9:30pm');
+        $this->actingAs($coordinator)->get(route('calendar.areas.create'))->assertDontSee('Weekly slots');
+    }
+
     public function test_the_sidebar_links_areas_to_their_edit_page_and_shows_settings_only_to_admins(): void
     {
         $area = app(CreateArea::class)->handle($this->coordinator(), 'Front desk');

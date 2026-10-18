@@ -4,6 +4,7 @@ namespace App\Actions\Scheduling;
 
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
+use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -24,9 +25,9 @@ use InvalidArgumentException;
  *
  * A regular can work every week or, on a weekly slot, every other week from an anchor date. Headcount is checked date by date, so two people alternating weeks don't count against each other.
  *
- * Shifts that have started, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone.
+ * Shifts that have started, are cancelled, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
  *
- * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on.
+ * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, and a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on.
  *
  * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one. The refusals are written to be shown on screen. The new regular is emailed after the response.
  */
@@ -92,21 +93,40 @@ class AddRegular
             $changes = ChangeLogEntry::changesOf($regular);
             $regular->save();
 
-            $shifts = $slot->shifts()
-                ->whereNull('cancelled_at')
+            // Locked last, after the regulars and in date order, keeping the area, slot, shifts order the other scheduling actions use, so nobody is put on or cancels one of these shifts between checking it and filling it. The checks below run on the locked rows.
+            $candidates = $slot->shifts()
                 ->where('local_date', '>=', $startsOn)
                 ->when($endsOn !== null, fn ($query) => $query->where('local_date', '<=', $endsOn))
                 ->where('starts_at', '>', CarbonImmutable::now())
-                ->whereDoesntHave('assignments', fn ($query) => $query->where('user_id', $user->id))
-                ->withCount(['assignments as filled' => fn ($query) => $query->where('type', AssignmentType::Regular)])
-                ->get()
-                ->filter(fn (Shift $shift) => $shift->filled < $shift->headcount && $regular->activeOn($shift->local_date->toDateString()));
+                ->orderBy('local_date')
+                ->lockForUpdate()
+                ->get();
+            $assignments = Assignment::query()->whereIn('shift_id', $candidates->modelKeys())->lockForUpdate()->get()->groupBy('shift_id');
 
-            foreach ($shifts as $shift) {
-                $shift->assignments()->create([
-                    'user_id' => $user->id,
-                    'type' => AssignmentType::Regular,
-                ]);
+            $shifts = new Collection;
+            $skippedOverlaps = [];
+
+            foreach ($candidates as $shift) {
+                $on = $assignments->get($shift->id, new Collection);
+                $date = $shift->local_date->toDateString();
+
+                if ($shift->cancelled_at !== null || ! $regular->activeOn($date) || $on->contains('user_id', $user->id)
+                    || $on->where('type', AssignmentType::Regular)->count() >= $shift->headcount) {
+                    continue;
+                }
+
+                if (PutOnShift::overlappingShift($user, $shift) !== null) {
+                    $skippedOverlaps[] = $date;
+
+                    continue;
+                }
+
+                $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $user->id, 'type' => AssignmentType::Regular]);
+                $assignmentChanges = ChangeLogEntry::changesOf($assignment);
+                $assignment->save();
+                // The same entry PutOnShift records, so a shift's history shows everyone put on it however they got there.
+                ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value], $assignmentChanges, about: $user);
+                $shifts->push($shift);
             }
 
             ChangeLogEntry::record($actor, 'regular.added', $regular, [
@@ -114,12 +134,13 @@ class AddRegular
                 'added_to_shift_ids' => $shifts->pluck('id')->values()->all(),
             ], $changes, about: $user);
 
-            return [$regular, $shifts->count()];
+            return [$regular, $shifts->count(), $skippedOverlaps];
         });
 
-        [$regular, $count] = $added;
-        // Not stored: how many existing shifts the person was added to, for the screen's confirmation.
+        [$regular, $count, $skippedOverlaps] = $added;
+        // Not stored: how many existing shifts the person was added to, and the dates they weren't because of another shift, for the screen's confirmation.
         $regular->setAttribute('added_to_shifts', $count);
+        $regular->setAttribute('skipped_overlaps', $skippedOverlaps);
 
         // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved.
         defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));

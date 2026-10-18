@@ -122,6 +122,31 @@ class AddRegularScreenTest extends TestCase
         $this->assertSame(1, ChangeLogEntry::query()->about($avery)->ofAction('regular.added')->count());
     }
 
+    public function test_the_status_says_which_dates_overlap_another_shift_they_are_on(): void
+    {
+        Notification::fake();
+        $slot = $this->fridaySlot();
+        $avery = User::factory()->create(['name' => 'Avery Stone']);
+        $coordinator = $this->coordinator();
+        // Friday, October 30, 4 to 5pm, inside the slot's 3:30 to 6:30pm.
+        $other = app(CreateOneTimeShift::class)->handle($coordinator, $this->hostedEvents, '2026-10-30', '16:00', '17:00', 1, 0, null);
+        $other->assignments()->create(['user_id' => $avery->id, 'type' => 'regular']);
+
+        $this->postRegular($slot, $coordinator, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-16'])
+            ->assertSessionHas('status', 'Avery is now a regular, every week from Oct 16. We added them to 3 shifts already on the schedule. Not added on Oct 30, which overlaps another shift they\'re on. We\'ll email Avery to let them know.');
+
+        $later = app(CreateOneTimeShift::class)->handle($coordinator, $this->hostedEvents, '2026-11-06', '15:00', '16:00', 1, 0, null);
+        $later->assignments()->create(['user_id' => $avery->id, 'type' => 'regular']);
+        $alex = User::factory()->create(['name' => 'Alex Stone']);
+        foreach ([$other, $later] as $shift) {
+            $shift->assignments()->create(['user_id' => $alex->id, 'type' => 'shadow']);
+        }
+        $second = $this->fridaySlot(area: $this->hostedEvents);
+
+        $this->postRegular($second, $coordinator, ['user' => $alex->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-16'])
+            ->assertSessionHas('status', 'Alex is now a regular, every week from Oct 16. We added them to 2 shifts already on the schedule. Not added on Oct 30 and Nov 6, which overlap other shifts they\'re on. We\'ll email Alex to let them know.');
+    }
+
     public function test_the_email_says_what_they_are_regular_for(): void
     {
         $slot = $this->fridaySlot();

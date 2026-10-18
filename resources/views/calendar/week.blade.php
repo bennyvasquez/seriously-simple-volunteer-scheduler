@@ -36,7 +36,7 @@
 
 <div class="cal-main">
 @if (session('status'))
-<p role="status" class="cal-status">{{ session('status') }}</p>
+<p role="status" class="cal-status">{{ session('status') }}@foreach (session('statusLinks', []) as $link) <a href="{{ $link['url'] }}">{{ $link['label'] }}</a>@endforeach</p>
 @endif
 @if ($nothingShown)
 <p class="cal-status">No areas are ticked. Tick at least one to see its shifts.</p>

@@ -8,6 +8,8 @@ use App\Actions\Scheduling\GenerateShifts;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Enums\SlotFrequency;
+use App\Models\Area;
+use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
@@ -16,6 +18,7 @@ use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -307,5 +310,76 @@ class AddRegularTest extends TestCase
         }
 
         $this->assertSame(1, ChangeLogEntry::query()->ofAction('regular.added')->count());
+    }
+
+    public function test_it_locks_the_shifts_it_fills_and_skips_cancelled_and_full_ones(): void
+    {
+        Shift::query()->where('local_date', '2026-10-22')->update(['cancelled_at' => now(), 'cancel_reason' => 'Power outage']);
+        Shift::query()->whereDate('local_date', '2026-10-29')->firstOrFail()
+            ->assignments()->create(['user_id' => User::factory()->create()->id, 'type' => AssignmentType::Regular]);
+        $user = User::factory()->create();
+
+        DB::enableQueryLog();
+        $regular = app(AddRegular::class)->handle(null, $this->slot, $user, '2026-10-01');
+        $queries = collect(DB::getQueryLog())->pluck('query');
+
+        $this->assertSame(['2026-10-15'], $this->datesFor($user));
+        $this->assertSame(1, $regular->added_to_shifts);
+        $this->assertTrue($queries->contains(fn (string $sql) => str_starts_with($sql, 'select * from `shifts`') && str_contains($sql, 'order by `local_date` asc') && str_ends_with($sql, 'for update')));
+    }
+
+    /** A one-time shift in another area on a local date and time in New York, with $user on it. */
+    private function otherShift(User $user, string $date, string $start, string $end, bool $cancelled = false): Shift
+    {
+        $shift = Shift::query()->create([
+            'area_id' => (Area::query()->firstWhere('name', 'Wood shop') ?? Area::factory()->create(['name' => 'Wood shop']))->id,
+            'local_date' => $date,
+            'starts_at' => CarbonImmutable::parse("{$date} {$start}", 'America/New_York')->utc(),
+            'ends_at' => CarbonImmutable::parse("{$date} {$end}", 'America/New_York')->utc(),
+            'headcount' => 1,
+            'shadow_spots' => 0,
+            'cancelled_at' => $cancelled ? now() : null,
+        ]);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $user->id, 'type' => AssignmentType::Regular]);
+
+        return $shift;
+    }
+
+    public function test_it_skips_dates_that_overlap_another_shift_they_are_on(): void
+    {
+        $user = User::factory()->create();
+        // The slot runs 3:30 to 6:30pm.
+        $this->otherShift($user, '2026-10-22', '18:30', '20:00'); // Starts as the slot ends: no overlap.
+        $this->otherShift($user, '2026-10-29', '16:00', '17:00');
+        $this->otherShift($user, '2026-10-15', '16:00', '17:00', cancelled: true); // Cancelled shifts don't count.
+
+        $regular = app(AddRegular::class)->handle(null, $this->slot, $user, '2026-10-01');
+
+        $onSlot = Shift::query()->where('weekly_slot_id', $this->slot->id)
+            ->whereHas('assignments', fn ($query) => $query->where('user_id', $user->id))
+            ->orderBy('local_date')->get()->map(fn (Shift $shift) => $shift->local_date->toDateString())->all();
+        $this->assertSame(['2026-10-15', '2026-10-22'], $onSlot);
+        $this->assertSame(2, $regular->added_to_shifts);
+        $this->assertSame(['2026-10-29'], $regular->skipped_overlaps);
+    }
+
+    public function test_each_shift_filled_is_logged_against_the_shift_and_about_the_person(): void
+    {
+        $coordinator = User::factory()->create(['name' => 'Alex']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+        $robin = User::factory()->create();
+
+        app(AddRegular::class)->handle($coordinator, $this->slot, $robin, '2026-10-01');
+
+        foreach (Shift::query()->where('weekly_slot_id', $this->slot->id)->get() as $shift) {
+            $assignment = $shift->assignments()->where('user_id', $robin->id)->sole();
+            $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.added')->sole();
+            $this->assertSame($coordinator->id, $entry->actor_id);
+            $this->assertSame($robin->id, $entry->affected_user_id);
+            $this->assertSame(['assignment_id' => $assignment->id, 'type' => 'regular'], $entry->details);
+            $this->assertSame($robin->id, $entry->changes['user_id']['new']);
+            $this->assertSame($shift->id, $entry->changes['shift_id']['new']);
+        }
+        $this->assertSame(3, ChangeLogEntry::query()->about($robin)->ofAction('assignment.added')->count());
     }
 }

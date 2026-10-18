@@ -85,6 +85,51 @@ class AddToCalendarTest extends TestCase
         app(CreateOneTimeShift::class)->handle($this->coordinator(), $this->frontDesk, '2026-10-13', '10:00', '14:00', 1, 0, null);
     }
 
+    /** Runs CreateOneTimeShift and returns the validation errors it refuses with. */
+    private function oneTimeShiftErrors(string $date, string $start): array
+    {
+        try {
+            app(CreateOneTimeShift::class)->handle($this->coordinator(), $this->frontDesk, $date, $start, '21:00', 1, 0, null);
+        } catch (ValidationException $e) {
+            return $e->errors();
+        }
+
+        $this->fail('The shift was created.');
+    }
+
+    public function test_a_one_time_shift_on_a_closed_day_is_refused(): void
+    {
+        AreaClosure::query()->create(['area_id' => $this->frontDesk->id, 'starts_on' => '2026-11-25', 'ends_on' => '2026-11-27', 'reason' => 'Thanksgiving']);
+
+        $this->assertSame(['date' => ['Front desk is closed that day: Thanksgiving.']], $this->oneTimeShiftErrors('2026-11-26', '18:00'));
+        $this->assertSame(0, Shift::query()->count());
+
+        // Another area's closure doesn't matter.
+        app(CreateOneTimeShift::class)->handle($this->coordinator(), $this->hostedEvents, '2026-11-26', '18:00', '21:00', 1, 0, null);
+        $this->assertSame(1, Shift::query()->count());
+    }
+
+    public function test_a_one_time_shift_that_has_already_started_is_refused(): void
+    {
+        // It's 9am on October 14.
+        $this->assertSame(['start_time' => ["Pick a start time that hasn't passed yet."]], $this->oneTimeShiftErrors('2026-10-14', '08:30'));
+        $this->assertSame(0, Shift::query()->count());
+
+        app(CreateOneTimeShift::class)->handle($this->coordinator(), $this->frontDesk, '2026-10-14', '09:30', '12:00', 1, 0, null);
+        $this->assertSame(1, Shift::query()->count());
+    }
+
+    public function test_the_panel_shows_why_a_one_time_shift_is_refused(): void
+    {
+        AreaClosure::query()->create(['area_id' => $this->frontDesk->id, 'starts_on' => '2026-11-26', 'ends_on' => '2026-11-26', 'reason' => 'Thanksgiving']);
+
+        $this->actingAs($this->coordinator())->followingRedirects()
+            ->from(route('calendar.add', ['date' => '2026-11-26']))
+            ->post(route('calendar.add.store'), $this->panelPost(['date' => '2026-11-26']))
+            ->assertOk()
+            ->assertSee('Front desk is closed that day: Thanksgiving.');
+    }
+
     public function test_times_stay_local_across_daylight_saving(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-17 12:00', self::TIMEZONE));
@@ -306,7 +351,38 @@ class AddToCalendarTest extends TestCase
     {
         $this->actingAs($this->coordinator())
             ->get(route('calendar.slots.create', ['date' => '2027-01-07', 'area' => $this->frontDesk->id]))
-            ->assertSee('The first shifts appear on the calendar on Thursday, November 12, 8 weeks before Thursday, January 7.');
+            ->assertSee('The first shift is on Thursday, January 7. It appears on the calendar on Friday, November 13, since the calendar shows 8 weeks ahead.');
+
+        // The window on Friday, November 13 runs to Thursday, January 7, so that's the day the save or the nightly run makes it.
+        $this->travelTo(CarbonImmutable::parse('2026-11-13 09:00', self::TIMEZONE));
+        $slot = app(CreateWeeklySlot::class)->handle($this->coordinator(), $this->frontDesk, $this->slotAttributes(['valid_from' => '2027-01-07']));
+        $this->assertSame(['2027-01-07'], $slot->shifts()->pluck('local_date')->map->toDateString()->all());
+    }
+
+    public function test_the_preview_counts_from_the_first_date_the_slot_runs_on(): void
+    {
+        // A Thursday slot whose first date is Monday, January 4: its first shift is still Thursday, January 7.
+        $this->actingAs($this->coordinator())->followingRedirects()
+            ->post(route('calendar.slots.store'), $this->slotFormPost(['refresh' => '1', 'valid_from' => '2027-01-04']))
+            ->assertSee('The first shift is on Thursday, January 7. It appears on the calendar on Friday, November 13, since the calendar shows 8 weeks ahead.');
+    }
+
+    public function test_a_slot_saved_with_no_shifts_yet_links_to_itself_and_to_adding_a_regular(): void
+    {
+        $user = $this->coordinator();
+
+        $response = $this->actingAs($user)->post(route('calendar.slots.store'), $this->slotFormPost(['valid_from' => '2027-01-07']));
+        $slot = WeeklySlot::query()->sole();
+
+        $response->assertRedirect(route('calendar.week', ['date' => '2027-01-07']));
+        $this->actingAs($user)->get($response->headers->get('Location'))
+            ->assertSee('Added Thursdays, 6:30 to 9:30pm, starting Thursday, January 7. No shifts are on the calendar yet.')
+            ->assertSee('<a href="'.route('calendar.slots.edit', $slot).'">Edit the slot</a>', false)
+            ->assertSee('<a href="'.route('calendar.slots.regulars.create', $slot).'">Add a regular</a>', false);
+
+        // A slot with shifts on the calendar is reached from them, so the status has no links.
+        $response = $this->actingAs($user)->post(route('calendar.slots.store'), $this->slotFormPost());
+        $this->actingAs($user)->get($response->headers->get('Location'))->assertDontSee('Edit the slot');
     }
 
     public function test_the_preview_lists_only_dates_inside_the_window_and_skips_only_closures_inside_it(): void
@@ -358,6 +434,48 @@ class AddToCalendarTest extends TestCase
 
         $this->actingAs($user)->get(route('calendar.add', ['date' => '2026-10-21'] + $filter))
             ->assertSee('name="areas[]" value="'.$this->frontDesk->id.'"', false);
+    }
+
+    public function test_the_panel_buttons_send_refresh_empty_so_a_restored_form_still_saves(): void
+    {
+        $html = $this->actingAs($this->coordinator())->get(route('calendar.add', ['date' => '2026-10-21']))->assertOk()->getContent();
+
+        // A form the browser restored on back or forward can still have the hidden refresh set to 1; the buttons send it empty after it.
+        $this->assertStringContainsString('<button type="submit" class="btn btn-primary" name="refresh" value="">Save</button>', $html);
+        $this->assertMatchesRegularExpression('/<button type="submit" class="btn" name="refresh" value="" formaction="[^"]*more=1[^"]*">More options<\/button>/', $html);
+        // The hidden input is found by its tag: once buttons share the name, form.elements.refresh is a list, not the input.
+        $this->assertStringContainsString("this.form.querySelector('input[name=refresh]').value='1'", $html);
+        $this->assertStringNotContainsString('elements.refresh', $html);
+
+        // A restored form sends the hidden refresh and then the button's empty one, and PHP keeps the last; the panel then saves.
+        $this->actingAs($this->coordinator())->post(route('calendar.add.store'), $this->panelPost(['refresh' => '']))
+            ->assertRedirect(route('calendar.week', ['date' => '2026-10-21']));
+        $this->assertSame(1, Shift::query()->count());
+    }
+
+    public function test_more_options_from_a_restored_panel_still_opens_the_full_form(): void
+    {
+        $response = $this->actingAs($this->coordinator())->post(route('calendar.add.store', ['more' => 1]), $this->panelPost(['refresh' => '', 'title' => 'Laser helper']));
+
+        $this->assertStringStartsWith(route('calendar.slots.create'), $response->headers->get('Location'));
+        $this->assertSame(0, Shift::query()->count());
+    }
+
+    public function test_the_slot_form_save_button_sends_refresh_empty_and_dates_and_times_never_reload(): void
+    {
+        $html = $this->actingAs($this->coordinator())->get(route('calendar.slots.create', ['date' => '2026-10-22']))->assertOk()->getContent();
+
+        $this->assertStringContainsString('<button type="submit" class="btn btn-primary" name="refresh" value="">Save the slot</button>', $html);
+        // Typing a time or date one digit at a time would reload the page mid-entry, so only selects and radios reload it.
+        $this->assertDoesNotMatchRegularExpression('/<input type="(time|date)"[^>]*onchange/', $html);
+        $this->assertMatchesRegularExpression('/<select name="weekday"[^>]*onchange/', $html);
+        // The preview button is always there, not only with JavaScript off.
+        $this->assertStringContainsString('<button type="submit" class="btn" name="refresh" value="1">Update the preview</button>', $html);
+        $this->assertStringNotContainsString('<noscript>', $html);
+
+        $this->actingAs($this->coordinator())->post(route('calendar.slots.store'), $this->slotFormPost(['refresh' => '']))
+            ->assertRedirect(route('calendar.week', ['date' => '2026-10-22']));
+        $this->assertSame(1, WeeklySlot::query()->count());
     }
 
     public function test_a_slot_describes_itself(): void

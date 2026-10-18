@@ -1,4 +1,4 @@
-{{-- Add an area or edit one. A new area takes the next unused color; editing offers the colors by name, never by color alone. --}}
+{{-- Add an area or edit one. A new area takes the next unused color; editing offers the colors by name, never by color alone, and lists the area's weekly slots that haven't ended. --}}
 @extends('layouts.app')
 
 @section('title', $area ? 'Edit '.$area->name : 'Add an area')
@@ -31,4 +31,27 @@
 <a href="{{ route('calendar.week', ['date' => $backDate] + $areaQuery) }}" class="btn">Cancel</a>
 </div>
 </form>
+
+@if ($area)
+<section class="panel slot-fields" aria-labelledby="slots-heading">
+<h2 id="slots-heading">Weekly slots</h2>
+@forelse ($slots as $slot)
+<div class="row">
+@php
+    $notes = array_filter([
+        $slot->is_rotation ? 'A rotation.' : null,
+        $slot->valid_from->toDateString() > $today ? 'Starts '.$slot->valid_from->format('l, F j').'.' : null,
+        $slot->valid_until ? 'Last date '.$slot->valid_until->format('l, F j').'.' : null,
+    ]);
+@endphp
+<span>{{ $slot->describe() }}@if ($slot->title) <span class="muted">({{ $slot->title }})</span>@endif @if ($notes !== [])<br><span class="muted">{{ implode(' ', $notes) }}</span>@endif</span>
+@can('manageSchedule', $area)
+<span><a href="{{ route('calendar.slots.edit', ['slot' => $slot] + $areaQuery) }}">Edit</a>@if (! $slot->is_rotation) · <a href="{{ route('calendar.slots.regulars.create', ['slot' => $slot] + $areaQuery) }}">Add a regular</a>@endif</span>
+@endcan
+</div>
+@empty
+<p class="muted">{{ $area->name }} has no weekly slots yet. Add one from the calendar.</p>
+@endforelse
+</section>
+@endif
 @endsection

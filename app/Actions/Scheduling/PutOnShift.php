@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. Refuses a shift that is cancelled or has started, a person who is already on it or turned off, and a shift with no open place (or shadow spot). The refusals are written to be shown on screen. Logged about the person; they're emailed after the response.
+ * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. Refuses a shift that is cancelled or has started, a person who is already on it, turned off or on another active shift at an overlapping time, and a shift with no open place (or shadow spot). The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
  */
 class PutOnShift
 {
@@ -42,17 +42,25 @@ class PutOnShift
             }
 
             if ($type === AssignmentType::Regular && $shift->openPlaces() === 0) {
-                throw new DomainException('This shift is full. Raise the number of people needed first.');
+                throw new DomainException('This shift is full.');
             }
 
             if ($type === AssignmentType::Shadow && $shift->assignments()->where('type', AssignmentType::Shadow)->count() >= $shift->shadow_spots) {
                 throw new DomainException('There\'s no shadow spot left on this shift.');
             }
 
+            $overlapping = self::overlappingShift($person, $shift);
+
+            if ($overlapping !== null) {
+                throw new DomainException($person->firstName().' is already on '.$overlapping->area->name.', '.$overlapping->whenText().'.');
+            }
+
             $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => $type]);
+            $changes = ChangeLogEntry::changesOf($assignment);
             $assignment->save();
 
-            ChangeLogEntry::record($actor, 'assignment.added', $assignment, ['shift_id' => $shift->id, 'area_id' => $shift->area_id, 'type' => $type->value], about: $person);
+            // About the person, with the shift as the subject, so a shift's history is found with forSubject($shift).
+            ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => $type->value], $changes, about: $person);
 
             return $assignment;
         });
@@ -61,5 +69,18 @@ class PutOnShift
         defer(fn () => $person->notify(new PutOnShiftNotification($shift->loadMissing('area'))));
 
         return $assignment;
+    }
+
+    /** Another active shift the person is on (as a regular or a shadow) whose time overlaps this one, or null. Back-to-back shifts don't overlap. */
+    public static function overlappingShift(User $person, Shift $shift): ?Shift
+    {
+        return Shift::query()->with('area')
+            ->whereKeyNot($shift->id)
+            ->whereNull('cancelled_at')
+            ->where('starts_at', '<', $shift->ends_at)
+            ->where('ends_at', '>', $shift->starts_at)
+            ->whereHas('assignments', fn ($query) => $query->where('user_id', $person->id))
+            ->orderBy('starts_at')
+            ->first();
     }
 }

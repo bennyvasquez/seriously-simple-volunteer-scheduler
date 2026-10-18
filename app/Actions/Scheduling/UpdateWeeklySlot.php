@@ -133,7 +133,9 @@ class UpdateWeeklySlot
         if ($slot->is_rotation && ! $slot->getOriginal('is_rotation') && $regulars->isNotEmpty()) {
             $people = $regulars->unique('id')->values();
 
-            throw new DomainException('End '.$this->names($actor, $people).'\'s time as '.($people->count() === 1 ? 'a regular' : 'regulars').' on this slot first.');
+            throw new DomainException($people->count() === 1
+                ? $this->names($actor, $people).' is a regular on this slot. Ask an admin to end their time as a regular before making it a rotation.'
+                : $this->names($actor, $people).' are regulars on this slot. Ask an admin to end their time as regulars before making it a rotation.');
         }
     }
 
@@ -150,7 +152,7 @@ class UpdateWeeklySlot
     /**
      * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started. A slot change is recognised by the shift's most recent shift.cancelled entry having come from slot.updated, never by the reason text, so a person who typed the same words keeps their cancellation.
      *
-     * The slot's current regulars for that date are put back on it, up to its headcount, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
+     * The slot's current regulars for that date whose accounts are still on are put back on it, up to its headcount, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
      *
      * @param  list<int>  $justCancelled
      * @return list<int> The ids brought back.
@@ -162,7 +164,7 @@ class UpdateWeeklySlot
             ->where('local_date', '>=', $organization->today()->toDateString())->whereNotIn('id', $justCancelled)
             ->orderBy('local_date')->lockForUpdate()->get();
 
-        $regulars = $slot->regulars()->orderBy('id')->get();
+        $regulars = $slot->regulars()->with('user')->orderBy('id')->get();
         $revived = [];
 
         foreach ($candidates as $shift) {
@@ -185,7 +187,7 @@ class UpdateWeeklySlot
             $shift->save();
 
             $added = [];
-            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date))->take($shift->headcount) as $regular) {
+            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive())->take($shift->headcount) as $regular) {
                 $shift->assignments()->create(['user_id' => $regular->user_id, 'type' => AssignmentType::Regular]);
                 $added[] = $regular->user_id;
             }

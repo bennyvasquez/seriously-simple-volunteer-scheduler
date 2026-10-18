@@ -190,14 +190,14 @@ class ShiftController extends Controller
         return 'Repeats '.$every.', since '.$slot->valid_from->format('M j').'. '.($slot->valid_until === null ? 'No end date.' : 'Ends '.$slot->valid_until->format('M j').'.');
     }
 
-    /** @return Collection<int, array{name: string, role: string}> The full name only for people the viewer may see (spec section 13); a first name otherwise. */
+    /** @return Collection<int, array{name: string, role: string}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
     private function people(Shift $shift, User $viewer): Collection
     {
         $date = $shift->local_date->toDateString();
         $slot = $shift->weeklySlot;
 
         return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer) {
-            $name = $viewer->canSee($assignment->user) ? $assignment->user->name : $assignment->user->firstName();
+            $name = PersonSearch::displayName($viewer, $assignment->user);
 
             if ($assignment->type === AssignmentType::Shadow) {
                 return ['name' => $name, 'role' => 'Shadowing'];

@@ -50,7 +50,7 @@ class RegularController extends Controller
             'search' => $search,
             'byEmail' => $byEmail,
             'canChooseFrequency' => $slot->frequency === SlotFrequency::Weekly,
-            'weekOptions' => $slot->frequency === SlotFrequency::Weekly ? $this->weekOptions($current, $today) : [],
+            'weekOptions' => $slot->frequency === SlotFrequency::Weekly ? $this->weekOptions($current, $today, $viewer) : [],
             'values' => [
                 'frequency' => (string) $request->old('frequency', $request->query('frequency', 'weekly')),
                 'weeks' => (string) $request->old('weeks', $request->query('weeks', '')),
@@ -129,7 +129,23 @@ class RegularController extends Controller
                 0 => 'No shifts are on the schedule for them yet.',
                 1 => 'We added them to 1 shift already on the schedule.',
                 default => 'We added them to '.$added.' shifts already on the schedule.',
-            }.' We\'ll email '.$first.' to let them know.');
+            }.$this->overlapsSentence($regular->skipped_overlaps).' We\'ll email '.$first.' to let them know.');
+    }
+
+    /**
+     * " Not added on Oct 29, which overlaps another shift they're on." Empty when no date was left out.
+     *
+     * @param  list<string>  $dates
+     */
+    private function overlapsSentence(array $dates): string
+    {
+        if ($dates === []) {
+            return '';
+        }
+
+        $days = collect($dates)->map(fn (string $date) => CarbonImmutable::parse($date, 'UTC')->format('M j'))->join(', ', ' and ');
+
+        return ' Not added on '.$days.(count($dates) === 1 ? ', which overlaps another shift they\'re on.' : ', which overlap other shifts they\'re on.');
     }
 
     /** @return Collection<int, SlotRegular> The slot's regulars who haven't ended, with their people loaded. */
@@ -150,7 +166,7 @@ class RegularController extends Controller
         }
 
         $now = $current->map(function (SlotRegular $regular) use ($slot, $viewer) {
-            $name = $viewer->canSee($regular->user) ? $regular->user->firstName() : $regular->user->shortName();
+            $name = $this->regularName($viewer, $regular->user);
 
             if ($regular->frequency === SlotFrequency::EveryOtherWeek) {
                 return $name.' every other week from '.$regular->anchor_date->format('M j');
@@ -164,12 +180,18 @@ class RegularController extends Controller
         return $needs.' Now: '.($now === [] ? $last : implode(', ', $now).', and '.$last).'.';
     }
 
+    /** A regular's first name for a viewer who may see them, and a first name and last initial otherwise (spec section 13). */
+    private function regularName(User $viewer, User $person): string
+    {
+        return $viewer->canSee($person) ? $person->firstName() : $person->shortName();
+    }
+
     /**
      * The choices under "Which weeks": the weeks the slot's alternating regulars are off and the weeks they work. The value is the earliest date in that pattern that is today or later, which becomes the anchor date. Regulars with the same pattern share one choice ("The weeks Carol and Dana are off").
      *
      * @return list<array{value: string, label: string, detail: string}>
      */
-    private function weekOptions(Collection $current, CarbonImmutable $today): array
+    private function weekOptions(Collection $current, CarbonImmutable $today, User $viewer): array
     {
         $todayDate = $today->toDateString();
         $groups = [];
@@ -186,7 +208,7 @@ class RegularController extends Controller
                     $first = $first->subDays(14);
                 }
 
-                $groups[$kind.'|'.$first->toDateString()][] = $regular->user->firstName();
+                $groups[$kind.'|'.$first->toDateString()][] = $this->regularName($viewer, $regular->user);
             }
         }
 

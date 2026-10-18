@@ -13,6 +13,7 @@
 </div>
 <form method="POST" action="{{ route('calendar.add.store') }}">
 @csrf
+{{-- Choosing a repeat sets this and submits. Save and More options send refresh empty after it, so a form the browser restored on back or forward still saves; More options says so in its own address. --}}
 <input type="hidden" name="refresh" value="">
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
@@ -34,7 +35,7 @@
 </div>
 <div class="field">
 <label for="repeats">Repeats</label>
-<select name="repeats" id="repeats" onchange="this.form.elements.refresh.value='1';this.form.submit()">
+<select name="repeats" id="repeats" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()">
 @foreach ($repeatOptions as $key => $label)
 <option value="{{ $key }}" @selected($values['repeats'] === $key)>{{ $label }}</option>
 @endforeach
@@ -61,8 +62,8 @@
 <x-field name="shadow_spots" type="number" label="Shadow spots" :value="$values['shadow_spots']" min="0" max="200" required />
 </div>
 <div class="add-actions">
-<button type="submit" class="btn btn-primary">Save</button>
-<button type="submit" class="btn" name="more" value="1">More options</button>
+<button type="submit" class="btn btn-primary" name="refresh" value="">Save</button>
+<button type="submit" class="btn" name="refresh" value="" formaction="{{ route('calendar.add.store', ['more' => 1]) }}">More options</button>
 <noscript><button type="submit" class="btn" name="refresh" value="1">Show repeat options</button></noscript>
 </div>
 </form>

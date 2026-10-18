@@ -8,6 +8,7 @@ use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
+use App\Models\SlotRegular;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Creates dated shifts from weekly slots for the organization's generation window (spec section 7).
  *
- * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. Running it twice is harmless. A run that creates shifts is logged once, as the system.
+ * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. A new shift gets the regulars who work that date, leaving out anyone whose account is turned off, and never more than its headcount. Running it twice is harmless. A run that creates shifts is logged once, as the system.
  */
 class GenerateShifts
 {
@@ -64,7 +65,7 @@ class GenerateShifts
         $lastDay = $firstDay->addDays($days - 1);
 
         // Read again, so a change saved since the caller loaded the slot (or a regular added meanwhile) is what gets generated.
-        $slot = $slot->fresh('regulars');
+        $slot = $slot->fresh(['regulars' => fn ($query) => $query->orderBy('id'), 'regulars.user']);
 
         if ($slot === null) {
             return 0;
@@ -138,13 +139,16 @@ class GenerateShifts
                 return false;
             }
 
-            foreach ($slot->regulars as $regular) {
-                if ($regular->activeOn($date)) {
-                    $shift->assignments()->create([
-                        'user_id' => $regular->user_id,
-                        'type' => AssignmentType::Regular,
-                    ]);
-                }
+            // Regulars working this date whose accounts are still on, the earliest added first, up to the number of people the shift needs.
+            $working = $slot->regulars
+                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive())
+                ->take($shift->headcount);
+
+            foreach ($working as $regular) {
+                $shift->assignments()->create([
+                    'user_id' => $regular->user_id,
+                    'type' => AssignmentType::Regular,
+                ]);
             }
 
             return true;

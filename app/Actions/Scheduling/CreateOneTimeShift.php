@@ -3,6 +3,7 @@
 namespace App\Actions\Scheduling;
 
 use App\Models\Area;
+use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Adds one shift that isn't part of a weekly slot, such as an open house. Times are the organization's local wall-clock times. An end before the start means the shift ends the next day, the same rule as a weekly slot. Dates in the past are refused.
+ * Adds one shift that isn't part of a weekly slot, such as an open house. Times are the organization's local wall-clock times. An end before the start means the shift ends the next day, the same rule as a weekly slot. Dates in the past, a start time that has passed and a day a closure covers in that area are refused, with messages written to be shown on screen.
  */
 class CreateOneTimeShift
 {
@@ -50,7 +51,26 @@ class CreateOneTimeShift
             'title' => $title,
         ]);
 
-        return DB::transaction(function () use ($actor, $shift) {
+        if ($shift->starts_at->lessThanOrEqualTo(CarbonImmutable::now())) {
+            throw ValidationException::withMessages(['start_time' => 'Pick a start time that hasn\'t passed yet.']);
+        }
+
+        return DB::transaction(function () use ($actor, $area, $localDate, $shift) {
+            // The area row first, the same lock CreateClosure and the generator take, then a locking read of the closures, so a closure saved at the same moment can't miss this shift.
+            Area::query()->whereKey($area->id)->lockForUpdate()->first();
+
+            $closure = AreaClosure::query()
+                ->where('area_id', $area->id)
+                ->where('starts_on', '<=', $localDate)
+                ->where('ends_on', '>=', $localDate)
+                ->orderBy('starts_on')
+                ->lockForUpdate()
+                ->first();
+
+            if ($closure !== null) {
+                throw ValidationException::withMessages(['date' => $area->name.' is closed that day: '.$closure->reason.(preg_match('/[.!?]$/', $closure->reason) === 1 ? '' : '.')]);
+            }
+
             $changes = ChangeLogEntry::changesOf($shift);
             $shift->save();
 

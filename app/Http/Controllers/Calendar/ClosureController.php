@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CreateClosure;
+use App\Calendar\PersonSearch;
 use App\Calendar\TimeFormat;
 use App\Enums\AssignmentType;
 use App\Http\Controllers\Controller;
@@ -133,9 +134,9 @@ class ClosureController extends Controller
             ->orderBy('id')
             ->get();
         $shifts = $inRange->whereNull('cancelled_at')->values();
-        $visible = [];
+        $nameOf = [];
 
-        $rows = $shifts->map(function (Shift $shift) use ($viewer, $chosen, $timezone, &$visible) {
+        $rows = $shifts->map(function (Shift $shift) use ($viewer, $chosen, $timezone, &$nameOf) {
             $start = $shift->starts_at->setTimezone($timezone);
             $when = $start->format('D M j').', '.TimeFormat::range($start, $shift->ends_at->setTimezone($timezone));
 
@@ -144,10 +145,9 @@ class ClosureController extends Controller
                 $when .= ', '.$shift->area->name;
             }
 
-            $name = function (Assignment $assignment) use ($viewer, &$visible) {
-                $visible[$assignment->user_id] ??= $viewer->canSee($assignment->user);
-
-                return $visible[$assignment->user_id] ? $assignment->user->name : $assignment->user->firstName();
+            // Full names only for people the viewer may see, as everywhere else (spec section 13).
+            $name = function (Assignment $assignment) use ($viewer, &$nameOf) {
+                return $nameOf[$assignment->user_id] ??= PersonSearch::displayName($viewer, $assignment->user);
             };
             $assignments = $shift->assignments->sortBy('id');
             $names = [
