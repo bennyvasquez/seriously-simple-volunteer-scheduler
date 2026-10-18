@@ -184,7 +184,7 @@ final class CalendarWeek
     /**
      * What a shift block says, for the grid and the phone list.
      *
-     * @return array{time: string, area: string, lines: list<string>, classes: string}
+     * @return array{time: string, area: string, lines: list<string>, classes: string, label: string}
      */
     public function describe(Shift $shift, CarbonImmutable $now): array
     {
@@ -237,8 +237,15 @@ final class CalendarWeek
             $classes .= ' urgent';
         }
 
+        $time = TimeFormat::range($shift->starts_at->setTimezone($timezone), $shift->ends_at->setTimezone($timezone));
+
+        // The visible spans run together for screen readers, so the block gets one name read as a sentence.
+        $spoken = array_map(fn (string $line) => preg_replace_callback('/^(Shadows?): /', fn (array $match) => strtolower($match[1]).' ', $line), $lines);
+        $label = implode(', ', [$shift->area->name, $shift->local_date->format('l, F j'), $time, ...$spoken]);
+
         return [
-            'time' => TimeFormat::range($shift->starts_at->setTimezone($timezone), $shift->ends_at->setTimezone($timezone)),
+            'label' => $label,
+            'time' => $time,
             'area' => $shift->area->name,
             'lines' => $lines,
             'classes' => $classes,

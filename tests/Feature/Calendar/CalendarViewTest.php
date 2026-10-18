@@ -143,7 +143,8 @@ class CalendarViewTest extends TestCase
             ->assertSee('Closed: Thanksgiving')
             ->assertSee('2 Front desk shifts')
             ->assertSee('2 open')
-            ->assertSee('Dec 1');
+            ->assertSee('Dec 1')
+            ->assertSee('href="'.route('calendar.week', ['date' => '2026-11-05']).'" class="num"', false);
     }
 
     public function test_volunteers_get_a_403(): void
@@ -170,6 +171,7 @@ class CalendarViewTest extends TestCase
 
         $this->actingAs($this->coordinator())->get(route('calendar.week', ['date' => '2026-10-22']))
             ->assertSeeInOrder(['6:30 to 9:30pm', 'Front desk', 'Laser class helper', 'Sam', 'Shadow: Robin', '1 shadow spot open'])
+            ->assertSee('aria-label="Front desk, Thursday, October 22, 6:30 to 9:30pm, Laser class helper, Sam, shadow Robin, 1 shadow spot open"', false)
             ->assertDontSee('1 open');
     }
 
@@ -274,5 +276,60 @@ class CalendarViewTest extends TestCase
     {
         $this->actingAs($this->coordinator())->get('/')->assertSee(route('calendar.week'));
         $this->actingAs(User::factory()->create())->get('/')->assertDontSee(route('calendar.week'));
+    }
+
+    public function test_a_week_across_the_november_time_change_keeps_local_times(): void
+    {
+        $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 0, 'start_time' => '18:30', 'end_time' => '21:30']);
+        $this->shiftOn('2026-10-25', '18:30', '21:30', slot: $slot);
+        $this->shiftOn('2026-11-01', '18:30', '21:30', slot: $slot);
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->get(route('calendar.week', ['date' => '2026-10-29']))
+            ->assertSee('October 25 to 31, 2026')
+            ->assertSee('6:30 to 9:30pm');
+
+        $this->actingAs($coordinator)->get(route('calendar.week', ['date' => '2026-11-01']))
+            ->assertSee('November 1 to 7, 2026')
+            ->assertSee('6:30 to 9:30pm')
+            ->assertDontSee('5:30 to 8:30pm')
+            ->assertDontSee('7:30 to 10:30pm');
+    }
+
+    public function test_a_shift_past_midnight_runs_the_grid_to_the_end_of_the_day(): void
+    {
+        $this->shiftOn('2026-10-22', '20:00', '01:00');
+
+        $week = CalendarWeek::for(CarbonImmutable::parse('2026-10-22'), Organization::current(), [$this->frontDesk->id]);
+
+        $this->assertSame([8, 24], $week->hourRange());
+    }
+
+    public function test_unknown_or_invalid_area_ids_are_ignored(): void
+    {
+        $this->shiftOn('2026-10-22', '18:30', '21:30', area: $this->frontDesk);
+        $this->shiftOn('2026-10-22', '10:00', '13:00', area: $this->hostedEvents);
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->get(route('calendar.week', ['date' => '2026-10-22', 'areas' => [$this->frontDesk->id, 999, 'abc']]))
+            ->assertOk()
+            ->assertSee('6:30 to 9:30pm')
+            ->assertDontSee('10am to 1pm');
+
+        $this->actingAs($coordinator)->get(route('calendar.week', ['date' => '2026-10-22', 'areas' => [999, 'abc']]))
+            ->assertOk()
+            ->assertDontSee('6:30 to 9:30pm')
+            ->assertSee('No areas are ticked.');
+    }
+
+    public function test_needs_attention_keeps_the_area_filter_and_counts_only_regulars_in_the_window(): void
+    {
+        $this->shiftOn('2026-10-16', '15:30', '18:30');
+        $later = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 2, 'start_time' => '09:00', 'end_time' => '11:00']);
+        SlotRegular::query()->create(['weekly_slot_id' => $later->id, 'user_id' => User::factory()->create()->id, 'starts_on' => '2026-12-01']);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.week', ['areas' => [$this->frontDesk->id]]))
+            ->assertSee('href="'.e(route('calendar.week', ['date' => '2026-10-16', 'areas' => [$this->frontDesk->id]])).'"', false)
+            ->assertSeeInOrder(['Front desk, Tuesdays 9 to 11am', 'No regular']);
     }
 }

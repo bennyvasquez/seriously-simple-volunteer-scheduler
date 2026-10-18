@@ -7,4 +7,4 @@
         $style .= ' left: calc('.round($column * 100 / $columnCount, 3).'% + 2px); right: calc('.round(($columnCount - $column - 1) * 100 / $columnCount, 3).'% + 2px);';
     }
 @endphp
-<a class="{{ $info['classes'] }}" @if (Route::has('calendar.shift')) href="{{ route('calendar.shift', $shift) }}" @endif style="{{ $style }}"><span class="t">{{ $info['time'] }}</span><span>{{ $info['area'] }}</span>@foreach ($info['lines'] as $line)<span>{{ $line }}</span>@endforeach</a>
+<a class="{{ $info['classes'] }}" aria-label="{{ $info['label'] }}" @if (Route::has('calendar.shift')) href="{{ route('calendar.shift', $shift) }}" @endif style="{{ $style }}"><span class="t">{{ $info['time'] }}</span><span>{{ $info['area'] }}</span>@foreach ($info['lines'] as $line)<span>{{ $line }}</span>@endforeach</a>

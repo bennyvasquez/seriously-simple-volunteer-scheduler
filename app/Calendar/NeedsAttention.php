@@ -18,9 +18,10 @@ final class NeedsAttention
     public const DAYS = 14;
 
     /**
+     * @param  array<string, mixed>  $linkQuery  Query kept on every link, such as the areas[] filter.
      * @return Collection<int, array{label: string, detail: string, url: ?string, urgent: bool}>
      */
-    public static function for(Organization $organization, array $areaIds): Collection
+    public static function for(Organization $organization, array $areaIds, array $linkQuery = []): Collection
     {
         $timezone = $organization->timezone;
         $now = CarbonImmutable::now();
@@ -37,7 +38,7 @@ final class NeedsAttention
             ->get()
             ->filter(fn (Shift $shift) => $shift->openPlaces() > 0);
 
-        $items = $shifts->map(function (Shift $shift) use ($timezone, $now, $today, $tomorrow) {
+        $items = $shifts->map(function (Shift $shift) use ($timezone, $now, $today, $tomorrow, $linkQuery) {
             $date = $shift->local_date->toDateString();
             $urgent = $shift->isUrgent($now);
 
@@ -54,16 +55,16 @@ final class NeedsAttention
             return [
                 'label' => $shift->starts_at->setTimezone($timezone)->format('D M j').', '.TimeFormat::time($shift->starts_at->setTimezone($timezone)),
                 'detail' => $detail,
-                'url' => self::shiftUrl($shift),
+                'url' => self::shiftUrl($shift, $linkQuery),
                 'urgent' => $urgent,
             ];
         })->values();
 
-        return $items->concat(self::slotsWithoutRegular($today, $areaIds));
+        return $items->concat(self::slotsWithoutRegular($today, $areaIds, $linkQuery));
     }
 
     /** @return Collection<int, array{label: string, detail: string, url: ?string, urgent: bool}> */
-    private static function slotsWithoutRegular(string $today, array $areaIds): Collection
+    private static function slotsWithoutRegular(string $today, array $areaIds, array $linkQuery): Collection
     {
         $days = [];
         $first = CarbonImmutable::parse($today, 'UTC');
@@ -76,12 +77,15 @@ final class NeedsAttention
             ->where('is_rotation', false)
             ->where('valid_from', '<=', $days[self::DAYS - 1])
             ->where(fn ($query) => $query->whereNull('valid_until')->orWhere('valid_until', '>=', $today))
-            ->whereDoesntHave('regulars', fn ($query) => $query->where(fn ($ends) => $ends->whereNull('ends_on')->orWhere('ends_on', '>=', $today)))
+            // A regular counts only if they cover a date in the window.
+            ->whereDoesntHave('regulars', fn ($query) => $query
+                ->where('starts_on', '<=', $days[self::DAYS - 1])
+                ->where(fn ($ends) => $ends->whereNull('ends_on')->orWhere('ends_on', '>=', $today)))
             ->with('area')
             ->orderBy('weekday')
             ->orderBy('start_time')
             ->get()
-            ->map(function (WeeklySlot $slot) use ($days) {
+            ->map(function (WeeklySlot $slot) use ($days, $linkQuery) {
                 $next = collect($days)->first(fn (string $date) => $slot->occursOn($date));
 
                 if ($next === null) {
@@ -95,7 +99,7 @@ final class NeedsAttention
                 return [
                     'label' => $slot->area->name.', '.$when.' '.$time,
                     'detail' => 'No regular',
-                    'url' => route('calendar.week', ['date' => $next]),
+                    'url' => route('calendar.week', ['date' => $next] + $linkQuery),
                     'urgent' => false,
                 ];
             })
@@ -104,12 +108,12 @@ final class NeedsAttention
     }
 
     /** The shift's details once that screen exists (Task 5); its week until then. */
-    private static function shiftUrl(Shift $shift): string
+    private static function shiftUrl(Shift $shift, array $linkQuery): string
     {
         if (Route::has('calendar.shift')) {
-            return route('calendar.shift', $shift);
+            return route('calendar.shift', ['shift' => $shift] + $linkQuery);
         }
 
-        return route('calendar.week', ['date' => $shift->local_date->toDateString()]);
+        return route('calendar.week', ['date' => $shift->local_date->toDateString()] + $linkQuery);
     }
 }

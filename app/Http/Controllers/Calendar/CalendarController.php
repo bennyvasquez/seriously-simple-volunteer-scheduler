@@ -75,13 +75,15 @@ class CalendarController extends Controller
     /** @param  Collection<int, Area>  $areas */
     private function gridData(Request $request, Organization $organization, CalendarWeek $week, Collection $areas, array $shown): array
     {
+        $areaQuery = $this->areaQuery($request, $shown);
+
         return [
             'organization' => $organization,
             'week' => $week,
             'areas' => $areas,
             'shown' => $shown,
-            'areaQuery' => $this->areaQuery($request, $shown),
-            'needsAttention' => NeedsAttention::for($organization, $shown),
+            'areaQuery' => $areaQuery,
+            'needsAttention' => NeedsAttention::for($organization, $shown, $areaQuery),
             'now' => CarbonImmutable::now(),
             'today' => $organization->today()->toDateString(),
             'nothingShown' => $shown === [],

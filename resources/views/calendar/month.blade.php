@@ -44,7 +44,7 @@
 @foreach ($weekDays as $day)
 <div class="cell{{ $day['date'] === $today ? ' today' : '' }}" @if ($day['date'] === $today) aria-current="date" @endif>
 @if ($day['inMonth'])
-<a href="{{ route('calendar.day', ['date' => $day['date']] + $areaQuery) }}" class="num" aria-label="{{ \Carbon\CarbonImmutable::parse($day['date'])->format('l, F j') }}">{{ $day['label'] }}</a>
+<a href="{{ route('calendar.week', ['date' => $day['date']] + $areaQuery) }}" class="num" aria-label="Week of {{ \Carbon\CarbonImmutable::parse($day['date'])->format('l, F j') }}">{{ $day['label'] }}</a>
 @foreach ($day['closures'] as $closure)
 <span class="closed">{{ $closure }}</span>
 @endforeach
