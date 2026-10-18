@@ -20,6 +20,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
+use App\Notifications\PutOnShiftNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -261,6 +262,37 @@ class EditScheduleTest extends TestCase
         $this->assertNull($revived->cancel_reason);
         $this->assertSame(2, $revived->headcount);
         $this->assertTrue(ChangeLogEntry::query()->forSubject($revived)->ofAction('shift.updated')->exists());
+    }
+
+    public function test_dates_brought_back_get_the_slots_current_regulars(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['valid_until' => '2026-11-12'] + $this->slotAttributes($slot));
+        $sam = $this->regular($slot->fresh(), 'Sam Example');
+
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['valid_until' => null] + $this->slotAttributes($slot->fresh()));
+
+        $this->assertSame(3, $result->updatedShifts);
+        foreach (['2026-11-19', '2026-11-26', '2026-12-03'] as $date) {
+            $shift = $slot->shifts()->where('local_date', $date)->sole();
+            $this->assertNull($shift->cancelled_at);
+            $this->assertSame([$sam->id], $shift->assignments()->where('type', AssignmentType::Regular)->pluck('user_id')->all());
+            $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.updated')->sole();
+            $this->assertSame([$sam->id], $entry->details['added_regular_ids']);
+        }
+        Notification::assertNotSentTo($sam, PutOnShiftNotification::class);
+    }
+
+    public function test_a_cancellation_typed_by_hand_with_the_same_words_is_never_undone(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $shift = $slot->shifts()->where('local_date', '2026-10-22')->sole();
+        app(CancelShift::class)->handle($this->coordinator(), $shift, 'The weekly slot changed');
+
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['headcount' => 2] + $this->slotAttributes($slot));
+
+        $this->assertNotNull($shift->fresh()->cancelled_at);
+        $this->assertSame(1, $shift->fresh()->headcount);
     }
 
     /** Runs a slot edit that has to be refused with $message, and checks nothing changed. */

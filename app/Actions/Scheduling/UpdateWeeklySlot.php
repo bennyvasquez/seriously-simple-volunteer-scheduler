@@ -2,11 +2,13 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Enums\AssignmentType;
 use App\Models\AreaClosure;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
+use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use DomainException;
@@ -18,7 +20,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Saves changes to a weekly slot and brings its future shifts up to date, as far as that is safe without change notices.
  *
- * Future shifts that nobody is on and nobody edited by hand get the slot's new times, headcount, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), that shift is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A date the slot runs on again whose shift was cancelled that way, with nobody on it and no closure, is brought back with the slot's details. The generator then adds any new dates. Shifts someone is on, or that were edited on their own, keep their old details and are returned as kept when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
+ * Future shifts that nobody is on and nobody edited by hand get the slot's new times, headcount, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), that shift is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars. The generator then adds any new dates. Shifts someone is on, or that were edited on their own, keep their old details and are returned as kept when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
  *
  * Changing the day or how often the slot repeats (including the first date of an every-other-week slot, which sets its weeks) is refused while the slot has current or future regulars or a future shift someone is on, since that changes when they work. Switching to a rotation is refused while it has current or future regulars. The refusals are written to be shown on screen.
  *
@@ -143,24 +145,28 @@ class UpdateWeeklySlot
     }
 
     /**
-     * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started.
+     * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started. A slot change is recognised by the shift's most recent shift.cancelled entry having come from slot.updated, never by the reason text, so a person who typed the same words keeps their cancellation.
+     *
+     * The slot's current regulars for that date are put back on it, up to its headcount, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
      *
      * @param  list<int>  $justCancelled
      * @return list<int> The ids brought back.
      */
     private function revive(User $actor, WeeklySlot $slot, Organization $organization, array $justCancelled, array $via): array
     {
-        $candidates = $slot->shifts()->whereNotNull('cancelled_at')->where('cancel_reason', self::CANCEL_REASON)
+        $candidates = $slot->shifts()->whereNotNull('cancelled_at')
             ->whereNull('area_closure_id')->whereDoesntHave('assignments')
             ->where('local_date', '>=', $organization->today()->toDateString())->whereNotIn('id', $justCancelled)
             ->orderBy('local_date')->lockForUpdate()->get();
 
+        $regulars = $slot->regulars()->orderBy('id')->get();
         $revived = [];
 
         foreach ($candidates as $shift) {
             $date = $shift->local_date->toDateString();
 
-            if (! $slot->occursOn($date) || AreaClosure::query()->where('area_id', $slot->area_id)->where('starts_on', '<=', $date)->where('ends_on', '>=', $date)->exists()) {
+            if (! $slot->occursOn($date) || ! $this->cancelledBySlotChange($shift)
+                || AreaClosure::query()->where('area_id', $slot->area_id)->where('starts_on', '<=', $date)->where('ends_on', '>=', $date)->exists()) {
                 continue;
             }
 
@@ -172,11 +178,27 @@ class UpdateWeeklySlot
 
             $shift->cancelled_at = null;
             $shift->cancel_reason = null;
-            $this->saveAndLog($actor, $shift, 'shift.updated', $via);
+            $changes = ChangeLogEntry::changesOf($shift);
+            $shift->save();
+
+            $added = [];
+            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date))->take($shift->headcount) as $regular) {
+                $shift->assignments()->create(['user_id' => $regular->user_id, 'type' => AssignmentType::Regular]);
+                $added[] = $regular->user_id;
+            }
+
+            ChangeLogEntry::record($actor, 'shift.updated', $shift, $via + ['added_regular_ids' => $added], $changes);
             $revived[] = $shift->id;
         }
 
         return $revived;
+    }
+
+    private function cancelledBySlotChange(Shift $shift): bool
+    {
+        $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.cancelled')->latest('id')->first();
+
+        return ($entry?->details['via'] ?? null) === 'slot.updated';
     }
 
     private function saveAndLog(User $actor, Shift $shift, string $action, array $via): void
