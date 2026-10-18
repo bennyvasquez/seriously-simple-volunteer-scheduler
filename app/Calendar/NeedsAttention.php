@@ -8,7 +8,6 @@ use App\Models\Shift;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Route;
 
 /**
  * The sidebar's "Needs attention" list (plan decision): for the next 14 days, shifts with open places (marked urgent inside 24 hours) and rotation shifts nobody signed up for, then weekly slots with no regular. "Ready for review" waits for clearance.
@@ -107,13 +106,9 @@ final class NeedsAttention
             ->values();
     }
 
-    /** The shift's details once that screen exists (Task 5); its week until then. */
+    /** The shift's details. */
     private static function shiftUrl(Shift $shift, array $linkQuery): string
     {
-        if (Route::has('calendar.shift')) {
-            return route('calendar.shift', ['shift' => $shift] + $linkQuery);
-        }
-
-        return route('calendar.week', ['date' => $shift->local_date->toDateString()] + $linkQuery);
+        return route('calendar.shift', ['shift' => $shift] + $linkQuery);
     }
 }

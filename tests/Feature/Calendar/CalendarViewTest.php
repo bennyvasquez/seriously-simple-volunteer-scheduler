@@ -324,12 +324,12 @@ class CalendarViewTest extends TestCase
 
     public function test_needs_attention_keeps_the_area_filter_and_counts_only_regulars_in_the_window(): void
     {
-        $this->shiftOn('2026-10-16', '15:30', '18:30');
+        $shift = $this->shiftOn('2026-10-16', '15:30', '18:30');
         $later = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 2, 'start_time' => '09:00', 'end_time' => '11:00']);
         SlotRegular::query()->create(['weekly_slot_id' => $later->id, 'user_id' => User::factory()->create()->id, 'starts_on' => '2026-12-01']);
 
         $this->actingAs($this->coordinator())->get(route('calendar.week', ['areas' => [$this->frontDesk->id]]))
-            ->assertSee('href="'.e(route('calendar.week', ['date' => '2026-10-16', 'areas' => [$this->frontDesk->id]])).'"', false)
+            ->assertSee('href="'.e(route('calendar.shift', [$shift, 'areas' => [$this->frontDesk->id]])).'"', false)
             ->assertSeeInOrder(['Front desk, Tuesdays 9 to 11am', 'No regular']);
     }
 }

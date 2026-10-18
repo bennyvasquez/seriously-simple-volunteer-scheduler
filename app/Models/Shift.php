@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Calendar\TimeFormat;
 use App\Enums\AssignmentType;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -79,5 +80,14 @@ class Shift extends Model
         return $this->openPlaces() > 0
             && $this->starts_at->greaterThan($now)
             && $this->starts_at->lessThanOrEqualTo($now->addHours(24));
+    }
+
+    /** The date and time in the organization's time zone, the US way: "Thursday, October 22, 6:30 to 9:30pm". */
+    public function whenText(?string $timezone = null): string
+    {
+        $timezone ??= Organization::current()->timezone;
+        $start = $this->starts_at->setTimezone($timezone);
+
+        return $start->format('l, F j').', '.TimeFormat::range($start, $this->ends_at->setTimezone($timezone));
     }
 }

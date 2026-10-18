@@ -25,6 +25,8 @@ use Illuminate\View\View;
  */
 class AddController extends Controller
 {
+    use KeepsAreaFilter;
+
     private const DATE_FORMAT = 'Y-m-d';
 
     /** Screen 31: the week with the add panel beside it. */
@@ -307,20 +309,6 @@ class AddController extends Controller
 
         return redirect()->route('calendar.week', ['date' => $weekOf] + $areaQuery)
             ->with('status', 'Added '.$slot->describe().', starting '.$date->format('l, F j').'. '.$onCalendar);
-    }
-
-    /** The areas[] filter the person came from, so every redirect back to the week keeps it. Empty when no filter was in use. */
-    private function areaQuery(Request $request): array
-    {
-        $asked = $request->input('areas');
-
-        if (! is_array($asked)) {
-            return [];
-        }
-
-        $ids = array_values(array_filter(array_map('intval', array_filter($asked, fn ($id) => is_scalar($id) && ctype_digit((string) $id)))));
-
-        return ['areas' => $ids === [] ? [''] : $ids];
     }
 
     /** @return Collection<int, Area> */

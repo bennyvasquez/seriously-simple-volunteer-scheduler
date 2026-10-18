@@ -7,6 +7,7 @@ use App\Http\Controllers\Auth\LoginLinkController;
 use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Http\Controllers\Calendar\AddController;
 use App\Http\Controllers\Calendar\CalendarController;
+use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\PersonSecurityController;
 use Illuminate\Http\Request;
@@ -38,6 +39,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/add', [AddController::class, 'store'])->name('calendar.add.store');
         Route::get('/calendar/slots/create', [AddController::class, 'createSlot'])->name('calendar.slots.create');
         Route::post('/calendar/slots', [AddController::class, 'storeSlot'])->name('calendar.slots.store');
+        Route::get('/calendar/shifts/{shift}', [ShiftController::class, 'show'])->name('calendar.shift');
+        Route::post('/calendar/shifts/{shift}/assign', [ShiftController::class, 'assign'])->name('calendar.shift.assign');
+        Route::post('/calendar/shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('calendar.shift.cancel');
         Route::get('/calendar/slots/{slot}/edit', [AddController::class, 'editSlot'])->name('calendar.slots.edit');
     });
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');

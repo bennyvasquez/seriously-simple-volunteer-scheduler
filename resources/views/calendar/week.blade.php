@@ -70,7 +70,7 @@
 <div class="day"><span>{{ \Carbon\CarbonImmutable::parse($day)->format('D M j') }}</span><a href="{{ route('calendar.add', ['date' => $day] + $areaQuery) }}" class="muted">Add</a></div>
 @foreach ($shifts as $shift)
 @php($info = $week->describe($shift, $now))
-<a class="{{ $info['classes'] }}" aria-label="{{ $info['label'] }}" @if (Route::has('calendar.shift')) href="{{ route('calendar.shift', $shift) }}" @endif><strong>{{ $info['time'] }}, {{ $info['area'] }}</strong>@foreach ($info['lines'] as $line)<span>{{ $line }}</span>@endforeach</a>
+<a class="{{ $info['classes'] }}" aria-label="{{ $info['label'] }}" href="{{ route('calendar.shift', [$shift] + $areaQuery) }}"><strong>{{ $info['time'] }}, {{ $info['area'] }}</strong>@foreach ($info['lines'] as $line)<span>{{ $line }}</span>@endforeach</a>
 @endforeach
 @endif
 @endforeach
