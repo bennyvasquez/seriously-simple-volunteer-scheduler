@@ -121,6 +121,14 @@ class User extends Authenticatable
         return explode(' ', trim($this->name))[0];
     }
 
+    /** First name and the first letter of the last word, "Robin E.", for showing someone to a viewer who may not see their full name. Just the first name when the name is one word. */
+    public function shortName(): string
+    {
+        $words = preg_split('/\s+/', trim($this->name));
+
+        return count($words) < 2 ? $words[0] : $words[0].' '.mb_strtoupper(mb_substr($words[count($words) - 1], 0, 1)).'.';
+    }
+
     public function isActive(): bool
     {
         return $this->deactivated_at === null;

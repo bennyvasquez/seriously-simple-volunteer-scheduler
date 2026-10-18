@@ -56,10 +56,10 @@
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
 <input type="hidden" name="person" value="{{ $match->id }}">
-<div class="row"><span>{{ $match->name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
+<div class="row"><span>{{ $match->display_name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
 <div class="add-actions">
-@if ($shift->openPlaces() > 0)<button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->name }} on this shift">Put on shift</button>@endif
-@if ($shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->name }} on this shift as a shadow">Shadow</button>@endif
+@if ($shift->openPlaces() > 0)<button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->display_name }} on this shift">Put on shift</button>@endif
+@if ($shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->display_name }} on this shift as a shadow">Shadow</button>@endif
 </div>
 </form>
 @empty
@@ -74,7 +74,7 @@
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
-<x-field name="reason" label="Why is it cancelled?" :value="old('reason')" maxlength="200" required hint="{{ $people->isEmpty() ? 'Nobody is on this shift.' : 'The '.($people->count() === 1 ? 'person' : $people->count().' people').' on it will be emailed this reason. The shift stays on the calendar, marked cancelled.' }}" />
+<x-field name="reason" label="Why is it cancelled?" :value="old('reason')" maxlength="200" required hint="{{ $emailCount === 0 ? 'Nobody will be emailed.' : ($emailCount === 1 ? '1 person' : $emailCount.' people').' will be emailed this reason.' }} The shift stays on the calendar, marked cancelled." />
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Cancel this date</button>
 <a href="{{ $panelUrl() }}" class="btn">Keep it</a>

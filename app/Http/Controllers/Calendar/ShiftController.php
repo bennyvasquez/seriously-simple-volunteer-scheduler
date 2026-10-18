@@ -56,6 +56,7 @@ class ShiftController extends Controller
             'cancelling' => $canCancel && $request->boolean('cancel'),
             'search' => $search,
             'byEmail' => $byEmail,
+            'emailCount' => $shift->assignments->filter(fn (Assignment $assignment) => $assignment->user->isActive())->count(),
         ]);
     }
 
@@ -172,7 +173,11 @@ class ShiftController extends Controller
             ->whereNotIn('id', $shift->assignments->pluck('user_id'))
             ->where(fn ($q) => $q->where('name', 'like', $like)->when($byEmail, fn ($q) => $q->orWhere('email', 'like', $like)))
             ->orderBy('name')->limit(8)->get(['id', 'name', 'email'])
-            ->each(fn (User $match) => $match->setAttribute('show_email', $viewer->canSee($match)));
+            ->each(function (User $match) use ($viewer) {
+                $sees = $viewer->canSee($match);
+                $match->setAttribute('show_email', $sees);
+                $match->setAttribute('display_name', $sees ? $match->name : $match->shortName());
+            });
 
         return ['query' => $query, 'tooShort' => false, 'matches' => $matches];
     }

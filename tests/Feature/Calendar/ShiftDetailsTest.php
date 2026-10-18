@@ -350,10 +350,10 @@ class ShiftDetailsTest extends TestCase
         $lead = $this->coordinator(Role::AreaLead, $this->frontDesk);
 
         $this->actingAs($lead)->get(route('calendar.shift', [$shift, 'q' => 'robin']))
-            ->assertOk()->assertSee('Robin Example')->assertDontSee('robin.secret@example.org');
+            ->assertOk()->assertSee('Robin E.')->assertDontSee('Robin Example')->assertDontSee('Robin Ex')->assertDontSee('robin.secret@example.org');
 
         $this->actingAs($lead)->get(route('calendar.shift', [$shift, 'q' => 'secret']))
-            ->assertOk()->assertDontSee('Robin Example');
+            ->assertOk()->assertDontSee('Robin E.');
 
         $this->actingAs($this->coordinator())->get(route('calendar.shift', [$shift, 'q' => 'secret']))
             ->assertOk()->assertSee('Robin Example')->assertSee('robin.secret@example.org');
@@ -372,5 +372,16 @@ class ShiftDetailsTest extends TestCase
     public function test_user_first_name(): void
     {
         $this->assertSame('Robin', User::factory()->make(['name' => ' Robin Example '])->firstName());
+        $this->assertSame('Robin E.', User::factory()->make(['name' => 'Robin Q. example'])->shortName());
+        $this->assertSame('Robin', User::factory()->make(['name' => 'Robin'])->shortName());
+    }
+
+    public function test_the_cancel_hint_counts_only_active_people(): void
+    {
+        $shift = $this->shiftWithPerson(name: 'Sam', shadow: 'Robin');
+        User::query()->where('name', 'Robin')->update(['deactivated_at' => now()]);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.shift', [$shift, 'cancel' => 1]))
+            ->assertOk()->assertSee('1 person will be emailed this reason.');
     }
 }

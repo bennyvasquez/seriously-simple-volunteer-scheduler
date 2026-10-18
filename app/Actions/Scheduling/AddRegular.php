@@ -75,6 +75,7 @@ class AddRegular
             $regular->save();
 
             $shifts = $slot->shifts()
+                ->whereNull('cancelled_at')
                 ->where('local_date', '>=', $startsOn)
                 ->when($endsOn !== null, fn ($query) => $query->where('local_date', '<=', $endsOn))
                 ->where('starts_at', '>', CarbonImmutable::now())

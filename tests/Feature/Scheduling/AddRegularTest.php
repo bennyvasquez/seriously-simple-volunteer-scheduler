@@ -64,6 +64,18 @@ class AddRegularTest extends TestCase
         $this->assertSame(1, $this->slot->regulars()->count());
     }
 
+    public function test_it_skips_cancelled_shifts(): void
+    {
+        $user = User::factory()->create();
+        Shift::query()->where('local_date', '2026-10-22')->update(['cancelled_at' => now(), 'cancel_reason' => 'Power outage']);
+
+        $this->addRegular($user, '2026-10-01');
+
+        $this->assertSame(['2026-10-15', '2026-10-29'], $this->datesFor($user));
+        $entry = ChangeLogEntry::query()->about($user)->ofAction('regular.added')->sole();
+        $this->assertCount(2, $entry->details['added_to_shift_ids']);
+    }
+
     public function test_it_skips_shifts_that_have_started(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-15 16:00', 'America/New_York'));
