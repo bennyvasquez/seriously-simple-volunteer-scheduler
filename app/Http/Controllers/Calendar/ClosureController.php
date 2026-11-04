@@ -94,10 +94,13 @@ class ClosureController extends Controller
         $first = $closures->first()->starts_on;
         $last = $closures->first()->ends_on;
         $names = $this->names($closures->pluck('area'));
-        $cancelled = $shifts->isEmpty() ? 'No shifts were on the calendar for those days.' : 'Cancelled '.$shifts->count().' '.Str::plural('shift', $shifts->count()).' and '.match ($emailed) {
-            0 => 'nobody was on them.',
-            1 => 'emailed 1 person.',
-            default => 'emailed '.$emailed.' people.',
+        // People who can't be emailed (not invited yet) are still on the shifts, so "nobody was on them" is only said when that's true.
+        $onShifts = $shifts->contains(fn (Shift $shift) => $shift->assignments->isNotEmpty());
+        $cancelled = $shifts->isEmpty() ? 'No shifts were on the calendar for those days.' : 'Cancelled '.$shifts->count().' '.Str::plural('shift', $shifts->count()).match (true) {
+            $emailed === 1 => ' and emailed 1 person.',
+            $emailed > 1 => ' and emailed '.$emailed.' people.',
+            $onShifts => '.',
+            default => ' and nobody was on them.',
         };
 
         if ($first->toDateString() !== $values['from']) {
@@ -165,6 +168,7 @@ class ClosureController extends Controller
             'rows' => $rows,
             'count' => $count,
             'people' => $this->activePeople($shifts)->count(),
+            'onShifts' => $shifts->contains(fn (Shift $shift) => $shift->assignments->isNotEmpty()),
             'button' => $button,
             'already' => $inRange->whereNotNull('cancelled_at')->count(),
         ];

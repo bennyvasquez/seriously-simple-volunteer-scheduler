@@ -53,11 +53,12 @@
 <p class="muted">{{ $preview['already'] === 1 ? '1 shift on these days is already cancelled and stays as it is.' : $preview['already'].' shifts on these days are already cancelled and stay as they are.' }}</p>
 @endif
 @if ($preview['count'] > 0)
-<p class="muted">{{ match ($preview['people']) {
-    0 => 'Nobody is on these shifts, so nobody is emailed.',
-    1 => 'We\'ll email the 1 person on these shifts that they\'re cancelled.',
-    default => 'We\'ll email the '.$preview['people'].' people on these shifts that they\'re cancelled.',
-} }} Shifts for these days won't be made again later.</p>
+<p class="muted">{{ match (true) {
+    $preview['people'] === 1 => 'We\'ll email the 1 person on these shifts that they\'re cancelled. ',
+    $preview['people'] > 1 => 'We\'ll email the '.$preview['people'].' people on these shifts that they\'re cancelled. ',
+    $preview['onShifts'] => '',
+    default => 'Nobody is on these shifts, so nobody is emailed. ',
+} }}Shifts for these days won't be made again later.</p>
 @else
 <p class="muted">Shifts won't be made for these days.</p>
 @endif

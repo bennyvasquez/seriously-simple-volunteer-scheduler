@@ -271,4 +271,24 @@ class NotInvitedTest extends TestCase
         $this->assertSame(0, LoginLink::query()->count());
         $this->assertCount(0, $this->sentMessages());
     }
+
+    public function test_screen_messages_do_not_say_a_not_invited_person_was_emailed(): void
+    {
+        $this->enableTwoFactor($this->coordinator);
+        $area = Area::factory()->create();
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $area, '2026-11-26', '15:30', '18:30', 2, 0, null);
+        $notInvited = User::factory()->notInvited()->create(['name' => 'Robin Example']);
+        $invited = User::factory()->create(['name' => 'Sam Example']);
+
+        $this->actingAs($this->coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $notInvited->id, 'type' => 'regular'])
+            ->assertSessionHas('status', 'Robin is on this shift.');
+        $this->actingAs($this->coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $invited->id, 'type' => 'regular'])
+            ->assertSessionHas('status', 'Sam is on this shift. They were emailed.');
+
+        $other = app(CreateOneTimeShift::class)->handle($this->coordinator, $area, '2026-11-27', '15:30', '18:30', 2, 0, null);
+        app(PutOnShift::class)->handle($this->coordinator, $other, $notInvited, AssignmentType::Regular);
+
+        $this->actingAs($this->coordinator)->post(route('calendar.shift.cancel', $other), ['reason' => 'Power outage'])
+            ->assertSessionHas('status', fn (string $status) => ! str_contains($status, 'Nobody was on it') && ! str_contains($status, 'emailed'));
+    }
 }

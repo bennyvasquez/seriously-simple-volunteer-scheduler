@@ -129,7 +129,7 @@ class RegularController extends Controller
                 0 => 'No shifts are on the schedule for them yet.',
                 1 => 'We added them to 1 shift already on the schedule.',
                 default => 'We added them to '.$added.' shifts already on the schedule.',
-            }.$this->overlapsSentence($regular->skipped_overlaps).' We\'ll email '.$first.' to let them know.');
+            }.$this->overlapsSentence($regular->skipped_overlaps).($regularUser->canSignIn() ? ' We\'ll email '.$first.' to let them know.' : ''));
     }
 
     /**

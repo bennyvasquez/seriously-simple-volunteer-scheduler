@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Cancels one date (reason up to 200 characters). The shift stays (the nightly run would only recreate it) with cancelled_at and the reason set, and everyone on it is emailed after the response. Refuses a shift that has started or is already cancelled.
+ * Cancels one date (reason up to 200 characters). The shift stays (the nightly run would only recreate it) with cancelled_at and the reason set, and everyone on it who can sign in (not turned off, not waiting for a first invitation) is emailed after the response. Refuses a shift that has started or is already cancelled.
  */
 class CancelShift
 {

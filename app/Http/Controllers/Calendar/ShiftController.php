@@ -109,7 +109,7 @@ class ShiftController extends Controller
         $first = $person->firstName();
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
-            ->with('status', $first.($data['type'] === 'shadow' ? ' is shadowing this shift.' : ' is on this shift.').' They were emailed.');
+            ->with('status', $first.($data['type'] === 'shadow' ? ' is shadowing this shift.' : ' is on this shift.').($person->canSignIn() ? ' They were emailed.' : ''));
     }
 
     /** Saves the edit form for one shift. Errors go back to the form with what was typed. */
@@ -166,13 +166,16 @@ class ShiftController extends Controller
         }
 
         $shift->loadMissing('area');
+        // Someone on the shift who can't be emailed (not invited yet) doesn't make "Nobody was on it" true, so that case says nothing.
+        $sentence = match (true) {
+            $people === 1 => '1 person was emailed.',
+            $people > 1 => $people.' people were emailed.',
+            $shift->assignments()->exists() => '',
+            default => 'Nobody was on it.',
+        };
 
         return redirect()->route('calendar.week', ['date' => $shift->local_date->toDateString()] + $areaQuery)
-            ->with('status', 'Cancelled the '.$shift->area->name.' shift on '.$shift->local_date->format('l, F j').'. '.match ($people) {
-                0 => 'Nobody was on it.',
-                1 => '1 person was emailed.',
-                default => $people.' people were emailed.',
-            });
+            ->with('status', trim('Cancelled the '.$shift->area->name.' shift on '.$shift->local_date->format('l, F j').'. '.$sentence));
     }
 
     /** "Repeats every Thursday, since Sep 3. No end date." or "One time". */
