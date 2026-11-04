@@ -13,6 +13,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -203,6 +204,80 @@ class ImportPeopleTest extends TestCase
         }
 
         $this->assertFalse(User::query()->where('email', 'avery@example.org')->exists());
+        $this->assertSame(0, ChangeLogEntry::query()->where('action', 'user.created')->where('actor_id', $this->admin->id)->count());
+        $this->assertSame(0, ChangeLogEntry::query()->where('action', 'role.granted')->where('actor_id', $this->admin->id)->count());
+    }
+
+    public function test_an_unexpected_database_error_prints_no_contact_details(): void
+    {
+        $this->app->bind(ImportPeople::class, fn () => new class extends ImportPeople
+        {
+            public function apply(User $admin, ImportPreview $preview, ?Area $leadArea): int
+            {
+                throw new QueryException('mysql', 'insert into users (email) values (?)', ['secret@example.net'], new \Exception('Duplicate entry secret@example.net'));
+            }
+        });
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org'])
+            ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
+            ->expectsOutputToContain('Something went wrong, so nothing was saved.')
+            ->doesntExpectOutputToContain('secret@example.net')
+            ->assertFailed();
+    }
+
+    public function test_a_membership_id_taken_during_the_prompt_is_refused_with_the_line(): void
+    {
+        $preview = $this->preview();
+        User::factory()->create(['member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2']);
+
+        try {
+            app(ImportPeople::class)->apply($this->admin, $preview, $this->frontDesk);
+            $this->fail('Expected the import to fail.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('Line 3: Someone already has that membership ID. Nothing was saved.', $exception->getMessage());
+        }
+
+        $this->assertFalse(User::query()->where('email', 'avery@example.org')->exists());
+    }
+
+    public function test_a_duplicate_membership_id_in_the_file_is_a_problem_on_both_rows(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'ssvs');
+        file_put_contents($path, "Full name,Email,Profile ID\nAvery Example,avery@example.org,same\nBlake Example,blake@example.org,same\n");
+
+        try {
+            $preview = app(ImportPeople::class)->preview(HelloClubExport::read($path), null);
+        } finally {
+            unlink($path);
+        }
+
+        $this->assertCount(0, $preview->add);
+        $this->assertSame(['Appears twice in the file, on lines 2 and 3', 'Appears twice in the file, on lines 2 and 3'], $preview->problems->pluck('reason')->all());
+    }
+
+    public function test_names_and_membership_ids_that_are_too_long_are_problems(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'ssvs');
+        file_put_contents($path, 'Full name,Email,Profile ID'."\n".str_repeat('a', 256).",a@example.org,x\nBlake Example,b@example.org,".str_repeat('b', 65)."\n");
+
+        try {
+            $preview = app(ImportPeople::class)->preview(HelloClubExport::read($path), null);
+        } finally {
+            unlink($path);
+        }
+
+        $this->assertSame(['The name is too long', 'The membership ID is too long'], $preview->problems->pluck('reason')->all());
+    }
+
+    public function test_the_prompt_names_membership_id_fill_ins_when_nobody_is_added(): void
+    {
+        User::factory()->create(['email' => 'avery@example.org']);
+        User::factory()->create(['email' => 'blake@example.org']);
+        User::factory()->create(['email' => 'casey@example.org']);
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org'])
+            ->expectsConfirmation('Add membership IDs to 3 people? Nobody will be emailed.', 'no')
+            ->assertSuccessful();
     }
 
     public function test_the_command_previews_then_imports_on_yes(): void

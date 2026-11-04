@@ -10,6 +10,7 @@ use App\Models\User;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Console\Command;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -70,7 +71,7 @@ class ImportPeopleCommand extends Command
         $fills = $preview->existing->where('fillMemberId', true)->count();
 
         if ($preview->add->isEmpty() && $fills === 0) {
-            $this->info('There is nobody to add.');
+            $this->info("There's nobody to add.");
 
             return self::SUCCESS;
         }
@@ -80,7 +81,9 @@ class ImportPeopleCommand extends Command
         }
 
         $count = $preview->add->count();
-        $question = $count === 1 ? 'Add this 1 person? Nobody will be emailed.' : "Add these {$count} people? Nobody will be emailed.";
+        $question = $count === 0
+            ? ($fills === 1 ? 'Add a membership ID to 1 person? Nobody will be emailed.' : "Add membership IDs to {$fills} people? Nobody will be emailed.")
+            : ($count === 1 ? 'Add this 1 person? Nobody will be emailed.' : "Add these {$count} people? Nobody will be emailed.");
 
         if (! $this->confirm($question)) {
             $this->line('Nothing was changed.');
@@ -91,7 +94,12 @@ class ImportPeopleCommand extends Command
         try {
             $created = $importPeople->apply($admin, $preview, $leadArea);
         } catch (AuthorizationException|DomainException $exception) {
-            $this->error("Nothing was saved: {$exception->getMessage()}");
+            $this->error($exception instanceof DomainException ? $exception->getMessage() : "Nothing was saved: {$exception->getMessage()}");
+
+            return self::FAILURE;
+        } catch (QueryException) {
+            // Never echo the exception: its message holds the SQL bindings, which are names and email addresses.
+            $this->error('Something went wrong, so nothing was saved.');
 
             return self::FAILURE;
         }

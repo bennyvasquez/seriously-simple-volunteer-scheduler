@@ -8,6 +8,7 @@ use App\Import\ImportRow;
 use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -76,11 +77,22 @@ class ImportPeople
             $created = 0;
 
             foreach ($preview->add as $item) {
-                $person = app(CreatePerson::class)->handle($admin, $item->row->name, $item->row->email, $item->row->memberId !== '' ? $item->row->memberId : null);
-                $created++;
+                $memberId = $item->row->memberId !== '' ? $item->row->memberId : null;
 
-                if ($item->makeLead) {
-                    app(GrantRole::class)->handle($admin, $person, Role::AreaLead, $leadArea);
+                try {
+                    // Someone may have taken this membership ID since the preview, and CreatePerson only checks the email address.
+                    if ($memberId !== null && User::query()->where('member_id', $memberId)->exists()) {
+                        throw new DomainException('Someone already has that membership ID.');
+                    }
+
+                    $person = app(CreatePerson::class)->handle($admin, $item->row->name, $item->row->email, $memberId);
+                    $created++;
+
+                    if ($item->makeLead) {
+                        app(GrantRole::class)->handle($admin, $person, Role::AreaLead, $leadArea);
+                    }
+                } catch (DomainException $exception) {
+                    throw new DomainException("Line {$item->row->line}: {$exception->getMessage()} Nothing was saved.", previous: $exception);
                 }
             }
 
@@ -105,6 +117,14 @@ class ImportPeople
     {
         if ($row->name === '') {
             return 'No name';
+        }
+
+        if (mb_strlen($row->name) > 255) {
+            return 'The name is too long';
+        }
+
+        if (mb_strlen($row->memberId) > 64) {
+            return 'The membership ID is too long';
         }
 
         if ($row->email === '') {
