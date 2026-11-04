@@ -11,9 +11,9 @@
 @can('viewAny', App\Models\User::class)
 <a class="btn" href="{{ route('people.index') }}">People</a>
 @endcan
-@if ($user->isCoordinator())
-<a class="btn" href="{{ url('/change-log') }}">Change log</a>
-@endif
+@can('view-change-log')
+<a class="btn" href="{{ route('change-log.index') }}">Change log</a>
+@endcan
 <a class="btn" href="{{ route('account.show') }}">Login and security</a>
 <x-log-out />
 @endsection

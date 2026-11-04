@@ -188,3 +188,22 @@ a{color:#1a1a1a}a:hover{color:#000}
 .entry{display:flex;flex-direction:column;gap:2px;border-bottom:1px solid #eee;padding:8px 0}
 .person-page .btn{align-self:flex-start}
 @media (max-width:640px){.person-page{padding:16px}}
+
+/* The change log (screens 28 and 29). */
+.log-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.log-page h1{margin:0;font-size:26px}
+.log-page p{margin:0}
+.log-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;background:#fff;border:1px solid #ddd;border-radius:8px;padding:14px}
+.log-filters .field{flex:1 1 160px}
+.log-filters .field input[type=search]{width:100%}
+.log-list{border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#fff}
+.log-day{margin:0;font-size:14px;padding:10px 16px;background:#eee;border-bottom:1px solid #ddd}
+.log-entry{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:14px 16px;border-bottom:1px solid #e3e3e3}
+.log-when{font-size:14px;color:#444}
+.log-change{font-size:14px;color:#333;background:#f7f7f7;border-left:3px solid #b5b5b5;padding:6px 10px;margin-top:6px}
+.log-pager{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+@media (max-width:699px){
+.log-page{padding:16px}
+.log-filters .field{flex-basis:100%}
+.log-entry{grid-template-columns:minmax(0,1fr);gap:4px}
+}

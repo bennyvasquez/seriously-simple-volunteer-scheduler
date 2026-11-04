@@ -63,7 +63,7 @@ class PersonController extends Controller
                 'at' => $entry->created_at->setTimezone($timezone)->format('M j, g:ia'),
             ]),
             'changesPager' => $changes,
-            'changeLogUrl' => url('/change-log').'?'.http_build_query(['about' => $person->name]),
+            'changeLogUrl' => route('change-log.index', ['about' => $person->name]),
         ]);
     }
 

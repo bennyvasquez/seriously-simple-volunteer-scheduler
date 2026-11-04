@@ -12,23 +12,28 @@ use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 
 /**
  * Turns change log entries into sentences, without the actor ("Made Robin a shift lead for Front desk"), for the person page and the change log screen. Names are shown the way PersonSearch::displayName() shows them to the viewer, and a person whose account was removed is "Removed person". An entry the app has no sentence for gets a plain fallback, and an entry without old and new values is described from its action and details alone.
  */
 final class Describe
 {
-    public static function entry(ChangeLogEntry $entry, User $viewer): string
+    /**
+     * @param  Collection<int, Area>|null  $areas  Every area keyed by id, so a screen listing many entries doesn't look each one up.
+     * @param  Collection<int, int>|null  $visibleIds  The ids of the people the viewer may see, for the same reason. Leave both out to look things up per entry.
+     */
+    public static function entry(ChangeLogEntry $entry, User $viewer, ?Collection $areas = null, ?Collection $visibleIds = null): string
     {
-        $person = self::person($entry, $viewer);
+        $person = self::person($entry, $viewer, $visibleIds);
         $self = $entry->actor_id !== null && $entry->actor_id === $entry->affected_user_id;
         $possessive = $person.'\'s';
         $details = $entry->details ?? [];
         $changes = $entry->changes ?? [];
 
         return match ($entry->action) {
-            'role.granted' => 'Made '.$person.' '.self::roleWords($details),
-            'role.revoked' => self::roleRevoked($details, $person),
+            'role.granted' => 'Made '.$person.' '.self::roleWords($details, $areas),
+            'role.revoked' => self::roleRevoked($details, $person, $areas),
             'user.created' => 'Added '.$person,
             'user.invited' => 'Invited '.$person,
             'user.invitation_resent' => 'Sent '.$person.' a new invitation',
@@ -89,7 +94,7 @@ final class Describe
     }
 
     /** The person an entry is about, as this viewer may see them. */
-    private static function person(ChangeLogEntry $entry, User $viewer): string
+    private static function person(ChangeLogEntry $entry, User $viewer, ?Collection $visibleIds): string
     {
         $person = $entry->affectedUser ?? ($entry->subject instanceof User ? $entry->subject : null);
 
@@ -97,13 +102,17 @@ final class Describe
             return ChangeLogEntry::REMOVED_PERSON;
         }
 
+        if ($visibleIds !== null) {
+            return $visibleIds->contains($person->id) ? $person->name : $person->shortName();
+        }
+
         return PersonSearch::displayName($viewer, $person);
     }
 
     /** "a coordinator", "an admin", "a shift lead for Front desk". */
-    private static function roleWords(array $details): string
+    private static function roleWords(array $details, ?Collection $areas): string
     {
-        return self::roleName(Role::tryFrom($details['role'] ?? '') ?? Role::AreaLead, self::area($details));
+        return self::roleName(Role::tryFrom($details['role'] ?? '') ?? Role::AreaLead, self::area($details, $areas));
     }
 
     /** The role in words with its article, for sentences and flash messages: "an admin", "a shift lead for Front desk". */
@@ -116,28 +125,32 @@ final class Describe
         };
     }
 
-    private static function roleRevoked(array $details, string $person): string
+    private static function roleRevoked(array $details, string $person, ?Collection $areas): string
     {
         $role = match ($details['role'] ?? null) {
             Role::Admin->value => 'admin',
             Role::Coordinator->value => 'coordinator',
-            default => self::leadTitle($details),
+            default => self::leadTitle($details, $areas),
         };
-        $area = ($details['role'] ?? null) === Role::AreaLead->value ? self::area($details) : null;
+        $area = ($details['role'] ?? null) === Role::AreaLead->value ? self::area($details, $areas) : null;
 
         return 'Took the '.$role.' role'.($area ? ' for '.$area->name : '').' away from '.$person;
     }
 
-    private static function leadTitle(array $details): string
+    private static function leadTitle(array $details, ?Collection $areas): string
     {
-        $area = self::area($details);
+        $area = self::area($details, $areas);
 
         return $area ? mb_strtolower($area->leadTitle()) : 'area lead';
     }
 
-    private static function area(array $details): ?Area
+    private static function area(array $details, ?Collection $areas): ?Area
     {
-        return isset($details['area_id']) ? Area::query()->find($details['area_id']) : null;
+        if (! isset($details['area_id'])) {
+            return null;
+        }
+
+        return $areas !== null ? $areas->get($details['area_id']) : Area::query()->find($details['area_id']);
     }
 
     private static function article(string $word): string

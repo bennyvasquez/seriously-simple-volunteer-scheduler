@@ -11,6 +11,7 @@ use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Calendar\ClosureController;
 use App\Http\Controllers\Calendar\RegularController;
 use App\Http\Controllers\Calendar\ShiftController;
+use App\Http\Controllers\ChangeLogController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\People\InviteController;
 use App\Http\Controllers\People\PeopleController;
@@ -61,6 +62,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/calendar/areas/{area}/edit', [AreaController::class, 'edit'])->name('calendar.areas.edit');
         Route::post('/calendar/areas/{area}', [AreaController::class, 'update'])->name('calendar.areas.update');
     });
+    Route::get('/change-log', [ChangeLogController::class, 'index'])->middleware('can:view-change-log')->name('change-log.index');
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings');
     Route::put('/settings', [SettingsController::class, 'update']);
     Route::get('/people', [PeopleController::class, 'index'])->middleware('can:viewAny,App\Models\User')->name('people.index');
