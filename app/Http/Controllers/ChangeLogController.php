@@ -100,7 +100,7 @@ class ChangeLogController extends Controller
     {
         $input = Validator::make($request->query(), [
             'by' => ['nullable', 'string', 'regex:/^(system|\d{1,18})$/'],
-            'about' => ['nullable', 'string', 'max:100'],
+            'about' => ['nullable', 'string', 'max:255'],
             'kind' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::KINDS))],
             'from' => ['nullable', 'string', 'date_format:Y-m-d'],
             'to' => ['nullable', 'string', 'date_format:Y-m-d'],

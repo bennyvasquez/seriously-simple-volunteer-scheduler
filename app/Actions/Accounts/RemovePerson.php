@@ -66,7 +66,10 @@ class RemovePerson
         }
 
         $today = Organization::current()->today()->toDateString();
-        $stillRegular = $person->regulars()->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today))->exists();
+        $stillRegular = $person->regulars()
+            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today))
+            ->whereHas('weeklySlot', fn ($slot) => $slot->where(fn ($valid) => $valid->whereNull('valid_until')->orWhere('valid_until', '>=', $today)))
+            ->exists();
 
         if ($stillRegular) {
             return $person->firstName().' is still a regular. End that first.';

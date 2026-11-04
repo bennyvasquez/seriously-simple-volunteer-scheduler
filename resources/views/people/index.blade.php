@@ -85,7 +85,7 @@
 <div class="card-top"><strong><a href="{{ route('people.show', $row['person']) }}">{{ $row['person']->name }}</a>@unless ($row['person']->isActive()) <span class="tag">Turned off</span>@endunless</strong><span class="muted">{{ $row['status']->value !== 'accepted' ? ($row['status']->value === 'waiting' ? 'Invitation waiting' : $row['status']->label()) : ($row['seen'] === 'Never' ? 'Never seen' : 'Seen '.lcfirst($row['seen'])) }}</span></div>
 <div>{{ $row['roles'] === [] ? 'Volunteer' : implode(', ', $row['roles']) }}</div>
 <div class="muted">{{ $row['person']->email }}</div>
-<div class="muted">{{ $row['status']->label() }}@if ($row['sent'] && in_array($row['status']->value, ['waiting', 'ran_out'], true)), sent {{ $row['sent'] }}@endif</div>
+<div class="muted">@if ($row['sent'] && in_array($row['status']->value, ['waiting', 'ran_out'], true))Sent {{ $row['sent'] }}@else{{ $row['status']->label() }}@endif</div>
 </div>
 @endforeach
 </div>

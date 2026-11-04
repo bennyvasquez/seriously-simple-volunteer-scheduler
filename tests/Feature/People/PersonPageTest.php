@@ -183,7 +183,7 @@ class PersonPageTest extends TestCase
         $this->actingAs($this->coordinator)->post(route('people.invite.send', $person))->assertRedirect($page);
         $this->assertTrue($person->fresh()->isInvited());
 
-        $this->actingAs($this->coordinator)->get($page)->assertSee('Waiting')->assertSee('Send a new invitation')->assertSee('Sending a new one makes the old link stop working.');
+        $this->actingAs($this->coordinator)->get($page)->assertSee('Invitation waiting')->assertSee('Send a new invitation')->assertSee('Sending a new one makes the old link stop working.');
 
         $this->actingAs($this->coordinator)->post(route('people.turn-off', $person))->assertRedirect($page);
         $this->assertFalse($person->fresh()->isActive());

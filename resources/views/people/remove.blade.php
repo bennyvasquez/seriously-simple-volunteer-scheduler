@@ -6,7 +6,7 @@
 @section('content')
 <nav aria-label="Breadcrumb" class="muted"><a href="{{ route('people.index') }}">People</a> / <a href="{{ route('people.show', $person) }}">{{ $firstName }}</a> / Remove</nav>
 <h1>Remove {{ $person->name }}</h1>
-<p>Removing someone deletes their name and email address from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can't be undone.</p>
+<p>Removing someone deletes their name, email address and membership ID from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can't be undone.</p>
 
 @php($blocked = $refusal ?? $errors->first('remove'))
 @if ($blocked)

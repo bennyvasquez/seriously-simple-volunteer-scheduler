@@ -105,6 +105,8 @@ class ChangeLogScreenTest extends TestCase
         $get(['by' => $this->coordinator->id])->assertSee('2 changes')->assertSee('Sam Example')->assertDontSee('Robin Example');
         $get(['about' => 'robin'])->assertSee('3 changes about robin')->assertDontSee('Sam Example');
         $get(['kind' => 'roles'])->assertSee('2 changes')->assertDontSee('Invited');
+        // A name longer than 100 characters still filters instead of showing everything.
+        $get(['about' => str_repeat('x', 200)])->assertSee('0 changes')->assertDontSee('Sam Example');
         $get(['by' => $this->admin->id, 'about' => 'Robin', 'kind' => 'invitations'])->assertSee('2 changes');
         $get(['from' => '2026-10-11', 'to' => '2026-10-11'])->assertSee('2 changes from Oct 11 to Oct 11')->assertSee('11:30pm')->assertSee('10:00am')->assertDontSee('Oct 10');
         $get(['from' => '2026-10-12'])->assertSee('2 changes from Oct 12');

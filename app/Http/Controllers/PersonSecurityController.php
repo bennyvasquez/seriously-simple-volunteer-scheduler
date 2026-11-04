@@ -20,7 +20,7 @@ class PersonSecurityController extends Controller
     public function show(Request $request, string $user): View
     {
         $this->authorizeAdmin($request);
-        $user = User::query()->findOrFail($user);
+        $user = User::query()->people()->findOrFail($user);
 
         return view('people.security', [
             'person' => $user,
@@ -35,7 +35,7 @@ class PersonSecurityController extends Controller
     {
         // The admin check comes before the lookup, so a non-admin gets the same 403 for a person who exists and one who doesn't.
         $this->authorizeAdmin($request);
-        $user = User::query()->findOrFail($user);
+        $user = User::query()->people()->findOrFail($user);
 
         $request->validate(['identity_checked' => ['accepted']], ['identity_checked.accepted' => 'Tick the box once you\'ve checked it\'s really them.']);
 

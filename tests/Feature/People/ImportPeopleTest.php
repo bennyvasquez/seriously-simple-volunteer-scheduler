@@ -214,14 +214,14 @@ class ImportPeopleTest extends TestCase
         {
             public function apply(User $admin, ImportPreview $preview, ?Area $leadArea): int
             {
-                throw new QueryException('mysql', 'insert into users (email) values (?)', ['secret@example.net'], new \Exception('Duplicate entry secret@example.net'));
+                throw new QueryException('mysql', 'insert into users (email) values (?)', ['secret@example.org'], new \Exception('Duplicate entry secret@example.org'));
             }
         });
 
         $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org'])
             ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
             ->expectsOutputToContain('Something went wrong, so nothing was saved.')
-            ->doesntExpectOutputToContain('secret@example.net')
+            ->doesntExpectOutputToContain('secret@example.org')
             ->assertFailed();
     }
 

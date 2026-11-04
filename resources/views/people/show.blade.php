@@ -16,7 +16,7 @@
 
 <div>
 <h1>{{ $person->name }}@unless ($person->isActive()) <span class="tag">Turned off</span>@endunless</h1>
-<div class="muted">{{ $person->email }}. @if ($joined)Joined {{ $joined }}.@else{{ $status->label() }}.@endif</div>
+<div class="muted">{{ $person->email }}. @if ($joined)Joined {{ $joined }}.@else{{ match ($status->value) { 'waiting' => 'Invitation waiting', 'ran_out' => 'Invitation ran out', default => $status->label() } }}.@endif</div>
 </div>
 
 <div class="person-columns">
@@ -87,7 +87,7 @@
 @if ($canManage)
 <section class="panel" aria-labelledby="remove-heading">
 <h2 id="remove-heading">Remove {{ $firstName }}</h2>
-<p class="muted">Removing someone deletes their name and email address from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can't be undone.</p>
+<p class="muted">Removing someone deletes their name, email address and membership ID from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can't be undone.</p>
 <a href="{{ route('people.remove', $person) }}" class="btn">Remove {{ $firstName }}</a>
 </section>
 @endif

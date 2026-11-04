@@ -141,7 +141,7 @@ class PeopleListTest extends TestCase
         app(InvitePerson::class)->handle($this->coordinator, $drew);
 
         $this->actingAs($this->coordinator)->get(route('people.index'))
-            ->assertSee('Waiting')->assertSee('Sent Oct 14')->assertSee('1 invitation waiting');
+            ->assertSee('Waiting')->assertSee('Sent Oct 14')->assertDontSee('Waiting, sent')->assertDontSee('sent Oct 14')->assertSee('1 invitation waiting');
     }
 
     public function test_the_list_uses_a_fixed_number_of_queries_and_pages_by_fifty(): void

@@ -262,6 +262,28 @@ class RemovePersonTest extends TestCase
         $this->expectRefusal($taylor, 'Taylor is still a regular. End that first.');
     }
 
+    public function test_a_regular_on_a_slot_that_has_ended_does_not_block_removal(): void
+    {
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $ended = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'valid_until' => '2026-10-13']);
+        SlotRegular::create(['weekly_slot_id' => $ended->id, 'user_id' => $robin->id, 'starts_on' => '2026-09-03', 'ends_on' => null]);
+        app(RemovePerson::class)->handle($this->coordinator, $robin);
+        $this->assertDatabaseMissing('users', ['id' => $robin->id]);
+
+        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $ending = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'valid_until' => '2026-10-14']);
+        SlotRegular::create(['weekly_slot_id' => $ending->id, 'user_id' => $sam->id, 'starts_on' => '2026-09-03', 'ends_on' => null]);
+        $this->expectRefusal($sam, 'Sam is still a regular. End that first.');
+    }
+
+    public function test_the_removed_persons_security_page_is_not_found(): void
+    {
+        $removed = User::removedPerson();
+
+        $this->actingAs($this->admin)->get(route('people.security', $removed))->assertNotFound();
+        $this->actingAs($this->admin)->post(route('people.two-factor.reset', $removed), ['identity_checked' => '1'])->assertNotFound();
+    }
+
     private function expectRefusal(User $person, string $message): void
     {
         try {
@@ -281,11 +303,11 @@ class RemovePersonTest extends TestCase
         $this->actingAs($this->coordinator)->get(route('people.show', $robin))
             ->assertOk()
             ->assertSee('Remove Robin')
-            ->assertSee('Removing someone deletes their name and email address from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can\'t be undone.', false);
+            ->assertSee('Removing someone deletes their name, email address and membership ID from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can\'t be undone.', false);
 
         $this->actingAs($this->coordinator)->get(route('people.remove', $robin))
             ->assertOk()
-            ->assertSee('Removing someone deletes their name and email address from SSVS.')
+            ->assertSee('Removing someone deletes their name, email address and membership ID from SSVS.')
             ->assertSee('Remove Robin for good');
 
         $this->actingAs($this->coordinator)->from(route('people.remove', $robin))->post(route('people.remove.store', $robin), ['confirm' => 'Robyn'])

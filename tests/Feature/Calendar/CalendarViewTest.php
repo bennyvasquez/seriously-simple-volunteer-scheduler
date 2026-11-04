@@ -354,4 +354,16 @@ class CalendarViewTest extends TestCase
             ->assertSee('href="'.e(route('calendar.shift', [$shift, 'areas' => [$this->frontDesk->id]])).'"', false)
             ->assertSeeInOrder(['Front desk, Tuesdays 9 to 11am', 'No regular']);
     }
+
+    public function test_a_removed_person_shows_as_removed_person_on_the_grid_and_the_shift_panel(): void
+    {
+        $shift = $this->shiftOn('2026-10-07', '18:30', '21:30');
+        $shift->assignments()->create(['user_id' => User::removedPerson()->id, 'type' => AssignmentType::Regular]);
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->get(route('calendar.week', ['date' => '2026-10-07']))
+            ->assertOk()->assertSee('Removed person')->assertDontSee('Removed P.');
+        $this->actingAs($coordinator)->get(route('calendar.shift', $shift))
+            ->assertOk()->assertSee('Removed person')->assertDontSee('Removed P.');
+    }
 }
