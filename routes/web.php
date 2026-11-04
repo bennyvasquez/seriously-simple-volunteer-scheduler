@@ -78,6 +78,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/people/{user}/roles/remove', [PersonController::class, 'removeRole'])->name('people.roles.destroy');
         Route::post('/people/{user}/invite', [PersonController::class, 'invite'])->name('people.invite.send');
         Route::post('/people/{user}/turn-off', [PersonController::class, 'turnOff'])->name('people.turn-off');
+        Route::get('/people/{user}/remove', [PersonController::class, 'confirmRemove'])->name('people.remove');
+        Route::post('/people/{user}/remove', [PersonController::class, 'remove'])->name('people.remove.store');
     });
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');

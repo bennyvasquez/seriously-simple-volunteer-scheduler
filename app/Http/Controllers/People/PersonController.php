@@ -5,6 +5,7 @@ namespace App\Http\Controllers\People;
 use App\Actions\Accounts\DeactivateUser;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\InvitePerson;
+use App\Actions\Accounts\RemovePerson;
 use App\Actions\Accounts\RevokeRole;
 use App\ChangeLog\Describe;
 use App\Enums\Role;
@@ -20,7 +21,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
- * One person's page (screen 27): roles, login, inviting, turning off and the changes about them. Everyone who can see the person sees the page; only coordinators and admins who may manage them get the controls. Someone the viewer can't see, or who doesn't exist, is a 404.
+ * One person's page (screen 27): roles, login, inviting, turning off, removing and the changes about them. Everyone who can see the person sees the page; only coordinators and admins who may manage them get the controls. Someone the viewer can't see, or who doesn't exist, is a 404.
  */
 class PersonController extends Controller
 {
@@ -117,6 +118,38 @@ class PersonController extends Controller
         $deactivateUser->handle($request->user(), $person);
 
         return redirect()->route('people.show', $person)->with('status', $person->firstName().'\'s account is turned off.');
+    }
+
+    /** The confirmation page for removing someone, with the reason it can't happen yet, if there is one. */
+    public function confirmRemove(Request $request, string $user): View
+    {
+        $person = $this->manageable($request, $user);
+
+        return view('people.remove', [
+            'person' => $person,
+            'firstName' => $person->firstName(),
+            'refusal' => RemovePerson::refusal($person),
+        ]);
+    }
+
+    public function remove(Request $request, string $user, RemovePerson $removePerson): RedirectResponse
+    {
+        $person = $this->manageable($request, $user);
+        // Kept from this request: once the row is gone there's nothing to read it from.
+        $firstName = $person->firstName();
+        $typed = trim((string) $request->input('confirm', ''));
+
+        if (mb_strtolower($typed) !== mb_strtolower($firstName)) {
+            throw ValidationException::withMessages(['confirm' => 'Type '.$firstName.' to confirm.']);
+        }
+
+        try {
+            $removePerson->handle($request->user(), $person);
+        } catch (DomainException $e) {
+            return back()->withErrors(['remove' => $e->getMessage()]);
+        }
+
+        return redirect()->route('people.index')->with('status', $firstName.' was removed.');
     }
 
     /** The person, or a 404 when the viewer can't see them or they don't exist. */

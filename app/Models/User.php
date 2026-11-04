@@ -14,10 +14,12 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -27,8 +29,46 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
-    /** Fields that identify a person; the change log scrubs these when an account is removed. Phone joins when phone numbers are built. */
-    public const PERSONAL_FIELDS = ['name', 'email'];
+    /** Fields that identify a person; the change log scrubs these when an account is removed. The membership ID counts, because it names the person in the membership system. Phone joins when phone numbers are built. */
+    public const PERSONAL_FIELDS = ['name', 'email', 'member_id'];
+
+    /** The shared record's email address. The .invalid top-level domain can never receive mail. */
+    public const REMOVED_PERSON_EMAIL = 'removed-person@invalid';
+
+    /** The one shared, anonymous record that removed people's shifts and change log entries move onto, made the first time someone is removed (logged as made by the system). It has no password, was never invited and is turned off, so it can never sign in, get email, be picked or be listed. Its membership ID stays null, so the import never matches it. */
+    public static function removedPerson(): self
+    {
+        $existing = static::query()->where('is_removed_person', true)->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        try {
+            return DB::transaction(function () {
+                $removed = new static;
+                $removed->forceFill([
+                    'name' => ChangeLogEntry::REMOVED_PERSON,
+                    'email' => self::REMOVED_PERSON_EMAIL,
+                    'password' => null,
+                    'invited_at' => null,
+                    'email_verified_at' => null,
+                    'deactivated_at' => now(),
+                    'member_id' => null,
+                    'is_removed_person' => true,
+                ]);
+                $changes = ChangeLogEntry::changesOf($removed);
+                $removed->save();
+
+                ChangeLogEntry::record(null, 'user.created', $removed, changes: $changes);
+
+                return $removed;
+            });
+        } catch (UniqueConstraintViolationException) {
+            // Two first removals at once: the other one made it. A locking read sees it even inside a transaction that started before it was committed.
+            return static::query()->where('is_removed_person', true)->lockForUpdate()->firstOrFail();
+        }
+    }
 
     /**
      * Get the attributes that should be cast.

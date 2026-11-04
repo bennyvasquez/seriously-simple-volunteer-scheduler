@@ -1,4 +1,4 @@
-{{-- Screen 27: one person. Area leads see Roles and Login only; coordinators and admins also get the controls and the changes about the person. --}}
+{{-- Screen 27: one person. Area leads see Roles and Login only; coordinators and admins also get the controls (including turning off and removing) and the changes about the person. --}}
 @extends('layouts.app')
 
 @section('title', $person->name)
@@ -81,6 +81,14 @@
 @csrf
 <button type="submit" class="btn">Turn off {{ $firstName }}'s account</button>
 </form>
+</section>
+@endif
+
+@if ($canManage)
+<section class="panel" aria-labelledby="remove-heading">
+<h2 id="remove-heading">Remove {{ $firstName }}</h2>
+<p class="muted">Removing someone deletes their name and email address from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can't be undone.</p>
+<a href="{{ route('people.remove', $person) }}" class="btn">Remove {{ $firstName }}</a>
 </section>
 @endif
 </div>

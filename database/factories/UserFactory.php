@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\ChangeLogEntry;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -61,12 +62,13 @@ class UserFactory extends Factory
         return $this->state(fn () => ['deactivated_at' => now()]);
     }
 
-    /** The shared record that removed people's history moves onto: anonymous, turned off and never invited. */
+    /** The shared record that removed people's history moves onto: anonymous, turned off and never invited. The same values User::removedPerson() uses, so a test makes at most one; prefer User::removedPerson(), which also logs it. */
     public function removedPerson(): static
     {
         return $this->state(fn () => [
-            'name' => 'Removed person',
-            'email' => 'removed-person-'.Str::random(8).'@example.invalid',
+            'name' => ChangeLogEntry::REMOVED_PERSON,
+            'email' => User::REMOVED_PERSON_EMAIL,
+            'member_id' => null,
             'is_removed_person' => true,
             'deactivated_at' => now(),
             'invited_at' => null,
