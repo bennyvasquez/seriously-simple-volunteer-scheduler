@@ -46,7 +46,7 @@ class CancelShift
             $changes = ChangeLogEntry::changesOf($fresh);
             $fresh->save();
 
-            $people = $fresh->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->isActive())->values();
+            $people = $fresh->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->canSignIn())->values();
 
             ChangeLogEntry::record($actor, 'shift.cancelled', $fresh, ['area_id' => $fresh->area_id, 'people' => $people->pluck('id')->all()], $changes);
 

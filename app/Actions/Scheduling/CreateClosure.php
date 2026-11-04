@@ -113,7 +113,7 @@ class CreateClosure
                     $changes = ChangeLogEntry::changesOf($shift);
                     $shift->save();
 
-                    $people = $shift->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->isActive())->values();
+                    $people = $shift->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->canSignIn())->values();
 
                     ChangeLogEntry::record($actor, 'shift.cancelled', $shift, [
                         'area_id' => $shift->area_id,

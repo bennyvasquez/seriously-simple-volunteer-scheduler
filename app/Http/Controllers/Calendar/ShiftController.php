@@ -84,7 +84,7 @@ class ShiftController extends Controller
             ],
             'search' => $search,
             'byEmail' => $byEmail,
-            'emailCount' => $shift->assignments->filter(fn (Assignment $assignment) => $assignment->user->isActive())->count(),
+            'emailCount' => $shift->assignments->filter(fn (Assignment $assignment) => $assignment->user->canSignIn())->count(),
         ]);
     }
 

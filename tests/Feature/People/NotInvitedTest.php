@@ -5,6 +5,7 @@ namespace Tests\Feature\People;
 use App\Actions\Accounts\CreatePerson;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\InvitePerson;
+use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\PutOnShift;
 use App\Enums\AssignmentType;
@@ -12,6 +13,7 @@ use App\Enums\InvitationStatus;
 use App\Enums\Role;
 use App\Models\Area;
 use App\Models\ChangeLogEntry;
+use App\Models\LoginLink;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\InvitationNotification;
@@ -20,11 +22,12 @@ use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
 class NotInvitedTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithTwoFactor, RefreshDatabase;
 
     private User $coordinator;
 
@@ -213,5 +216,59 @@ class NotInvitedTest extends TestCase
         $migration::backfillInvitedAt();
 
         $this->assertSame('2026-01-05 10:00:00', DB::table('users')->where('email', 'old@example.org')->value('invited_at'));
+    }
+
+    public function test_cancelling_a_shift_counts_and_logs_only_people_who_can_be_emailed(): void
+    {
+        $this->enableTwoFactor($this->coordinator);
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, Area::factory()->create(), '2026-11-26', '15:30', '18:30', 2, 0, null);
+        $notInvited = User::factory()->notInvited()->create();
+        $invited = User::factory()->create();
+        app(PutOnShift::class)->handle($this->coordinator, $shift, $notInvited, AssignmentType::Regular);
+        app(PutOnShift::class)->handle($this->coordinator, $shift, $invited, AssignmentType::Regular);
+        $before = count($this->sentMessages());
+
+        $this->actingAs($this->coordinator)->get(route('calendar.shift', [$shift, 'cancel' => 1]))->assertOk()->assertSee('1 person will be emailed this reason.');
+
+        $emailed = app(CancelShift::class)->handle($this->coordinator, $shift, 'Power outage');
+
+        $this->assertSame(1, $emailed);
+        $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.cancelled')->sole();
+        $this->assertSame([$invited->id], $entry->details['people']);
+        $this->assertCount($before + 1, $this->sentMessages());
+    }
+
+    public function test_a_link_held_by_a_person_who_is_not_invited_does_not_sign_them_in(): void
+    {
+        $person = User::factory()->notInvited()->withoutPassword()->create();
+        $person->loginLinks()->create(['purpose' => 'sign_in', 'token_hash' => hash('sha256', 'held-token'), 'expires_at' => now()->addMinutes(10)]);
+
+        $this->post(route('login-link.consume', 'held-token'));
+
+        $this->assertGuest();
+        $this->assertNull(LoginLink::query()->sole()->used_at);
+    }
+
+    public function test_a_refused_invitation_logs_nothing_and_sends_nothing(): void
+    {
+        $removed = User::factory()->notInvited()->create(['is_removed_person' => true]);
+        $off = User::factory()->notInvited()->deactivated()->create();
+        $accepted = User::factory()->create();
+        $logged = ChangeLogEntry::query()->count();
+
+        foreach ([$removed, $off, $accepted] as $person) {
+            try {
+                app(InvitePerson::class)->handle($this->coordinator, $person);
+                $this->fail('A refused invitation went through.');
+            } catch (DomainException) {
+                // Expected.
+            }
+        }
+
+        $this->assertNull($removed->fresh()->invited_at);
+        $this->assertNull($off->fresh()->invited_at);
+        $this->assertSame($logged, ChangeLogEntry::query()->count());
+        $this->assertSame(0, LoginLink::query()->count());
+        $this->assertCount(0, $this->sentMessages());
     }
 }

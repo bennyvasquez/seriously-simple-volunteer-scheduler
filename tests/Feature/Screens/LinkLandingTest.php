@@ -2,8 +2,9 @@
 
 namespace Tests\Feature\Screens;
 
+use App\Actions\Accounts\CreatePerson;
 use App\Actions\Accounts\GrantRole;
-use App\Actions\Accounts\InviteVolunteer;
+use App\Actions\Accounts\InvitePerson;
 use App\Actions\Accounts\IssueLoginLink;
 use App\Enums\LoginLinkPurpose;
 use App\Enums\Role;
@@ -22,6 +23,16 @@ class LinkLandingTest extends TestCase
     {
         $user = User::factory()->create(['name' => $name]);
         app(GrantRole::class)->handle(null, $user, $role);
+
+        return $user;
+    }
+
+    /** Adds and invites in one go; the email is deferred, so run it right away. */
+    private function invite(User $inviter, string $name, string $email): User
+    {
+        $this->withoutDefer();
+        $user = app(CreatePerson::class)->handle($inviter, $name, $email);
+        app(InvitePerson::class)->handle($inviter, $user);
 
         return $user;
     }
@@ -53,7 +64,7 @@ class LinkLandingTest extends TestCase
     {
         Notification::fake();
         $alex = $this->withRole(Role::Coordinator, 'Alex');
-        $user = app(InviteVolunteer::class)->handle($alex, 'Robin', 'robin@example.org');
+        $user = $this->invite($alex, 'Robin', 'robin@example.org');
 
         $this->get($this->invitationUrlFor($user))->assertOk()->assertSee('Welcome to')->assertSee('Alex invited you')->assertSee('Get started');
 
@@ -107,7 +118,7 @@ class LinkLandingTest extends TestCase
     {
         Notification::fake();
         $alex = $this->withRole(Role::Coordinator, 'Alex');
-        $user = app(InviteVolunteer::class)->handle($alex, 'Robin', 'robin@example.org');
+        $user = $this->invite($alex, 'Robin', 'robin@example.org');
         $url = $this->invitationUrlFor($user);
         $this->travel(8)->days();
 

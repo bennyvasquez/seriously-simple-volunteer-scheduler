@@ -177,7 +177,7 @@ class ClosureController extends Controller
     private function activePeople(Collection $shifts): Collection
     {
         return $shifts->flatMap(fn (Shift $shift) => $shift->assignments->pluck('user'))
-            ->filter(fn (User $user) => $user->isActive())
+            ->filter(fn (User $user) => $user->canSignIn())
             ->unique('id')
             ->values();
     }

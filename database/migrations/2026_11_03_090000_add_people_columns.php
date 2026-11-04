@@ -30,10 +30,10 @@ return new class extends Migration
         });
     }
 
-    /** Everyone already in the database counts as invited, from the day their account was created. */
+    /** Everyone already in the database counts as invited, from the day their account was created (or now, for a row with no creation time). */
     public static function backfillInvitedAt(): void
     {
-        DB::table('users')->whereNull('invited_at')->update(['invited_at' => DB::raw('created_at')]);
+        DB::table('users')->whereNull('invited_at')->update(['invited_at' => DB::raw('COALESCE(created_at, CURRENT_TIMESTAMP)')]);
     }
 
     public function down(): void

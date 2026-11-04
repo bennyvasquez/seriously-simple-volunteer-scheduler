@@ -27,12 +27,12 @@ class LoginLink extends Model
         return $this->belongsTo(User::class);
     }
 
-    /** The link for this token if it can still be used: it exists, is one of the given kinds, is unused and unexpired, and its person is active. */
+    /** The link for this token if it can still be used: it exists, is one of the given kinds, is unused and unexpired, and its person can sign in. */
     public static function findUsable(string $token, LoginLinkPurpose ...$purposes): ?self
     {
         $link = static::query()->with('user')->where('token_hash', hash('sha256', $token))->first();
 
-        if ($link === null || ! in_array($link->purpose, $purposes, true) || $link->used_at !== null || $link->expires_at->isPast() || ! $link->user->isActive()) {
+        if ($link === null || ! in_array($link->purpose, $purposes, true) || $link->used_at !== null || $link->expires_at->isPast() || ! $link->user->canSignIn()) {
             return null;
         }
 
