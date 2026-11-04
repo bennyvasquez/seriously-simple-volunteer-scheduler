@@ -81,4 +81,16 @@ class LeadNameTest extends TestCase
         app(GrantRole::class)->handle(null, $admin, Role::Coordinator);
         $this->assertSame(['Admin', 'Coordinator'], $admin->roleLabels());
     }
+
+    public function test_the_security_page_shows_the_lead_name_in_roles(): void
+    {
+        $admin = User::factory()->create();
+        app(GrantRole::class)->handle(null, $admin, Role::Admin);
+        $this->enableTwoFactor($admin);
+        $front = Area::factory()->create(['name' => 'Front desk', 'lead_name' => 'Shift lead']);
+        $person = User::factory()->create();
+        app(GrantRole::class)->handle(null, $person, Role::AreaLead, $front);
+
+        $this->actingAs($admin)->get(route('people.security', $person))->assertOk()->assertSee('Shift lead: Front desk');
+    }
 }
