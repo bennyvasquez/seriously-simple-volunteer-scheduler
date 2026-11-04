@@ -151,3 +151,27 @@ a{color:#1a1a1a}a:hover{color:#000}
 .ev.ev.cancelled{background:repeating-linear-gradient(135deg,#f0f0f0 0,#f0f0f0 6px,#e0e0e0 6px,#e0e0e0 12px);border:1px solid #6b6b6b;color:#444}
 .ev.cancelled .t,.cal-list .ev.cancelled strong{text-decoration:line-through}
 .cancelled-count{color:#444;font-size:13px}
+
+/* People list (screens 24 and 25): a table on wide screens, cards on a phone */
+.people-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.people-page h1{margin:0;font-size:26px}
+.people-page p{margin:0}
+.people-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px}
+.people-actions{display:flex;flex-wrap:wrap;gap:8px}
+.people-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.people-filters .field{flex:1 1 160px}
+.people-filters .field input[type=search]{width:100%}
+.people-table{width:100%;border-collapse:collapse;background:#fff;font-size:15px}
+.people-table th{text-align:left;font-size:13px;color:#444;font-weight:700;padding:10px 12px;border-bottom:2px solid #1a1a1a}
+.people-table td{padding:12px;border-bottom:1px solid #e3e3e3;vertical-align:top}
+.tag{font-size:12px;border:1px solid #8a8a8a;border-radius:4px;padding:2px 6px;color:#444;white-space:nowrap}
+.people-cards{display:none;flex-direction:column;gap:8px}
+.card{border:1px solid #b5b5b5;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:4px;background:#fff}
+.card-top{display:flex;justify-content:space-between;gap:8px}
+.people-pager{display:flex;gap:8px}
+@media (max-width:699px){
+.people-page{padding:16px}
+.people-table-wrap{display:none}
+.people-cards{display:flex}
+.people-filters .field{flex-basis:100%}
+}

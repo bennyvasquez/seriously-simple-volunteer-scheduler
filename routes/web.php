@@ -12,6 +12,8 @@ use App\Http\Controllers\Calendar\ClosureController;
 use App\Http\Controllers\Calendar\RegularController;
 use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\People\InviteController;
+use App\Http\Controllers\People\PeopleController;
 use App\Http\Controllers\PersonSecurityController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Http\Request;
@@ -60,6 +62,13 @@ Route::middleware('auth')->group(function () {
     });
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings');
     Route::put('/settings', [SettingsController::class, 'update']);
+    Route::get('/people', [PeopleController::class, 'index'])->middleware('can:viewAny,App\Models\User')->name('people.index');
+    Route::middleware('can:invite,App\Models\User')->group(function () {
+        Route::get('/people/invite', [InviteController::class, 'create'])->name('people.invite');
+        Route::post('/people/invite', [InviteController::class, 'store'])->name('people.invite.store');
+        Route::get('/people/invite-everyone', [InviteController::class, 'everyone'])->name('people.invite-everyone');
+        Route::post('/people/invite-everyone', [InviteController::class, 'sendToEveryone'])->name('people.invite-everyone.store');
+    });
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');
     // The reset screens are for logged-out people, so "Forgot your password?" on the confirm screen logs out first.

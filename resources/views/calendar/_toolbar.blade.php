@@ -9,6 +9,8 @@
 </div>
 <div class="cal-bar-group">
 <nav class="seg" aria-label="Calendar view"><a href="{{ $dayUrl }}" @if ($view === 'day') aria-current="page" @endif>Day</a><a href="{{ $weekUrl }}" @if ($view === 'week') aria-current="page" @endif>Week</a><a href="{{ $monthUrl }}" @if ($view === 'month') aria-current="page" @endif>Month</a></nav>
+@can('viewAny', App\Models\User::class)<a href="{{ route('people.index') }}" class="btn">People</a>@endcan
+@if (auth()->user()->isCoordinator())<a href="{{ url('/change-log') }}" class="btn">Change log</a>@endif
 <a href="{{ route('home') }}" class="btn">Me</a>
 </div>
 </div>

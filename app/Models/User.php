@@ -100,7 +100,8 @@ class User extends Authenticatable
      */
     public function roleLabels(): array
     {
-        $assignments = $this->roles()->with('area')->get();
+        // Uses the roles (and their areas) when the caller already loaded them, such as the people list, so a page of people doesn't query per person.
+        $assignments = $this->relationLoaded('roles') ? $this->roles : $this->roles()->with('area')->get();
         $labels = [];
 
         if ($assignments->contains('role', Role::Admin)) {
@@ -188,12 +189,13 @@ class User extends Authenticatable
         return $notification instanceof InvitationNotification && $this->isActive() && ! $this->is_removed_person ? $this->email : null;
     }
 
-    public function invitationStatus(): InvitationStatus
+    /** Pass whether a usable invitation link exists when the caller already loaded that, such as the people list, so this doesn't query per person. */
+    public function invitationStatus(?bool $hasWaitingLink = null): InvitationStatus
     {
         return match (true) {
             ! $this->isInvited() => InvitationStatus::NotInvited,
             $this->email_verified_at !== null => InvitationStatus::Accepted,
-            $this->loginLinks()->where('purpose', LoginLinkPurpose::Invitation->value)->whereNull('used_at')->where('expires_at', '>', now())->exists() => InvitationStatus::Waiting,
+            ($hasWaitingLink ?? $this->loginLinks()->where('purpose', LoginLinkPurpose::Invitation->value)->whereNull('used_at')->where('expires_at', '>', now())->exists()) => InvitationStatus::Waiting,
             default => InvitationStatus::RanOut,
         };
     }
