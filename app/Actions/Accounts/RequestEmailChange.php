@@ -21,7 +21,7 @@ class RequestEmailChange
 
         // After the response is sent: the answer and how long it takes must not depend on whether the address has an account, and a mail server failure must not show up only for free addresses.
         defer(function () use ($user, $newEmail) {
-            if ($newEmail === $user->email || User::query()->where('email', $newEmail)->exists()) {
+            if ($newEmail === $user->email || User::isUnusableEmail($newEmail) || User::query()->where('email', $newEmail)->exists()) {
                 return;
             }
 

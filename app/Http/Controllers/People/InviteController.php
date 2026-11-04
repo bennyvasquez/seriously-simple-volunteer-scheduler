@@ -16,6 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /** Inviting someone (screen 26) and inviting everyone who isn't invited yet. The routes are limited to people who can invite. */
@@ -41,6 +42,10 @@ class InviteController extends Controller
             'email.*' => 'Enter an email address like name@example.org.',
             'starts_as.*' => 'Pick one of the choices.',
         ]);
+
+        if (User::isUnusableEmail($data['email'])) {
+            throw ValidationException::withMessages(['email' => 'That email address can\'t be used.']);
+        }
 
         try {
             // One transaction, so a failed grant leaves no half-made person. The email is deferred until after the response.

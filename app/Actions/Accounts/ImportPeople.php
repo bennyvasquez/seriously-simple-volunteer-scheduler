@@ -135,6 +135,10 @@ class ImportPeople
             return 'The email address isn\'t valid';
         }
 
+        if (User::isUnusableEmail($row->email)) {
+            return 'That email address can\'t be used';
+        }
+
         foreach ([$emailLines[$row->email] ?? collect(), $memberLines[$row->memberId] ?? collect()] as $lines) {
             if ($lines->count() > 1) {
                 return 'Appears twice in the file, on lines '.$lines->take(2)->implode(' and ');

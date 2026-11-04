@@ -75,9 +75,10 @@ class RemovePerson
         return null;
     }
 
-    /** Ids stored inside entries rather than in their columns: a person's id in `changes` (an assignment or regular's user_id) and in the list of people told about a cancelled shift. Written with the query builder, the same way forgetPersonalDetailsOf() writes, because the model refuses edits. */
+    /** Ids stored inside entries rather than in their columns: a person's id in `changes` (an assignment or regular's user_id), in the list of people told about a cancelled shift, and in the regulars put back on a shift a slot change brought back. Written with the query builder, the same way forgetPersonalDetailsOf() writes, because the model refuses edits. */
     private function repointIdsInsideEntries(User $person, User $removed): void
     {
+        // Relies on every entry with a user_id in its changes being recorded with about: the person (PutOnShift and AddRegular do), so it's found by affected_user_id.
         $about = DB::table('change_log')->where('affected_user_id', $person->id)->whereNotNull('changes')->get(['id', 'changes']);
 
         foreach ($about as $row) {
@@ -96,12 +97,15 @@ class RemovePerson
             }
         }
 
-        $told = DB::table('change_log')->where('action', 'shift.cancelled')->whereJsonContains('details->people', $person->id)->get(['id', 'details']);
+        // Who was told about a cancelled shift (CancelShift, CreateClosure), and which regulars a slot change put back on a shift it brought back (UpdateWeeklySlot).
+        foreach (['shift.cancelled' => 'people', 'shift.updated' => 'added_regular_ids'] as $action => $key) {
+            $rows = DB::table('change_log')->where('action', $action)->whereJsonContains('details->'.$key, $person->id)->get(['id', 'details']);
 
-        foreach ($told as $row) {
-            $details = json_decode($row->details, true);
-            $details['people'] = array_map(fn ($id) => (int) $id === $person->id ? $removed->id : $id, $details['people']);
-            DB::table('change_log')->where('id', $row->id)->update(['details' => json_encode($details)]);
+            foreach ($rows as $row) {
+                $details = json_decode($row->details, true);
+                $details[$key] = array_map(fn ($id) => (int) $id === $person->id ? $removed->id : $id, $details[$key]);
+                DB::table('change_log')->where('id', $row->id)->update(['details' => json_encode($details)]);
+            }
         }
     }
 }

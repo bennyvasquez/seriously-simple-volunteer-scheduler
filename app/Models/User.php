@@ -35,6 +35,12 @@ class User extends Authenticatable
     /** The shared record's email address. The .invalid top-level domain can never receive mail. */
     public const REMOVED_PERSON_EMAIL = 'removed-person@invalid';
 
+    /** Addresses at the .invalid top-level domain can never receive mail, and the shared record uses one, so no account may have one. */
+    public static function isUnusableEmail(string $email): bool
+    {
+        return str_ends_with(mb_strtolower(trim($email)), '@invalid');
+    }
+
     /** The one shared, anonymous record that removed people's shifts and change log entries move onto, made the first time someone is removed (logged as made by the system). It has no password, was never invited and is turned off, so it can never sign in, get email, be picked or be listed. Its membership ID stays null, so the import never matches it. */
     public static function removedPerson(): self
     {
@@ -65,7 +71,7 @@ class User extends Authenticatable
                 return $removed;
             });
         } catch (UniqueConstraintViolationException) {
-            // Two first removals at once: the other one made it. A locking read sees it even inside a transaction that started before it was committed.
+            // Two first removals at once: the other one made it. Found by the flag, never by the address, and with a locking read, which sees it even inside a transaction that started before it was committed.
             return static::query()->where('is_removed_person', true)->lockForUpdate()->firstOrFail();
         }
     }

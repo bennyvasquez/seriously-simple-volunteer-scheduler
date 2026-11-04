@@ -22,6 +22,11 @@ class CreatePerson
 
         $email = Str::lower(trim($email));
 
+        // A backstop for the invite form and the import, which refuse it first.
+        if (User::isUnusableEmail($email)) {
+            throw new DomainException('That email address can\'t be used.');
+        }
+
         if (User::query()->where('email', $email)->exists()) {
             throw new DomainException('Someone with that email address already has an account.');
         }

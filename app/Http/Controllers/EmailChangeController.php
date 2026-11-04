@@ -7,6 +7,7 @@ use App\Actions\Accounts\IssueLoginLink;
 use App\Actions\Accounts\RequestEmailChange;
 use App\Enums\LoginLinkPurpose;
 use App\Models\LoginLink;
+use App\Models\User;
 use App\Notifications\ConfirmItsYouNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -100,6 +101,11 @@ class EmailChangeController extends Controller
             'email' => ['required', 'string', 'email', 'max:255'],
             ...($needsCode ? ['code' => ['required', 'string']] : []),
         ])['email']);
+
+        // A rule about the address itself, so refusing it says nothing about anyone's account.
+        if (User::isUnusableEmail($email)) {
+            throw ValidationException::withMessages(['email' => 'That email address can\'t be used.']);
+        }
 
         // Your own address is refused out loud: it says nothing about anyone else's account.
         if ($email === $user->email) {
