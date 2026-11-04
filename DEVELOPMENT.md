@@ -39,6 +39,7 @@ There's no asset build and no Node. All styling is one plain file, `public/css/a
 - Generate shifts from weekly slots now, instead of waiting for the daily job: `docker compose exec app php artisan ssvs:generate-shifts`
 - Run the scheduler locally, so the daily jobs fire on their schedule: `docker compose exec app php artisan schedule:work`. A real server needs cron or a systemd timer that runs `php artisan schedule:run` every minute, or shifts stop being generated; the install guide will cover this.
 - Set up a fresh install: `docker compose exec app php artisan ssvs:setup`
+- Import the volunteer list from a Hello Club members export (it previews first and asks before saving; people are added as not invited yet and nobody is emailed): `docker compose exec app php artisan ssvs:import-people path/to/export.csv --as=admin@example.org`. To make a Hello Club category mean area lead, add `--lead-tag="Example Lead Tag" --lead-area="Front desk"`. Only name, email and membership ID are read from the file.
 - Run Composer: `docker compose exec app composer <command>`
 
 ## Where things live
