@@ -107,7 +107,7 @@ class PersonPageTest extends TestCase
         $this->actingAs($this->frontDeskLead)->get(route('people.show', $this->frontDeskRegular))
             ->assertOk()
             ->assertSee('Roles')
-            ->assertSee('Login')
+            ->assertSee('Logs in with')
             ->assertDontSee('Add a role')
             ->assertDontSee('Login and security')
             ->assertDontSee('Changes about')
@@ -255,5 +255,29 @@ class PersonPageTest extends TestCase
     public function test_the_security_page_links_back_to_the_person(): void
     {
         $this->actingAs($this->admin)->get(route('people.security', $this->frontDeskRegular))->assertSee('href="'.route('people.show', $this->frontDeskRegular).'"', false);
+    }
+
+    public function test_roles_are_listed_in_the_same_order_as_everywhere_else(): void
+    {
+        $robin = $this->frontDeskRegular;
+        app(GrantRole::class)->handle(null, $robin, Role::AreaLead, $this->outreach);
+        app(GrantRole::class)->handle(null, $robin, Role::AreaLead, $this->frontDesk);
+        app(GrantRole::class)->handle(null, $robin, Role::Coordinator);
+
+        $this->actingAs($this->admin)->get(route('people.show', $robin))
+            ->assertSeeInOrder(['Coordinator', 'Shift lead: Front desk', 'Area lead: Outreach']);
+    }
+
+    public function test_changes_that_change_nothing_do_not_claim_they_did(): void
+    {
+        $page = route('people.show', $this->frontDeskRegular);
+
+        $this->actingAs($this->coordinator)->post(route('people.roles.destroy', $this->frontDeskRegular), ['role' => 'area_lead', 'area' => $this->frontDesk->id])
+            ->assertRedirect($page)->assertSessionHas('status', 'Nothing changed.');
+
+        $this->actingAs($this->coordinator)->post(route('people.turn-off', $this->frontDeskRegular));
+        $this->actingAs($this->coordinator)->post(route('people.turn-off', $this->frontDeskRegular))
+            ->assertRedirect($page)->assertSessionHas('status', 'Nothing changed.');
+        $this->assertSame(1, ChangeLogEntry::query()->where('action', 'user.deactivated')->about($this->frontDeskRegular)->count());
     }
 }

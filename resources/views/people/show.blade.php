@@ -24,14 +24,14 @@
 <section class="panel" aria-labelledby="roles-heading">
 <h2 id="roles-heading">Roles</h2>
 <div class="row"><span>Volunteer</span><span class="muted">Everyone has this</span></div>
-@foreach ($heldRoles as $held)
+@foreach ($roleRows as $held)
 <div class="row">
-<span>{{ $held->role->value === 'area_lead' ? ($held->area ? $held->area->leadTitle().': '.$held->area->name : 'Area lead') : ucfirst($held->role->value) }}</span>
-@if ($canManage && auth()->user()->canGrant($held->role))
+<span>{{ $held['label'] }}</span>
+@if ($canManage && auth()->user()->canGrant($held['role']))
 <form method="POST" action="{{ route('people.roles.destroy', $person) }}">
 @csrf
-<input type="hidden" name="role" value="{{ $held->role->value }}">
-@if ($held->area_id)<input type="hidden" name="area" value="{{ $held->area_id }}">@endif
+<input type="hidden" name="role" value="{{ $held['role']->value }}">
+@if ($held['area_id'])<input type="hidden" name="area" value="{{ $held['area_id'] }}">@endif
 <button type="submit" class="btn">Remove</button>
 </form>
 @endif

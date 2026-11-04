@@ -103,10 +103,16 @@ final class Describe
     /** "a coordinator", "an admin", "a shift lead for Front desk". */
     private static function roleWords(array $details): string
     {
-        return match ($details['role'] ?? null) {
-            Role::Admin->value => 'an admin',
-            Role::Coordinator->value => 'a coordinator',
-            default => self::article($title = self::leadTitle($details)).' '.$title.(($area = self::area($details)) ? ' for '.$area->name : ''),
+        return self::roleName(Role::tryFrom($details['role'] ?? '') ?? Role::AreaLead, self::area($details));
+    }
+
+    /** The role in words with its article, for sentences and flash messages: "an admin", "a shift lead for Front desk". */
+    public static function roleName(Role $role, ?Area $area = null): string
+    {
+        return match ($role) {
+            Role::Admin => 'an admin',
+            Role::Coordinator => 'a coordinator',
+            Role::AreaLead => self::article($title = $area ? mb_strtolower($area->leadTitle()) : 'area lead').' '.$title.($area ? ' for '.$area->name : ''),
         };
     }
 

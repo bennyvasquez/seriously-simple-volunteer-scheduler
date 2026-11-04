@@ -47,8 +47,7 @@ class PersonController extends Controller
         return view('people.show', [
             'person' => $person,
             'firstName' => $person->firstName(),
-            'roles' => $person->roleLabels(),
-            'heldRoles' => $person->roles()->with('area')->get(),
+            'roleRows' => $this->roleRows($person),
             'addable' => $canManage ? $this->addableRoles($viewer, $person) : [],
             'canManage' => $canManage,
             'isAdminViewer' => $viewer->isActive() && $viewer->hasRole(Role::Admin),
@@ -57,7 +56,6 @@ class PersonController extends Controller
             'lastLogin' => $when($person->last_login_at),
             'lastSeen' => $when($person->last_seen_at),
             'logsInWith' => $person->password !== null ? 'Password' : 'Email links',
-            'needsTwoFactor' => $person->requiresTwoFactor(),
             'entries' => $changes?->getCollection()->map(fn (ChangeLogEntry $entry) => [
                 'sentence' => Describe::entry($entry, $viewer),
                 'changes' => Describe::changes($entry),
@@ -76,9 +74,10 @@ class PersonController extends Controller
 
         abort_unless($request->user()->canGrant($role), 403);
 
+        $had = $person->roles()->where('role', $role->value)->where('area_id', $area?->id)->exists();
         $grantRole->handle($request->user(), $person, $role, $area);
 
-        return redirect()->route('people.show', $person)->with('status', $person->firstName().' is now '.$this->roleName($role, $area).'.');
+        return redirect()->route('people.show', $person)->with('status', $had ? 'Nothing changed.' : $person->firstName().' is now '.Describe::roleName($role, $area).'.');
     }
 
     public function removeRole(Request $request, string $user, RevokeRole $revokeRole): RedirectResponse
@@ -88,9 +87,10 @@ class PersonController extends Controller
 
         abort_unless($request->user()->canGrant($role), 403);
 
+        $held = $person->roles()->where('role', $role->value)->where('area_id', $area?->id)->exists();
         $revokeRole->handle($request->user(), $person, $role, $area);
 
-        return redirect()->route('people.show', $person)->with('status', $person->firstName().' is no longer '.$this->roleName($role, $area).'.');
+        return redirect()->route('people.show', $person)->with('status', $held ? $person->firstName().' is no longer '.Describe::roleName($role, $area).'.' : 'Nothing changed.');
     }
 
     public function invite(Request $request, string $user, InvitePerson $invitePerson): RedirectResponse
@@ -110,9 +110,11 @@ class PersonController extends Controller
     {
         $person = $this->manageable($request, $user);
 
-        if ($person->isActive()) {
-            $deactivateUser->handle($request->user(), $person);
+        if (! $person->isActive()) {
+            return redirect()->route('people.show', $person)->with('status', 'Nothing changed.');
         }
+
+        $deactivateUser->handle($request->user(), $person);
 
         return redirect()->route('people.show', $person)->with('status', $person->firstName().'\'s account is turned off.');
     }
@@ -166,18 +168,18 @@ class PersonController extends Controller
         return [$role, $area];
     }
 
-    private function roleName(Role $role, ?Area $area): string
+    /** @return list<array{label: string, role: Role, area_id: ?int}> The person's roles in the order roleLabels() gives, each with the role it removes. */
+    private function roleRows(User $person): array
     {
-        return match ($role) {
-            Role::Admin => 'an admin',
-            Role::Coordinator => 'a coordinator',
-            Role::AreaLead => $this->withArticle(mb_strtolower($area->leadTitle())).' for '.$area->name,
-        };
-    }
+        $held = $person->roles()->with('area')->get();
+        $ordered = collect([Role::Admin, Role::Coordinator])
+            ->flatMap(fn (Role $role) => $held->where('role', $role)->all())
+            ->concat($held->where('role', Role::AreaLead)->sortBy(fn ($assignment) => mb_strtolower($assignment->area?->name ?? ''))->all())
+            ->values();
 
-    private function withArticle(string $words): string
-    {
-        return (in_array($words[0], ['a', 'e', 'i', 'o', 'u'], true) ? 'an ' : 'a ').$words;
+        $labels = $person->roleLabels();
+
+        return $ordered->map(fn ($assignment, $i) => ['label' => $labels[$i], 'role' => $assignment->role, 'area_id' => $assignment->area_id])->all();
     }
 
     /** @return array<string, string> The "Add a role" choices this viewer can give this person, leaving out roles they already hold. */
