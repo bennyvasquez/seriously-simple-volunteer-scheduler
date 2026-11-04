@@ -16,6 +16,7 @@
 @endforeach
 <x-field name="name" label="Name" :value="old('name', $area?->name)" maxlength="100" required />
 @if ($area)
+<x-field name="lead_name" label="What do you call this area's leads?" hint="For example Shift lead. Leave it blank for Area lead." :value="old('lead_name', $area->lead_name)" maxlength="40" />
 <fieldset class="choices" @error('color') aria-describedby="color-error" @enderror>
 <legend>Color on the calendar</legend>
 @foreach ($colors as $color)

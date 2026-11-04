@@ -21,6 +21,12 @@ class Area extends Model
         return ['color' => AreaColor::class];
     }
 
+    /** What this area calls its leads: the name set on the area, or "Area lead". */
+    public function leadTitle(): string
+    {
+        return $this->lead_name ?: 'Area lead';
+    }
+
     public function weeklySlots(): HasMany
     {
         return $this->hasMany(WeeklySlot::class);

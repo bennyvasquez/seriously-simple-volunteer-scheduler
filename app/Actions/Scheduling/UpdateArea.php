@@ -13,17 +13,22 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Renames an area or changes its color. Names are unique, ignoring case. Logs area.updated with the old and new values, and nothing when nothing changed.
+ * Renames an area, changes its color or changes what it calls its leads (blank means "Area lead", stored as null). Names are unique, ignoring case. Logs area.updated with the old and new values, and nothing when nothing changed.
  */
 class UpdateArea
 {
-    public function handle(User $actor, Area $area, string $name, AreaColor $color): Area
+    public function handle(User $actor, Area $area, string $name, AreaColor $color, ?string $leadName = null): Area
     {
         Gate::forUser($actor)->authorize('update', $area);
 
         $name = self::cleanName($name);
+        $leadName = trim((string) $leadName);
 
-        return DB::transaction(function () use ($actor, $area, $name, $color) {
+        if (mb_strlen($leadName) > 40) {
+            throw ValidationException::withMessages(['lead_name' => 'Keep it to 40 characters or fewer.']);
+        }
+
+        return DB::transaction(function () use ($actor, $area, $name, $color, $leadName) {
             // Every area row, once, in id order, so two people editing different areas at once can't deadlock. The area rows come before anything else in the lock order.
             $areas = Area::query()->orderBy('id')->lockForUpdate()->get();
             $area = $areas->firstWhere('id', $area->id) ?? throw (new ModelNotFoundException)->setModel(Area::class, [$area->id]);
@@ -31,6 +36,7 @@ class UpdateArea
 
             $area->name = $name;
             $area->color = $color;
+            $area->lead_name = $leadName === '' ? null : $leadName;
             $changes = ChangeLogEntry::changesOf($area);
 
             if ($changes !== []) {

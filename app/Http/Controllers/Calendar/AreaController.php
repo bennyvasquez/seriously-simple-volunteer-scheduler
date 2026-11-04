@@ -75,14 +75,16 @@ class AreaController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'color' => ['required', Rule::enum(AreaColor::class)],
+            'lead_name' => ['nullable', 'string', 'max:40'],
         ], [
             'name.required' => 'Give the area a name.',
             'name.max' => 'Keep the name to 100 characters or fewer.',
             'name.*' => 'Give the area a name.',
             'color.*' => 'Pick one of the colors listed.',
+            'lead_name.*' => 'Keep it to 40 characters or fewer.',
         ]);
 
-        $area = $updateArea->handle($request->user(), $area, (string) $request->input('name'), AreaColor::from((string) $request->input('color')));
+        $area = $updateArea->handle($request->user(), $area, (string) $request->input('name'), AreaColor::from((string) $request->input('color')), $request->input('lead_name'));
 
         return redirect()->route('calendar.week', $this->areaQuery($request))->with('status', "Saved {$area->name}.");
     }

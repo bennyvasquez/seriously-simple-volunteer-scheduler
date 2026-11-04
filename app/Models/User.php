@@ -93,6 +93,33 @@ class User extends Authenticatable
         return $this->roles()->whereIn('role', [Role::Admin->value, Role::Coordinator->value])->exists();
     }
 
+    /**
+     * The names of this person's roles, in the order admin, coordinator, then leads by area name, such as "Shift lead: Front desk".
+     *
+     * @return array<int, string>
+     */
+    public function roleLabels(): array
+    {
+        $assignments = $this->roles()->with('area')->get();
+        $labels = [];
+
+        if ($assignments->contains('role', Role::Admin)) {
+            $labels[] = 'Admin';
+        }
+
+        if ($assignments->contains('role', Role::Coordinator)) {
+            $labels[] = 'Coordinator';
+        }
+
+        $leads = $assignments->where('role', Role::AreaLead)->sortBy(fn ($assignment) => mb_strtolower($assignment->area?->name ?? ''));
+
+        foreach ($leads as $assignment) {
+            $labels[] = $assignment->area ? $assignment->area->leadTitle().': '.$assignment->area->name : 'Area lead';
+        }
+
+        return $labels;
+    }
+
     /** The ids of the areas this person leads. */
     public function ledAreaIds(): Collection
     {

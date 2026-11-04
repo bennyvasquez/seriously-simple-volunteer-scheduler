@@ -347,7 +347,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-10-17 | Generation and a slot change that brings a date back leave out regulars whose accounts are turned off, and put at most the shift's headcount of regulars on a new shift. |
 | 2026-10-17 | On the slot and closure forms, choosing from a list, a radio button or a checkbox reloads the preview, but typing a date or time doesn't, since the page would reload mid-entry. "Update the preview" and "Check what this cancels" are always shown for that. Save buttons send the reload flag empty, so a form the browser restored on back or forward still saves. |
 | 2026-10-17 | A weekly slot saved with no shifts on the calendar yet (one that starts beyond the weeks shown) links to its edit page and to adding a regular from the confirmation, and an area's edit page lists its weekly slots that haven't ended, with Edit and Add a regular links, so such a slot can always be reached. The slot form's preview gives the first date the slot runs on and the day it appears on the calendar: the weeks ahead times 7, less one, days before that date (Friday, November 13 for a first shift on Thursday, January 7 with 8 weeks ahead). |
-
+| 2026-11-03 | Each area can name its leads (the area form asks "What do you call this area's leads?", up to 40 characters). Front desk at LMN says "Shift lead"; an area with no name set says "Area lead". Only the label changes: the role is still area lead, and the name is shown wherever a specific area is named, such as "Shift lead: Front desk". |
 ## 19. Open questions
 
 - Text message provider and sender type, for phase 3. The October 2026 research in docs/background.md recommends a verified toll-free number.

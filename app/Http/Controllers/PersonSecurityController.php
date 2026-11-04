@@ -22,16 +22,10 @@ class PersonSecurityController extends Controller
         $this->authorizeAdmin($request);
         $user = User::query()->findOrFail($user);
 
-        $user->load('roles.area');
-
         return view('people.security', [
             'person' => $user,
             'firstName' => $user->firstName(),
-            'roles' => $user->roles->map(fn ($assignment) => match ($assignment->role) {
-                Role::Admin => 'Admin',
-                Role::Coordinator => 'Coordinator',
-                Role::AreaLead => 'Area lead'.($assignment->area ? ': '.$assignment->area->name : ''),
-            })->all(),
+            'roles' => $user->roleLabels(),
             'timezone' => Organization::query()->value('timezone') ?? 'UTC',
             'isSelf' => $request->user()->is($user),
         ]);
