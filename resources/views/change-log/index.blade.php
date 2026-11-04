@@ -38,8 +38,8 @@
 <p>No changes match.</p>
 @else
 <div class="log-list">
-@foreach ($days as $day => $entries)
-<h2 class="log-day">{{ $day }}</h2>
+@foreach ($days as $entries)
+<h2 class="log-day">{{ $entries->first()['heading'] }}</h2>
 @foreach ($entries as $entry)
 <div class="log-entry">
 <div class="log-when">{{ $entry['time'] }}<br>by @if ($entry['actor']['id'])<a href="{{ route('people.show', $entry['actor']['id']) }}">{{ $entry['actor']['label'] }}</a>@else{{ $entry['actor']['label'] }}@endif</div>

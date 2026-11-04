@@ -71,15 +71,17 @@ class ChangeLogController extends Controller
         $visibleIds = $viewer->visiblePeople()->whereIn('id', $affectedIds)->pluck('id');
         $seeable = $viewer->visiblePeople()->whereIn('id', $entries->pluck('actor_id')->filter()->unique()->all())->pluck('id');
 
+        $thisYear = CarbonImmutable::now($timezone)->year;
         $days = $entries
             ->map(fn (ChangeLogEntry $entry) => [
-                'day' => $entry->created_at->setTimezone($timezone)->format('l, F j'),
+                'date' => $entry->created_at->setTimezone($timezone)->format('Y-m-d'),
+                'heading' => $entry->created_at->setTimezone($timezone)->format($entry->created_at->setTimezone($timezone)->year === $thisYear ? 'l, F j' : 'l, F j, Y'),
                 'time' => $entry->created_at->setTimezone($timezone)->format('g:ia'),
                 'actor' => $this->actorFor($entry, $seeable),
                 'sentence' => Describe::entry($entry, $viewer, $areas, $visibleIds),
                 'changes' => Describe::changes($entry),
             ])
-            ->groupBy('day');
+            ->groupBy('date');
 
         return view('change-log.index', [
             'days' => $days,
@@ -92,7 +94,7 @@ class ChangeLogController extends Controller
     }
 
     /**
-     * @return array{by: string, about: string, kind: string, from: string, to: string, fromAt: ?CarbonImmutable, toAt: ?CarbonImmutable}
+     * @return array{by: string, about: string, kind: string, from: string, to: string, fromAt: ?CarbonImmutable, toAt: ?CarbonImmutable, fromDay: ?CarbonImmutable, toDay: ?CarbonImmutable}
      */
     private function filters(Request $request, string $timezone): array
     {
@@ -132,7 +134,7 @@ class ChangeLogController extends Controller
             return ['label' => ChangeLogEntry::REMOVED_PERSON, 'id' => null];
         }
 
-        return ['label' => $entry->actor->name, 'id' => $seeable->contains($entry->actor->id) ? $entry->actor->id : null];
+        return ['label' => $seeable->contains($entry->actor->id) ? $entry->actor->name : $entry->actor->shortName(), 'id' => $seeable->contains($entry->actor->id) ? $entry->actor->id : null];
     }
 
     private function summary(int $total, array $filters): string

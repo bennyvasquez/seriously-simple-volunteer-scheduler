@@ -123,6 +123,15 @@ class ChangeLogScreenTest extends TestCase
             ->assertSee('Sam Example')->assertDontSee('Robin Example');
     }
 
+    public function test_the_same_day_in_different_years_gets_separate_headings(): void
+    {
+        $this->entry($this->admin, 'user.invited', $this->robin, '2026-10-12 09:00');
+        $this->entry($this->admin, 'user.invited', $this->sam, '2025-10-12 09:00');
+
+        $this->actingAs($this->coordinator)->get(route('change-log.index'))
+            ->assertSeeInOrder(['Monday, October 12', 'Robin Example', 'Sunday, October 12, 2025', 'Sam Example']);
+    }
+
     public function test_bad_filter_values_are_ignored(): void
     {
         $this->entry($this->admin, 'user.invited', $this->robin, '2026-10-11 10:00');
