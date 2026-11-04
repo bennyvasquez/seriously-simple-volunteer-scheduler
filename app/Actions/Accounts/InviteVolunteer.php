@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Creates an account for someone and emails them a link to accept (spec section 13, "Invite-only"). They start without a password and not cleared.
+ * Creates an account for someone and emails them a link to accept (spec section 13, "Invite-only"). They start without a password and not cleared. For adding people without inviting them, see CreatePerson and InvitePerson.
  */
 class InviteVolunteer
 {
@@ -32,6 +32,8 @@ class InviteVolunteer
 
         return DB::transaction(function () use ($inviter, $name, $email) {
             $user = new User(['name' => trim($name), 'email' => $email, 'password' => null]);
+            // Adding and inviting in one step: the same result as CreatePerson then InvitePerson, in one log entry and one email sent right away.
+            $user->invited_at = now();
             $changes = ChangeLogEntry::changesOf($user);
             $user->save();
 

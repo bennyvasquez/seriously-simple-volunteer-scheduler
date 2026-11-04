@@ -28,6 +28,7 @@ class UserFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
+            'invited_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
         ];
@@ -47,6 +48,12 @@ class UserFactory extends Factory
     public function withoutPassword(): static
     {
         return $this->state(fn () => ['password' => null]);
+    }
+
+    /** Someone added to the list who hasn't been invited yet: no email goes to them and they can't sign in. */
+    public function notInvited(): static
+    {
+        return $this->state(fn () => ['invited_at' => null, 'email_verified_at' => null]);
     }
 
     public function deactivated(): static

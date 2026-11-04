@@ -3,7 +3,10 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\InvitationStatus;
+use App\Enums\LoginLinkPurpose;
 use App\Enums\Role;
+use App\Notifications\InvitationNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -13,6 +16,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
@@ -37,6 +41,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'deactivated_at' => 'datetime',
+            'invited_at' => 'datetime',
+            'is_removed_person' => 'boolean',
             'password_reset_at' => 'datetime',
             'last_login_at' => 'datetime',
             'last_seen_at' => 'datetime',
@@ -66,7 +72,7 @@ class User extends Authenticatable
     /** Sent after the response, so asking for a reset takes the same time whether or not the address has an account. A turned-off account gets no email, and the answer on screen stays the same. */
     public function sendPasswordResetNotification($token): void
     {
-        if (! $this->isActive()) {
+        if (! $this->canSignIn()) {
             return;
         }
 
@@ -134,6 +140,56 @@ class User extends Authenticatable
         return $this->deactivated_at === null;
     }
 
+    public function isInvited(): bool
+    {
+        return $this->invited_at !== null;
+    }
+
+    /** Whether this person may use a login link, a password or a reset. Someone who isn't invited yet gets exactly what an unknown address gets. */
+    public function canSignIn(): bool
+    {
+        return $this->isActive() && $this->isInvited() && ! $this->is_removed_person;
+    }
+
+    /** Where to send mail. Laravel's mail channel sends nothing when this is null, so every notification, current and future, skips people who can't sign in. The one exception is an invitation, which is how an invited person gets in. */
+    public function routeNotificationForMail(Notification $notification): ?string
+    {
+        if ($this->canSignIn()) {
+            return $this->email;
+        }
+
+        return $notification instanceof InvitationNotification && $this->isActive() && ! $this->is_removed_person ? $this->email : null;
+    }
+
+    public function invitationStatus(): InvitationStatus
+    {
+        return match (true) {
+            ! $this->isInvited() => InvitationStatus::NotInvited,
+            $this->email_verified_at !== null => InvitationStatus::Accepted,
+            $this->loginLinks()->where('purpose', LoginLinkPurpose::Invitation->value)->whereNull('used_at')->where('expires_at', '>', now())->exists() => InvitationStatus::Waiting,
+            default => InvitationStatus::RanOut,
+        };
+    }
+
+    /** The same rule as invitationStatus(), in SQL. */
+    public function scopeWithInvitationStatus(Builder $query, InvitationStatus $status): void
+    {
+        $waiting = fn (Builder $links) => $links->where('purpose', LoginLinkPurpose::Invitation->value)->whereNull('used_at')->where('expires_at', '>', now());
+
+        match ($status) {
+            InvitationStatus::NotInvited => $query->whereNull('invited_at'),
+            InvitationStatus::Accepted => $query->whereNotNull('invited_at')->whereNotNull('email_verified_at'),
+            InvitationStatus::Waiting => $query->whereNotNull('invited_at')->whereNull('email_verified_at')->whereHas('loginLinks', $waiting),
+            InvitationStatus::RanOut => $query->whereNotNull('invited_at')->whereNull('email_verified_at')->whereDoesntHave('loginLinks', $waiting),
+        };
+    }
+
+    /** Leaves out the shared "Removed person" record that removed people's history moves onto. */
+    public function scopePeople(Builder $query): void
+    {
+        $query->where('is_removed_person', false);
+    }
+
     /** Admins can grant any role; coordinators can grant area lead. */
     public function canGrant(Role $role): bool
     {
@@ -152,12 +208,12 @@ class User extends Authenticatable
     public function visiblePeople(): Builder
     {
         if ($this->isCoordinator()) {
-            return static::query();
+            return static::query()->people();
         }
 
         $areaIds = $this->roles()->where('role', Role::AreaLead->value)->pluck('area_id');
 
-        return static::query()->where(fn (Builder $query) => $query
+        return static::query()->people()->where(fn (Builder $query) => $query
             ->whereKey($this->id)
             ->when($areaIds->isNotEmpty(), fn (Builder $query) => $query
                 ->orWhereHas('assignments.shift', fn ($shift) => $shift->whereIn('area_id', $areaIds))

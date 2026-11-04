@@ -40,14 +40,14 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::redirectUserForTwoFactorAuthenticationUsing(RedirectIfTwoFactorAuthenticatable::class);
 
-        // Deactivated accounts and accounts without a password can't log in with a password.
+        // Deactivated accounts, people who aren't invited yet and accounts without a password can't log in with a password.
         Fortify::authenticateUsing(function (Request $request) {
             // A new password attempt cancels any pending login started earlier in this session (including an email-link one). If the attempt fails, nothing stays pending, so a failed attempt can't leave a link-started login in a state that allows an emailed code.
             $request->session()->forget(['login.id', 'login.remember', 'login.via']);
 
             $user = User::query()->where('email', Str::lower($request->input(Fortify::username())))->first();
 
-            $usable = $user !== null && $user->isActive() && $user->password !== null;
+            $usable = $user !== null && $user->canSignIn() && $user->password !== null;
 
             // Every path does one hash check, so response time doesn't reveal whether the address has a usable account.
             $matches = Hash::check((string) $request->input('password'), $usable ? $user->password : self::dummyHash());

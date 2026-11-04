@@ -14,7 +14,7 @@ class Area extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'color'];
+    protected $fillable = ['name', 'color', 'lead_name'];
 
     protected function casts(): array
     {
