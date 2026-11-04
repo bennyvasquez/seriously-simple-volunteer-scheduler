@@ -32,10 +32,10 @@ class User extends Authenticatable
     /** Fields that identify a person; the change log scrubs these when an account is removed. The membership ID counts, because it names the person in the membership system. Phone joins when phone numbers are built. */
     public const PERSONAL_FIELDS = ['name', 'email', 'member_id'];
 
-    /** The shared record's email address. The .invalid top-level domain can never receive mail. */
+    /** The shared record's email address. Addresses ending in @invalid can never receive mail. */
     public const REMOVED_PERSON_EMAIL = 'removed-person@invalid';
 
-    /** Addresses at the .invalid top-level domain can never receive mail, and the shared record uses one, so no account may have one. */
+    /** Addresses ending in @invalid can never receive mail, and the shared record uses one, so no account may have one. */
     public static function isUnusableEmail(string $email): bool
     {
         return str_ends_with(mb_strtolower(trim($email)), '@invalid');
