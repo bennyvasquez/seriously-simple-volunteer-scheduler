@@ -68,7 +68,7 @@
 <tbody>
 @foreach ($rows as $row)
 <tr>
-<td><strong>{{ $row['person']->name }}</strong>@unless ($row['person']->isActive()) <span class="tag">Turned off</span>@endunless<div class="muted">{{ $row['person']->email }}</div></td>
+<td><strong><a href="{{ route('people.show', $row['person']) }}">{{ $row['person']->name }}</a></strong>@unless ($row['person']->isActive()) <span class="tag">Turned off</span>@endunless<div class="muted">{{ $row['person']->email }}</div></td>
 <td>{{ $row['roles'] === [] ? 'Volunteer' : implode(', ', $row['roles']) }}</td>
 <td>@if (in_array($row['status']->value, ['waiting', 'ran_out'], true))<span class="tag">{{ $row['status']->label() }}</span>@if ($row['sent'])<div class="muted">Sent {{ $row['sent'] }}</div>@endif @else{{ $row['status']->label() }}@endif</td>
 <td>{{ $row['seen'] }}</td>
@@ -82,7 +82,7 @@
 <div class="people-cards">
 @foreach ($rows as $row)
 <div class="card">
-<div class="card-top"><strong>{{ $row['person']->name }}@unless ($row['person']->isActive()) <span class="tag">Turned off</span>@endunless</strong><span class="muted">{{ $row['status']->value !== 'accepted' ? ($row['status']->value === 'waiting' ? 'Invitation waiting' : $row['status']->label()) : ($row['seen'] === 'Never' ? 'Never seen' : 'Seen '.lcfirst($row['seen'])) }}</span></div>
+<div class="card-top"><strong><a href="{{ route('people.show', $row['person']) }}">{{ $row['person']->name }}</a>@unless ($row['person']->isActive()) <span class="tag">Turned off</span>@endunless</strong><span class="muted">{{ $row['status']->value !== 'accepted' ? ($row['status']->value === 'waiting' ? 'Invitation waiting' : $row['status']->label()) : ($row['seen'] === 'Never' ? 'Never seen' : 'Seen '.lcfirst($row['seen'])) }}</span></div>
 <div>{{ $row['roles'] === [] ? 'Volunteer' : implode(', ', $row['roles']) }}</div>
 <div class="muted">{{ $row['person']->email }}</div>
 <div class="muted">{{ $row['status']->label() }}@if ($row['sent'] && in_array($row['status']->value, ['waiting', 'ran_out'], true)), sent {{ $row['sent'] }}@endif</div>

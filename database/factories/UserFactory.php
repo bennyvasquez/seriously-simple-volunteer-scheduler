@@ -60,4 +60,18 @@ class UserFactory extends Factory
     {
         return $this->state(fn () => ['deactivated_at' => now()]);
     }
+
+    /** The shared record that removed people's history moves onto: anonymous, turned off and never invited. */
+    public function removedPerson(): static
+    {
+        return $this->state(fn () => [
+            'name' => 'Removed person',
+            'email' => 'removed-person-'.Str::random(8).'@example.invalid',
+            'is_removed_person' => true,
+            'deactivated_at' => now(),
+            'invited_at' => null,
+            'email_verified_at' => null,
+            'password' => null,
+        ]);
+    }
 }

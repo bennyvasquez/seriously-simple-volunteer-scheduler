@@ -14,6 +14,7 @@ use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\People\InviteController;
 use App\Http\Controllers\People\PeopleController;
+use App\Http\Controllers\People\PersonController;
 use App\Http\Controllers\PersonSecurityController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Http\Request;
@@ -68,6 +69,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/people/invite', [InviteController::class, 'store'])->name('people.invite.store');
         Route::get('/people/invite-everyone', [InviteController::class, 'everyone'])->name('people.invite-everyone');
         Route::post('/people/invite-everyone', [InviteController::class, 'sendToEveryone'])->name('people.invite-everyone.store');
+    });
+    Route::middleware('can:viewAny,App\Models\User')->whereNumber('user')->group(function () {
+        Route::get('/people/{user}', [PersonController::class, 'show'])->name('people.show');
+        Route::post('/people/{user}/roles', [PersonController::class, 'addRole'])->name('people.roles.store');
+        Route::post('/people/{user}/roles/remove', [PersonController::class, 'removeRole'])->name('people.roles.destroy');
+        Route::post('/people/{user}/invite', [PersonController::class, 'invite'])->name('people.invite.send');
+        Route::post('/people/{user}/turn-off', [PersonController::class, 'turnOff'])->name('people.turn-off');
     });
     Route::get('/people/{user}/security', [PersonSecurityController::class, 'show'])->name('people.security');
     Route::post('/people/{user}/two-factor-reset', [PersonSecurityController::class, 'reset'])->name('people.two-factor.reset');

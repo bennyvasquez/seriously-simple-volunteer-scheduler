@@ -12,6 +12,8 @@
 <p role="status">{{ session('status') }}</p>
 @endif
 
+<nav aria-label="Breadcrumb" class="muted"><a href="{{ route('people.show', $person) }}">Back to {{ $firstName }}'s page</a></nav>
+
 <section class="panel">
 <h1>{{ $person->name }}</h1>
 <div class="muted">{{ $person->email }}@if ($roles). {{ implode(', ', $roles) }}@endif</div>

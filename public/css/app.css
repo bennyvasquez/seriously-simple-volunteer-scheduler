@@ -175,3 +175,16 @@ a{color:#1a1a1a}a:hover{color:#000}
 .people-cards{display:flex}
 .people-filters .field{flex-basis:100%}
 }
+
+/* The person page (screen 27). */
+.person-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.person-page h1{margin:0;font-size:26px}
+.person-page p{margin:0}
+.person-columns{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.person-column{flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:16px}
+.person-form{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.person-form .field{flex:1 1 200px}
+.person-panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.entry{display:flex;flex-direction:column;gap:2px;border-bottom:1px solid #eee;padding:8px 0}
+.person-page .btn{align-self:flex-start}
+@media (max-width:640px){.person-page{padding:16px}}
