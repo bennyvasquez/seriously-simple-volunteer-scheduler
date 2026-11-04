@@ -20,18 +20,12 @@ class PersonSecurityController extends Controller
     public function show(Request $request, string $user): View
     {
         $this->authorizeAdmin($request);
-        $user = User::query()->findOrFail($user);
-
-        $user->load('roles.area');
+        $user = User::query()->people()->findOrFail($user);
 
         return view('people.security', [
             'person' => $user,
-            'firstName' => $this->firstName($user),
-            'roles' => $user->roles->map(fn ($assignment) => match ($assignment->role) {
-                Role::Admin => 'Admin',
-                Role::Coordinator => 'Coordinator',
-                Role::AreaLead => 'Area lead'.($assignment->area ? ': '.$assignment->area->name : ''),
-            })->all(),
+            'firstName' => $user->firstName(),
+            'roles' => $user->roleLabels(),
             'timezone' => Organization::query()->value('timezone') ?? 'UTC',
             'isSelf' => $request->user()->is($user),
         ]);
@@ -41,7 +35,7 @@ class PersonSecurityController extends Controller
     {
         // The admin check comes before the lookup, so a non-admin gets the same 403 for a person who exists and one who doesn't.
         $this->authorizeAdmin($request);
-        $user = User::query()->findOrFail($user);
+        $user = User::query()->people()->findOrFail($user);
 
         $request->validate(['identity_checked' => ['accepted']], ['identity_checked.accepted' => 'Tick the box once you\'ve checked it\'s really them.']);
 
@@ -51,7 +45,7 @@ class PersonSecurityController extends Controller
             throw ValidationException::withMessages(['identity_checked' => $e->getMessage()]);
         }
 
-        return redirect()->route('people.security', $user)->with('status', $this->firstName($user).'\'s second step is reset. They\'ll set it up again next time they log in.');
+        return redirect()->route('people.security', $user)->with('status', $user->firstName().'\'s second step is reset. They\'ll set it up again next time they log in.');
     }
 
     private function authorizeAdmin(Request $request): void
@@ -59,10 +53,5 @@ class PersonSecurityController extends Controller
         $admin = $request->user();
 
         abort_unless($admin->isActive() && $admin->hasRole(Role::Admin), 403);
-    }
-
-    private function firstName(User $user): string
-    {
-        return explode(' ', trim($user->name))[0];
     }
 }

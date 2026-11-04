@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Calendar\TimeFormat;
 use App\Enums\SlotFrequency;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -22,7 +23,7 @@ class WeeklySlot extends Model
 
     protected $fillable = [
         'area_id', 'weekday', 'start_time', 'end_time', 'headcount', 'shadow_spots',
-        'frequency', 'anchor_date', 'valid_from', 'valid_until',
+        'frequency', 'anchor_date', 'valid_from', 'valid_until', 'title', 'is_rotation',
     ];
 
     protected function casts(): array
@@ -31,6 +32,7 @@ class WeeklySlot extends Model
             'weekday' => 'integer',
             'headcount' => 'integer',
             'shadow_spots' => 'integer',
+            'is_rotation' => 'boolean',
             'frequency' => SlotFrequency::class,
             'anchor_date' => 'immutable_date',
             'valid_from' => 'immutable_date',
@@ -108,6 +110,39 @@ class WeeklySlot extends Model
         }
 
         return $this->frequency->includes($localDate, $this->anchor_date);
+    }
+
+    /**
+     * The local dates (Y-m-d) from $from to $to, both included, that this slot occurs on.
+     *
+     * @return list<string>
+     */
+    public function datesWithin(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $dates = [];
+
+        for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+            if ($this->occursOn($day->toDateString())) {
+                $dates[] = $day->toDateString();
+            }
+        }
+
+        return $dates;
+    }
+
+    /** "Thursday". */
+    public function weekdayName(): string
+    {
+        return CarbonImmutable::parse('2026-10-18', 'UTC')->addDays($this->weekday)->format('l');
+    }
+
+    /** The slot in words: "Thursdays, 6:30 to 9:30pm" or "Every other Thursday, 6:30 to 9:30pm". */
+    public function describe(): string
+    {
+        $weekday = $this->weekdayName();
+        $when = $this->frequency === SlotFrequency::Weekly ? $weekday.'s' : 'Every other '.$weekday;
+
+        return $when.', '.TimeFormat::range(CarbonImmutable::parse($this->start_time), CarbonImmutable::parse($this->end_time));
     }
 
     /**

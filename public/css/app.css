@@ -38,3 +38,172 @@ a{color:#1a1a1a}a:hover{color:#000}
 .codes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .btn[hidden]{display:none}
 .link{align-self:flex-start;min-height:44px;padding:0;border:0;background:none;font:inherit;font-size:16px;color:#1a1a1a;text-decoration:underline;cursor:pointer}
+
+/* Coordinator calendar (screens 30, 33 and 34). Area colors: pale fill, strong border and swatch, dark text, all above 4.5:1. */
+.bar{flex-wrap:wrap;gap:12px}
+.area-blue{background:#dbe8f7;border:1px solid #2b5a8a;color:#10263d}
+.area-orange{background:#fbe3cc;border:1px solid #9a4f0e;color:#3d1f05}
+.area-green{background:#dcefdc;border:1px solid #2e6b34;color:#0f2e12}
+.area-purple{background:#ebe2f6;border:1px solid #5b3d8a;color:#24133d}
+.area-teal{background:#d5eeec;border:1px solid #1f6b66;color:#0a2e2c}
+.area-gray{background:#e8e8e8;border:1px solid #4f4f4f;color:#1a1a1a}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block;flex-shrink:0;box-sizing:border-box}
+.sw.area-blue{background:#2b5a8a}.sw.area-orange{background:#9a4f0e}.sw.area-green{background:#2e6b34}.sw.area-purple{background:#5b3d8a}.sw.area-teal{background:#1f6b66}.sw.area-gray{background:#4f4f4f}
+.ev.open{border:2px dashed #1a1a1a}
+.ev.urgent{border:3px solid #1a1a1a}
+.cal{background:#fff;min-height:calc(100vh - 68px)}
+.cal-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;flex-grow:1}
+.cal-bar-group{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.cal-bar h1{margin:0;font-size:20px}
+.btn-icon{width:44px;padding:0}
+.seg{display:flex;border:1px solid #1a1a1a;border-radius:8px;overflow:hidden}
+.seg a{min-height:42px;padding:0 14px;display:flex;align-items:center;text-decoration:none;font-size:15px}
+.seg a[aria-current]{background:#1a1a1a;color:#fff}
+.cal-body{display:flex;flex-wrap:wrap}
+.cal-side{flex:1 1 220px;max-width:260px;padding:16px 20px;border-right:1px solid #ddd;display:flex;flex-direction:column;gap:18px;box-sizing:border-box}
+.cal-side h2{margin:0 0 6px;font-size:15px}
+.cal-add{align-self:flex-start}
+.cal-areas{display:flex;flex-direction:column}
+.cal-areas .check{align-items:center;padding:0;min-height:40px}
+.cal-areas .check input{width:20px;height:20px}
+.cal-areas .btn{align-self:flex-start;margin-top:6px}
+.attention{display:flex;flex-direction:column;gap:8px}
+.attention h2{margin:0}
+.attention-item strong{color:#1a1a1a}
+.attention-item.urgent{border-left:3px solid #1a1a1a;padding-left:8px}
+.cal-key{display:flex;flex-direction:column;gap:4px}
+.cal-main{flex:999 1 640px;min-width:0;display:flex;flex-direction:column}
+.cal-status{margin:12px;padding:10px 12px;border:1px solid #ddd;border-radius:8px;background:#fafafa}
+.cal-grid-wrap{overflow-x:auto;padding:0 12px 16px 0}
+.cal-grid{display:grid;grid-template-columns:56px repeat(7,minmax(110px,1fr));min-width:840px}
+.cal-grid.days-1{grid-template-columns:56px minmax(220px,1fr);min-width:0}
+.dh{text-align:center;padding:6px 0;border-left:1px solid #e3e3e3;display:flex;flex-direction:column;align-items:center}
+.dh b{display:block;font-size:22px}
+.dh.today b{background:#1a1a1a;color:#fff;border-radius:50%;width:36px;height:36px;line-height:36px}
+.add{font-size:12px;text-decoration:underline}
+.hours div{height:48px;font-size:12px;color:#555;text-align:right;padding-right:6px;box-sizing:border-box;transform:translateY(-7px)}
+.hours div:first-child{transform:none}
+.daycol{position:relative;border-left:1px solid #e3e3e3;background:repeating-linear-gradient(#fff 0,#fff 47px,#ececec 47px,#ececec 48px)}
+.cal-grid .ev{position:absolute;left:3px;right:3px;border-radius:6px;padding:4px 6px;font-size:13px;line-height:1.3;text-decoration:none;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column;gap:1px}
+.ev .t{font-weight:700}
+.cal-list{display:none;flex-direction:column;gap:8px;padding:4px 16px 16px}
+.cal-list .day{font-weight:700;font-size:15px;padding:10px 0 4px;display:flex;justify-content:space-between;align-items:center}
+.cal-list .day a{min-height:44px;display:flex;align-items:center}
+.cal-list .ev{display:flex;flex-direction:column;gap:2px;border-radius:8px;padding:10px 12px;text-decoration:none;font-size:14px}
+.cal-panel{flex:1 1 320px;max-width:400px;padding:16px 20px;border-left:1px solid #ddd;box-sizing:border-box}
+.cal-month{padding:16px 20px;display:flex;flex-direction:column;gap:10px}
+.cal-month-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cal-month .cal-status{margin:0}
+.month-scroll{overflow-x:auto}
+.month-grid{display:grid;grid-template-columns:repeat(7,minmax(110px,1fr));min-width:780px;border-left:1px solid #e3e3e3;border-top:1px solid #e3e3e3}
+.wd{font-size:12px;color:#555;text-align:center;padding:6px 0;border-bottom:1px solid #ddd;border-right:1px solid #e3e3e3;font-weight:700}
+.cell{min-height:118px;border-right:1px solid #e3e3e3;border-bottom:1px solid #e3e3e3;padding:6px;display:flex;flex-direction:column;gap:4px;font-size:13px;box-sizing:border-box}
+.cell.today{background:#f4f4f4}
+.num{font-weight:700;font-size:14px;align-self:flex-start}
+.num.out{color:#666;font-weight:400}
+.cnt{border-radius:4px;padding:2px 6px;text-decoration:none}
+.op{border:1px dashed #1a1a1a;border-radius:4px;padding:2px 6px}
+.closed{background:#4f4f4f;color:#fff;border-radius:4px;padding:2px 6px;font-weight:700}
+@media (max-width:699px){
+.cal-grid-wrap{display:none}
+.cal-list{display:flex}
+.cal-body{flex-direction:column}
+.cal-main{order:-1;flex-basis:auto}
+.cal-side{max-width:none;border-right:0;border-top:1px solid #ddd;padding:16px}
+.cal-panel{max-width:none;border-left:0;border-top:1px solid #ddd;order:-2}
+.cal-bar h1{font-size:18px;flex-basis:100%;order:-1}
+.cal-month{padding:16px}
+}
+
+/* Adding from the calendar (screens 31 and 35) */
+.field select{min-height:44px;border:1px solid #8a8a8a;border-radius:6px;padding:8px 10px;font:inherit;box-sizing:border-box;background:#fff;width:100%}
+.field select[aria-invalid="true"]{border-color:#b00020}
+.field input[type=number],.field input[type=date],.field input[type=time]{width:100%}
+.add-panel{display:flex;flex-direction:column;gap:14px}
+.add-panel form{display:flex;flex-direction:column;gap:12px}
+.add-head{display:flex;justify-content:space-between;align-items:center}
+.add-head h2{margin:0;font-size:22px}
+.add-times{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.add-times.add-two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.add-actions{display:flex;gap:8px;flex-wrap:wrap}
+.choices{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:2px}
+.choices legend{font-weight:700;font-size:15px;padding:0}
+.slot-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.slot-page h1{margin:0;font-size:26px}
+.slot-layout{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.slot-fields{flex:999 1 520px;min-width:0}
+.slot-set{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:12px;min-width:0}
+.slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.slot-preview{flex:1 1 280px}
+.slot-preview p{margin:0}
+.slot-existing,.slot-saved{max-width:720px}
+.slot-existing p,.slot-saved p{margin:0}
+.slot-saved ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+
+/* Closures (screen 37), and the all-day bar a closure puts at the top of each day it covers on the week and day views */
+.closure-head{display:flex;flex-direction:column;gap:4px}
+.closure-head p{margin:0}
+.allday{border-left:1px solid #e3e3e3;padding:4px 3px;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.allday-label{font-size:12px;text-align:right;padding:6px 6px 0 0}
+.cal-list .closed{align-self:flex-start;font-size:14px}
+
+/* A cancelled date stays on the calendar: striped gray, struck-through time, and the word Cancelled in its text */
+.ev.ev.cancelled{background:repeating-linear-gradient(135deg,#f0f0f0 0,#f0f0f0 6px,#e0e0e0 6px,#e0e0e0 12px);border:1px solid #6b6b6b;color:#444}
+.ev.cancelled .t,.cal-list .ev.cancelled strong{text-decoration:line-through}
+.cancelled-count{color:#444;font-size:13px}
+
+/* People list (screens 24 and 25): a table on wide screens, cards on a phone */
+.people-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.people-page h1{margin:0;font-size:26px}
+.people-page p{margin:0}
+.people-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px}
+.people-actions{display:flex;flex-wrap:wrap;gap:8px}
+.people-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.people-filters .field{flex:1 1 160px}
+.people-filters .field input[type=search]{width:100%}
+.people-table{width:100%;border-collapse:collapse;background:#fff;font-size:15px}
+.people-table th{text-align:left;font-size:13px;color:#444;font-weight:700;padding:10px 12px;border-bottom:2px solid #1a1a1a}
+.people-table td{padding:12px;border-bottom:1px solid #e3e3e3;vertical-align:top}
+.tag{font-size:12px;border:1px solid #8a8a8a;border-radius:4px;padding:2px 6px;color:#444;white-space:nowrap}
+.people-cards{display:none;flex-direction:column;gap:8px}
+.card{border:1px solid #b5b5b5;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:4px;background:#fff}
+.card-top{display:flex;justify-content:space-between;gap:8px}
+.people-pager{display:flex;gap:8px}
+@media (max-width:699px){
+.people-page{padding:16px}
+.people-table-wrap{display:none}
+.people-cards{display:flex}
+.people-filters .field{flex-basis:100%}
+}
+
+/* The person page (screen 27). */
+.person-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.person-page h1{margin:0;font-size:26px}
+.person-page p{margin:0}
+.person-columns{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.person-column{flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:16px}
+.person-form{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.person-form .field{flex:1 1 200px}
+.person-panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.entry{display:flex;flex-direction:column;gap:2px;border-bottom:1px solid #eee;padding:8px 0}
+.person-page .btn{align-self:flex-start}
+@media (max-width:640px){.person-page{padding:16px}}
+
+/* The change log (screens 28 and 29). */
+.log-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.log-page h1{margin:0;font-size:26px}
+.log-page p{margin:0}
+.log-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;background:#fff;border:1px solid #ddd;border-radius:8px;padding:14px}
+.log-filters .field{flex:1 1 160px}
+.log-filters .field input[type=search]{width:100%}
+.log-list{border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#fff}
+.log-day{margin:0;font-size:14px;padding:10px 16px;background:#eee;border-bottom:1px solid #ddd}
+.log-entry{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:14px 16px;border-bottom:1px solid #e3e3e3}
+.log-when{font-size:14px;color:#444}
+.log-change{font-size:14px;color:#333;background:#f7f7f7;border-left:3px solid #b5b5b5;padding:6px 10px;margin-top:6px}
+.log-pager{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+@media (max-width:699px){
+.log-page{padding:16px}
+.log-filters .field{flex-basis:100%}
+.log-entry{grid-template-columns:minmax(0,1fr);gap:4px}
+}

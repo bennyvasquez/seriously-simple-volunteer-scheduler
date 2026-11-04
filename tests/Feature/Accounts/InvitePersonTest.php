@@ -3,7 +3,8 @@
 namespace Tests\Feature\Accounts;
 
 use App\Actions\Accounts\GrantRole;
-use App\Actions\Accounts\InviteVolunteer;
+use App\Actions\Accounts\CreatePerson;
+use App\Actions\Accounts\InvitePerson;
 use App\Enums\Role;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
@@ -14,7 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
-class InviteVolunteerTest extends TestCase
+class InvitePersonTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -24,6 +25,7 @@ class InviteVolunteerTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutDefer();
         Notification::fake();
         $this->coordinator = User::factory()->create(['name' => 'Alex']);
         app(GrantRole::class)->handle(null, $this->coordinator, Role::Coordinator);
@@ -31,7 +33,11 @@ class InviteVolunteerTest extends TestCase
 
     private function invite(string $email, ?User $inviter = null): User
     {
-        return app(InviteVolunteer::class)->handle($inviter ?? $this->coordinator, 'Robin', $email);
+        $inviter ??= $this->coordinator;
+        $person = app(CreatePerson::class)->handle($inviter, 'Robin', $email);
+        app(InvitePerson::class)->handle($inviter, $person);
+
+        return $person;
     }
 
     public function test_a_coordinator_can_invite_a_volunteer(): void
@@ -43,7 +49,7 @@ class InviteVolunteerTest extends TestCase
         $this->assertNull($user->fresh()->email_verified_at);
         Notification::assertSentTo($user, InvitationNotification::class);
         $this->assertTrue(ChangeLogEntry::query()->where('action', 'user.invited')->where('actor_id', $this->coordinator->id)->exists());
-        $this->assertArrayNotHasKey('password', ChangeLogEntry::query()->where('action', 'user.invited')->sole()->changes);
+        $this->assertArrayNotHasKey('password', ChangeLogEntry::query()->where('action', 'user.created')->sole()->changes);
     }
 
     public function test_the_invitation_link_logs_the_volunteer_in(): void
@@ -82,7 +88,7 @@ class InviteVolunteerTest extends TestCase
     {
         $user = $this->invite('robin@example.org');
 
-        $entry = ChangeLogEntry::query()->where('action', 'user.invited')->sole();
+        $entry = ChangeLogEntry::query()->where('action', 'user.created')->sole();
         $this->assertSame('robin@example.org', $entry->changes['email']['new']);
         $this->assertSame($user->id, $entry->affected_user_id);
     }

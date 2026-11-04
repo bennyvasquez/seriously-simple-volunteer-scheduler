@@ -14,7 +14,7 @@ class TwoFactorResetNotification extends Notification
 
     public function __construct(User $admin)
     {
-        $this->adminFirstName = explode(' ', trim($admin->name))[0];
+        $this->adminFirstName = $admin->firstName();
     }
 
     public function via(object $notifiable): array

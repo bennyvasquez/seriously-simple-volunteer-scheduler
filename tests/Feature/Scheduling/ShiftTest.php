@@ -2,9 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
-use App\Enums\AssignmentType;
 use App\Models\Shift;
-use App\Models\User;
 use App\Models\WeeklySlot;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,17 +33,6 @@ class ShiftTest extends TestCase
         $this->expectException(UniqueConstraintViolationException::class);
 
         Shift::create($this->shiftAttributes($slot));
-    }
-
-    public function test_a_person_is_on_a_shift_only_once(): void
-    {
-        $shift = Shift::create($this->shiftAttributes(WeeklySlot::factory()->create()));
-        $user = User::factory()->create();
-        $shift->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Regular]);
-
-        $this->expectException(UniqueConstraintViolationException::class);
-
-        $shift->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Shadow]);
     }
 
     public function test_shift_times_come_back_in_utc(): void

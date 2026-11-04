@@ -10,9 +10,13 @@
 </head>
 <body>
 <header class="bar">
+@hasSection('bar')
+@yield('bar')
+@else
 <div class="bar-name">@hasSection('header')@yield('header')@else{{ \App\Models\Organization::query()->value('name') ?? config('app.name') }}@endif</div>
+@endif
 </header>
-<main class="page">
+<main class="@yield('main-class', 'page')">
 @yield('content')
 </main>
 @stack('scripts')

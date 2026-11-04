@@ -71,6 +71,8 @@ class SetupCommand extends Command
                 'email' => Str::lower($answers['admin_email']),
                 'password' => null,
             ]);
+            // Issuing the invitation link below is what invites the admin.
+            $admin->invited_at = now();
             $adminChanges = ChangeLogEntry::changesOf($admin);
             $admin->save();
             ChangeLogEntry::record(null, 'user.created', $admin, changes: $adminChanges);
