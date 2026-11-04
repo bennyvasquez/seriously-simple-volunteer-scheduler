@@ -2,14 +2,17 @@
 
 namespace Tests\Feature\People;
 
+use App\Actions\Accounts\CreatePerson;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\InviteEveryone;
+use App\Actions\Accounts\InvitePerson;
 use App\Enums\Role;
 use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\InvitationNotification;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\InteractsWithTwoFactor;
@@ -106,5 +109,32 @@ class InviteScreensTest extends TestCase
         $this->actingAs($this->coordinator)->post(route('people.invite-everyone.store'))
             ->assertRedirect(route('people.index'))->assertSessionHas('status', 'Sent 3 invitations.');
         $this->actingAs($this->coordinator)->get(route('people.index'))->assertDontSee('Invite everyone not invited yet');
+    }
+
+    public function test_inviting_everyone_skips_a_verified_person_who_is_not_invited(): void
+    {
+        User::factory()->notInvited()->create(['email_verified_at' => now()]);
+        User::factory()->notInvited()->count(2)->create();
+
+        $this->assertSame(2, app(InviteEveryone::class)->handle($this->coordinator));
+    }
+
+    public function test_a_clash_on_the_unique_email_index_shows_the_same_message(): void
+    {
+        $this->mock(CreatePerson::class)->shouldReceive('handle')
+            ->andThrow(new UniqueConstraintViolationException('mysql', 'insert', [], new \Exception('duplicate')));
+
+        $this->actingAs($this->coordinator)->from(route('people.invite'))
+            ->post(route('people.invite.store'), ['name' => 'Robin', 'email' => 'robin@example.org', 'starts_as' => 'volunteer'])
+            ->assertRedirect(route('people.invite'))
+            ->assertSessionHasErrors(['email' => 'Someone with that email address already has an account.']);
+    }
+
+    public function test_the_phone_card_shows_the_invitation_for_someone_who_has_not_accepted(): void
+    {
+        $drew = User::factory()->notInvited()->create();
+        app(InvitePerson::class)->handle($this->coordinator, $drew);
+
+        $this->actingAs($this->coordinator)->get(route('people.index'))->assertSee('Invitation waiting')->assertDontSee('Never seen');
     }
 }

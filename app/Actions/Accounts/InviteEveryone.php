@@ -3,6 +3,7 @@
 namespace App\Actions\Accounts;
 
 use App\Models\User;
+use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -23,16 +24,20 @@ class InviteEveryone
         $invited = 0;
 
         foreach (self::waitingToBeInvited()->orderBy('id')->pluck('id') as $id) {
-            DB::transaction(function () use ($actor, $id, &$invited) {
-                $person = User::query()->whereKey($id)->lockForUpdate()->first();
+            try {
+                DB::transaction(function () use ($actor, $id, &$invited) {
+                    $person = User::query()->whereKey($id)->lockForUpdate()->first();
 
-                if ($person === null || $person->invited_at !== null || ! $person->isActive() || $person->is_removed_person) {
-                    return;
-                }
+                    if ($person === null || $person->invited_at !== null || $person->email_verified_at !== null || ! $person->isActive() || $person->is_removed_person) {
+                        return;
+                    }
 
-                $this->invitePerson->handle($actor, $person);
-                $invited++;
-            });
+                    $this->invitePerson->handle($actor, $person);
+                    $invited++;
+                });
+            } catch (DomainException) {
+                // Backstop: InvitePerson refused this person, so leave them and go on with the rest.
+            }
         }
 
         return $invited;

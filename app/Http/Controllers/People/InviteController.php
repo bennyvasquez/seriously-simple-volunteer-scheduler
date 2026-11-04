@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\User;
 use DomainException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +57,9 @@ class InviteController extends Controller
             });
         } catch (DomainException $e) {
             return back()->withErrors(['email' => $e->getMessage()])->withInput();
+        } catch (UniqueConstraintViolationException) {
+            // Two submissions of the same address at once both passed the check; the unique index stopped the second.
+            return back()->withErrors(['email' => 'Someone with that email address already has an account.'])->withInput();
         }
 
         return redirect()->route('people.index')->with('status', 'Invitation sent to '.$person->email.'.');

@@ -82,7 +82,7 @@
 <div class="people-cards">
 @foreach ($rows as $row)
 <div class="card">
-<div class="card-top"><strong>{{ $row['person']->name }}@unless ($row['person']->isActive()) <span class="tag">Turned off</span>@endunless</strong><span class="muted">{{ $row['seen'] === 'Never' ? 'Never seen' : 'Seen '.lcfirst($row['seen']) }}</span></div>
+<div class="card-top"><strong>{{ $row['person']->name }}@unless ($row['person']->isActive()) <span class="tag">Turned off</span>@endunless</strong><span class="muted">{{ $row['status']->value !== 'accepted' ? ($row['status']->value === 'waiting' ? 'Invitation waiting' : $row['status']->label()) : ($row['seen'] === 'Never' ? 'Never seen' : 'Seen '.lcfirst($row['seen'])) }}</span></div>
 <div>{{ $row['roles'] === [] ? 'Volunteer' : implode(', ', $row['roles']) }}</div>
 <div class="muted">{{ $row['person']->email }}</div>
 <div class="muted">{{ $row['status']->label() }}@if ($row['sent'] && in_array($row['status']->value, ['waiting', 'ran_out'], true)), sent {{ $row['sent'] }}@endif</div>
