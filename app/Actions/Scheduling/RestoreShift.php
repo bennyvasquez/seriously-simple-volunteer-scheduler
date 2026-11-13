@@ -2,20 +2,25 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Enums\AssignmentType;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\Organization;
 use App\Models\Shift;
+use App\Models\SlotRegular;
 use App\Models\User;
+use App\Models\WeeklySlot;
 use App\Notifications\ShiftRestoredNotification;
 use DomainException;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Brings back a shift that was cancelled by hand, with everyone who was on it. Refuses a shift that isn't cancelled or has started, one a closure or a weekly slot change cancelled (those come back when the closure or the slot is changed), and a date an area closure covers now. Anyone on it who is now on another active shift at an overlapping time is removed from this one, and the status says so. The people still on it who can sign in are emailed after the response. The refusals are written to be shown on screen. restoreLocked() is the shared step: closure changes call it with the area and shift already locked and send any email themselves.
+ * Brings back a shift that was cancelled by hand, with everyone who was on it. A shift from a weekly slot that nobody edited on its own comes back with the slot's current details and regulars (see restoreLocked()), since slot changes and new regulars skip cancelled shifts. Refuses a shift that isn't cancelled or has started, one a closure or a weekly slot change cancelled (those come back when the closure or the slot is changed), and a date an area closure covers now. Anyone on it who is now on another active shift at an overlapping time is removed from this one, and the status says so. The people still on it who can sign in are emailed after the response. The refusals are written to be shown on screen. restoreLocked() is the shared step: closure changes call it with the area, the area's weekly slots and their regulars, and the shift already locked, and send any email themselves. preview() says the same without changing anything, for the confirm steps.
  */
 class RestoreShift
 {
@@ -53,19 +58,39 @@ class RestoreShift
     }
 
     /**
-     * Clears the cancellation, logs shift.restored with `$via`, and removes each person now on another active shift at an overlapping time. The caller holds the area and shift locks, has authorized the actor, checked the shift is cancelled and hasn't started, and sends any email.
+     * Clears the cancellation and catches the shift up with its weekly slot, logs shift.restored with `$via`, and removes each person now on another active shift at an overlapping time. The caller holds the area lock, the lock on the shift's weekly slot and its regulars, and the shift lock, has authorized the actor, checked the shift is cancelled and hasn't started, and sends any email.
+     *
+     * A shift from a weekly slot whose `edited_at` is null gets the slot's current times for its date, title and people needed, and its shadow spots unless that would be fewer than the shadows on it; a slot time that has already started leaves the times alone. The slot's regulars who work that date, aren't on it and aren't turned off are added as regulars, the same way UpdateWeeklySlot brings back a date. The detail changes go in the shift.restored entry's changes, and the people added in its details as `added_regular_ids`. A shift edited on its own keeps its details and gets nobody new.
      *
      * @return array{emailed: Collection<int, User>, removed: Collection<int, User>} The people still on the shift who can sign in, and the people removed from it.
      */
     public function restoreLocked(User $actor, Shift $lockedShift, array $via): array
     {
+        // Locking reads of rows the caller already holds, so nothing locks a slot or a regular after a shift.
+        $catchesUp = $lockedShift->weekly_slot_id !== null && $lockedShift->edited_at === null;
+        $slot = $catchesUp ? WeeklySlot::query()->whereKey($lockedShift->weekly_slot_id)->lockForUpdate()->first() : null;
+        $regulars = $slot === null ? collect() : SlotRegular::query()->where('weekly_slot_id', $slot->id)->orderBy('id')->lockForUpdate()->get();
+        $before = Assignment::query()->where('shift_id', $lockedShift->id)->orderBy('id')->lockForUpdate()->get();
+        $joining = collect();
+
+        if ($slot !== null) {
+            self::applySlot($lockedShift, $slot, $before->where('type', AssignmentType::Shadow)->count());
+            // Each person is read with a shared lock (the only lock a user row may take after a shift row), the same as UpdateWeeklySlot::revive().
+            $joining = self::regularsJoining($lockedShift, $regulars, $before, fn (int $id) => User::query()->whereKey($id)->sharedLock()->first());
+        }
+
         $lockedShift->cancelled_at = null;
         $lockedShift->cancel_reason = null;
         $lockedShift->area_closure_id = null;
         $changes = ChangeLogEntry::changesOf($lockedShift);
         $lockedShift->save();
 
-        ChangeLogEntry::record($actor, 'shift.restored', $lockedShift, ['area_id' => $lockedShift->area_id] + $via, $changes);
+        foreach ($joining as $person) {
+            $lockedShift->assignments()->create(['user_id' => $person->id, 'type' => AssignmentType::Regular]);
+        }
+
+        $details = ['area_id' => $lockedShift->area_id] + $via + ($joining->isEmpty() ? [] : ['added_regular_ids' => $joining->modelKeys()]);
+        ChangeLogEntry::record($actor, 'shift.restored', $lockedShift, $details, $changes);
 
         // Read after the locks, so the people and their other shifts are the committed ones.
         $assignments = Assignment::query()->with('user')->where('shift_id', $lockedShift->id)->orderBy('id')->lockForUpdate()->get();
@@ -84,6 +109,83 @@ class RestoreShift
         return ['emailed' => $staying->filter(fn (User $user) => $user->canSignIn())->values(), 'removed' => $removed];
     }
 
+    /**
+     * What bringing the shift back would do, changing nothing: a copy of the shift with the details it would come back with and everyone who would be on it (assignments.user loaded, people joining as unsaved assignments), the people who would stay and the people who would be removed for an overlap. The confirm steps use it to count who is emailed.
+     *
+     * @return array{shift: Shift, staying: Collection<int, User>, removed: Collection<int, User>}
+     */
+    public static function preview(Shift $shift): array
+    {
+        $copy = clone $shift;
+        $assignments = Assignment::query()->with('user')->where('shift_id', $shift->id)->orderBy('id')->get();
+        $slot = self::slotFor($shift);
+
+        if ($slot !== null) {
+            self::applySlot($copy, $slot, $assignments->where('type', AssignmentType::Shadow)->count());
+            $regulars = SlotRegular::query()->where('weekly_slot_id', $slot->id)->orderBy('id')->get();
+            $joining = self::regularsJoining($copy, $regulars, $assignments, fn (int $id) => User::query()->find($id));
+
+            foreach ($joining as $person) {
+                $assignments->push((new Assignment(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => AssignmentType::Regular]))->setRelation('user', $person));
+            }
+        }
+
+        $copy->setRelation('assignments', $assignments);
+        [$removed, $staying] = $assignments->pluck('user')->partition(fn (User $person) => PutOnShift::overlappingShift($person, $copy) !== null);
+
+        return ['shift' => $copy, 'staying' => $staying->values(), 'removed' => $removed->values()];
+    }
+
+    /** The weekly slot a shift catches up with when it comes back: none for a one-time shift or one edited on its own. */
+    private static function slotFor(Shift $shift): ?WeeklySlot
+    {
+        return $shift->weekly_slot_id === null || $shift->edited_at !== null ? null : WeeklySlot::query()->find($shift->weekly_slot_id);
+    }
+
+    /** Puts the slot's current details for the shift's date on the shift, without saving. Keeps the shift's own shadow spots when the slot's are fewer than the shadows on it, and its own times when the slot's time that day has started. */
+    private static function applySlot(Shift $shift, WeeklySlot $slot, int $shadows): void
+    {
+        [$startsAt, $endsAt] = $slot->timesOn($shift->local_date->toDateString(), Organization::current()->timezone);
+
+        if ($startsAt->greaterThan(now())) {
+            $shift->fill(['starts_at' => $startsAt, 'ends_at' => $endsAt]);
+        }
+
+        $shift->fill([
+            'people_needed' => $slot->people_needed,
+            'shadow_spots' => $slot->shadow_spots < $shadows ? $shift->shadow_spots : $slot->shadow_spots,
+            'title' => $slot->title,
+        ]);
+    }
+
+    /**
+     * The slot's regulars who work the shift's date, aren't on it already and aren't turned off, the earliest added first.
+     *
+     * @param  Collection<int, SlotRegular>  $regulars
+     * @param  Collection<int, Assignment>  $on
+     * @param  callable(int): ?User  $person  Reads a person, with a lock or without.
+     * @return EloquentCollection<int, User>
+     */
+    private static function regularsJoining(Shift $shift, Collection $regulars, Collection $on, callable $person): EloquentCollection
+    {
+        $date = $shift->local_date->toDateString();
+        $joining = new EloquentCollection;
+
+        foreach ($regulars as $regular) {
+            if (! $regular->activeOn($date) || $on->contains('user_id', $regular->user_id) || $joining->contains('id', $regular->user_id)) {
+                continue;
+            }
+
+            $user = $person($regular->user_id);
+
+            if ($user?->isActive()) {
+                $joining->push($user);
+            }
+        }
+
+        return $joining;
+    }
+
     /** @return array{emailed: int, removed: Collection<int, User>} */
     public function handle(User $actor, Shift $shift): array
     {
@@ -91,6 +193,12 @@ class RestoreShift
 
         $result = DB::transaction(function () use ($actor, $shift) {
             Area::query()->whereKey($shift->area_id)->lockForUpdate()->firstOrFail();
+            // Then its weekly slot and the slot's regulars, before the shift: the order every scheduling action locks in, since restoreLocked() reads them.
+            if ($shift->weekly_slot_id !== null) {
+                WeeklySlot::query()->whereKey($shift->weekly_slot_id)->lockForUpdate()->first();
+                SlotRegular::query()->where('weekly_slot_id', $shift->weekly_slot_id)->orderBy('id')->lockForUpdate()->get();
+            }
+
             $locked = Shift::query()->whereKey($shift->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->cancelled_at === null) {

@@ -295,21 +295,13 @@ class ShiftController extends Controller
             ->with('status', trim('Cancelled the '.$shift->area->name.' shift on '.$shift->local_date->format('l, F j').'. '.$sentence));
     }
 
-    /** @return array{emailed: int, removed: string, removedCount: int} Who a restore would email, and the names (as the viewer may see them) of people who would be removed for an overlap. */
+    /** @return array{emailed: int, removed: string, removedCount: int} Who a restore would email, including the slot's regulars it would add (see RestoreShift::preview()), and the names (as the viewer may see them) of people who would be removed for an overlap. */
     private function restoreCounts(Shift $shift, User $viewer): array
     {
-        $emailed = 0;
-        $removed = collect();
+        $preview = RestoreShift::preview($shift);
+        $removed = $preview['removed']->map(fn (User $person) => PersonSearch::displayName($viewer, $person));
 
-        foreach ($shift->assignments as $assignment) {
-            if (PutOnShift::overlappingShift($assignment->user, $shift) !== null) {
-                $removed->push(PersonSearch::displayName($viewer, $assignment->user));
-            } elseif ($assignment->user->canSignIn()) {
-                $emailed++;
-            }
-        }
-
-        return ['emailed' => $emailed, 'removed' => $removed->join(', ', ' and '), 'removedCount' => $removed->count()];
+        return ['emailed' => $preview['staying']->filter(fn (User $person) => $person->canSignIn())->count(), 'removed' => $removed->join(', ', ' and '), 'removedCount' => $removed->count()];
     }
 
     public function restore(Request $request, RestoreShift $restoreShift, Shift $shift): RedirectResponse

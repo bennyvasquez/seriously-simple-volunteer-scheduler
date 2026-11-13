@@ -3,14 +3,19 @@
 namespace Tests\Feature\Scheduling;
 
 use App\Actions\Accounts\GrantRole;
+use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\CreateClosure;
 use App\Actions\Scheduling\CreateOneTimeShift;
+use App\Actions\Scheduling\CreateWeeklySlot;
 use App\Actions\Scheduling\PutOnShift;
 use App\Actions\Scheduling\RestoreShift;
+use App\Actions\Scheduling\UpdateShift;
+use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\ChangeLog\Describe;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
+use App\Enums\SlotFrequency;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Assignment;
@@ -281,5 +286,119 @@ class RestoreShiftTest extends TestCase
         $this->actingAs($coordinator)->get(route('calendar.shift', [$desk, 'restore' => 1]))->assertOk()
             ->assertSee('1 person will be emailed that it&#039;s back on.', false)
             ->assertSee('Robin Example is on another shift at that time and will be removed from this one.');
+    }
+
+    /** A Thursday Front desk slot, 4 to 6pm with 1 shadow spot, from October 15, with its shifts generated and Robin as its regular. */
+    private function robinsSlot(): WeeklySlot
+    {
+        $slot = app(CreateWeeklySlot::class)->handle($this->coordinator(), $this->frontDesk, [
+            'weekday' => 4, 'start_time' => '16:00', 'end_time' => '18:00', 'people_needed' => 1, 'shadow_spots' => 1,
+            'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
+        ]);
+        app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-15');
+
+        return $slot;
+    }
+
+    /** Saves the slot with the values given, keeping the rest. */
+    private function changeSlot(WeeklySlot $slot, array $values): void
+    {
+        $slot = $slot->fresh();
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, $values + [
+            'weekday' => $slot->weekday, 'start_time' => substr($slot->start_time, 0, 5), 'end_time' => substr($slot->end_time, 0, 5),
+            'people_needed' => $slot->people_needed, 'shadow_spots' => $slot->shadow_spots, 'frequency' => $slot->frequency->value,
+            'valid_from' => $slot->valid_from->toDateString(), 'valid_until' => $slot->valid_until?->toDateString(),
+            'title' => $slot->title, 'is_rotation' => $slot->is_rotation,
+        ]);
+    }
+
+    public function test_bringing_back_a_shift_applies_the_slots_current_details_and_emails_the_new_time(): void
+    {
+        $slot = $this->robinsSlot();
+        $shift = $slot->shifts()->where('local_date', '2026-10-29')->sole();
+        $sam = User::factory()->create(['name' => 'Sam Example']);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $sam->id, 'type' => AssignmentType::Shadow]);
+        $coordinator = $this->coordinator();
+        app(CancelShift::class)->handle($coordinator, $shift, 'Power outage');
+        // While it's cancelled the slot moves an hour later, needs 2 people and drops its shadow spot.
+        $this->changeSlot($slot, ['start_time' => '17:00', 'end_time' => '19:00', 'people_needed' => 2, 'shadow_spots' => 0, 'title' => 'Greeter']);
+        $this->assertSame('16:00', $shift->fresh()->starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        Notification::fake();
+
+        $result = app(RestoreShift::class)->handle($coordinator, $shift);
+
+        $fresh = $shift->fresh();
+        $this->assertNull($fresh->cancelled_at);
+        $this->assertSame('17:00', $fresh->starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame('19:00', $fresh->ends_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame(2, $fresh->people_needed);
+        $this->assertSame('Greeter', $fresh->title);
+        // Sam is shadowing, so the shift keeps its own shadow spot instead of the slot's none.
+        $this->assertSame(1, $fresh->shadow_spots);
+        $this->assertSame(2, $result['emailed']);
+
+        $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.restored')->sole();
+        $this->assertSame(1, $entry->changes['people_needed']['old']);
+        $this->assertSame(2, $entry->changes['people_needed']['new']);
+        $this->assertSame(['old' => null, 'new' => 'Greeter'], $entry->changes['title']);
+        $this->assertArrayHasKey('starts_at', $entry->changes);
+        $this->assertArrayNotHasKey('shadow_spots', $entry->changes);
+
+        Notification::assertSentTo($this->robin, ShiftRestoredNotification::class, function (ShiftRestoredNotification $notification) {
+            $this->assertStringContainsString('Thursday, October 29, 5 to 7pm', $notification->toMail($this->robin)->introLines[0]);
+
+            return true;
+        });
+    }
+
+    public function test_bringing_back_a_shift_adds_regulars_who_started_while_it_was_cancelled_but_not_turned_off_ones(): void
+    {
+        $slot = $this->robinsSlot();
+        $shift = $slot->shifts()->where('local_date', '2026-10-29')->sole();
+        $coordinator = $this->coordinator();
+        app(CancelShift::class)->handle($coordinator, $shift, 'Power outage');
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $alex = User::factory()->create(['name' => 'Alex Example']);
+        app(AddRegular::class)->handle(null, $slot->fresh(), $casey, '2026-10-22', null, SlotFrequency::Weekly, null, true);
+        app(AddRegular::class)->handle(null, $slot->fresh(), $alex, '2026-10-22', null, SlotFrequency::Weekly, null, true);
+        $this->assertSame(1, Assignment::query()->where('shift_id', $shift->id)->count());
+        // Alex is turned off, and the release that ends their time as a regular hasn't run yet.
+        $alex->forceFill(['deactivated_at' => now()])->save();
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', [$shift, 'restore' => 1]))->assertOk()
+            ->assertSee('2 people will be emailed that it&#039;s back on.', false);
+        Notification::fake();
+
+        $result = app(RestoreShift::class)->handle($coordinator, $shift);
+
+        $this->assertSame(2, $result['emailed']);
+        $this->assertEqualsCanonicalizing([$this->robin->id, $casey->id], Assignment::query()->where('shift_id', $shift->id)->pluck('user_id')->all());
+        $this->assertSame(AssignmentType::Regular, Assignment::query()->where('shift_id', $shift->id)->where('user_id', $casey->id)->sole()->type);
+        $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.restored')->sole();
+        $this->assertSame([$casey->id], $entry->details['added_regular_ids']);
+        Notification::assertSentTo($casey, ShiftRestoredNotification::class);
+        Notification::assertNotSentTo($alex, ShiftRestoredNotification::class);
+    }
+
+    public function test_a_hand_edited_shift_comes_back_with_its_own_details(): void
+    {
+        $slot = $this->robinsSlot();
+        $shift = $slot->shifts()->where('local_date', '2026-10-29')->sole();
+        $coordinator = $this->coordinator();
+        app(UpdateShift::class)->handle($coordinator, $shift, ['people_needed' => 3]);
+        app(CancelShift::class)->handle($coordinator, $shift->fresh(), 'Power outage');
+        $this->changeSlot($slot, ['start_time' => '17:00', 'end_time' => '19:00']);
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        app(AddRegular::class)->handle(null, $slot->fresh(), $casey, '2026-10-22', null, SlotFrequency::Weekly, null, true);
+        Notification::fake();
+
+        app(RestoreShift::class)->handle($coordinator, $shift);
+
+        $fresh = $shift->fresh();
+        $this->assertNull($fresh->cancelled_at);
+        $this->assertSame('16:00', $fresh->starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame(3, $fresh->people_needed);
+        $this->assertSame([$this->robin->id], Assignment::query()->where('shift_id', $shift->id)->pluck('user_id')->all());
+        $this->assertArrayNotHasKey('added_regular_ids', ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.restored')->sole()->details);
     }
 }

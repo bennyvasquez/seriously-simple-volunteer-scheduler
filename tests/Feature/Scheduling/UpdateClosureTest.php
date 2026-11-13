@@ -3,11 +3,13 @@
 namespace Tests\Feature\Scheduling;
 
 use App\Actions\Accounts\GrantRole;
+use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CreateClosure;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
 use App\Actions\Scheduling\RemoveClosure;
 use App\Actions\Scheduling\UpdateClosure;
+use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\ChangeLog\Describe;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
@@ -506,5 +508,69 @@ class UpdateClosureTest extends TestCase
         $this->actingAs($this->coordinator())->get(route('calendar.closures.edit', ['closure' => $closure, 'remove' => 1]))->assertOk()
             ->assertSee('Remove the Front desk closure for Oct 12 to Oct 16? No shifts come back.')
             ->assertSee('Days that have passed lose the Closed label. Their shifts stay cancelled.');
+    }
+
+    public function test_removing_a_closure_brings_a_shift_back_with_the_slots_new_time_and_regulars(): void
+    {
+        $slot = $this->thursdaySlot();
+        app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-15');
+        $thanksgiving = $slot->shifts()->where('local_date', '2026-11-26')->sole();
+        $closure = $this->close('2026-11-26', '2026-11-26');
+        $coordinator = $this->coordinator();
+        // While the closure stands, the slot moves half an hour later and Casey becomes a regular too.
+        $fresh = $slot->fresh();
+        app(UpdateWeeklySlot::class)->handle($coordinator, $fresh, [
+            'weekday' => 4, 'start_time' => '16:00', 'end_time' => '19:00', 'people_needed' => 2, 'shadow_spots' => 0,
+            'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
+        ]);
+        app(AddRegular::class)->handle(null, $slot->fresh(), $this->casey, '2026-11-01');
+        $this->assertSame([$this->robin->id], Assignment::query()->where('shift_id', $thanksgiving->id)->pluck('user_id')->all());
+
+        $this->actingAs($coordinator)->get(route('calendar.closures.edit', ['closure' => $closure, 'remove' => 1]))->assertOk()
+            ->assertSee('Remove the Front desk closure for Nov 26? 1 shift comes back and 2 people are emailed.');
+        Notification::fake();
+
+        app(RemoveClosure::class)->handle($coordinator, $closure);
+
+        $back = $thanksgiving->fresh();
+        $this->assertNull($back->cancelled_at);
+        $this->assertSame('16:00', $back->starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame('19:00', $back->ends_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame(2, $back->people_needed);
+        $this->assertEqualsCanonicalizing([$this->robin->id, $this->casey->id], Assignment::query()->where('shift_id', $thanksgiving->id)->pluck('user_id')->all());
+        $entry = ChangeLogEntry::query()->forSubject($thanksgiving)->ofAction('shift.restored')->sole();
+        $this->assertSame('closure.removed', $entry->details['via']);
+        $this->assertSame([$this->casey->id], $entry->details['added_regular_ids']);
+        $this->assertArrayHasKey('starts_at', $entry->changes);
+        $this->assertSame(['old' => 1, 'new' => 2], $entry->changes['people_needed']);
+
+        foreach ([$this->robin, $this->casey] as $person) {
+            Notification::assertSentTo($person, ShiftRestoredNotification::class, function (ShiftRestoredNotification $notification) use ($person) {
+                $this->assertStringContainsString('Thursday, November 26, 4 to 7pm', $notification->toMail($person)->introLines[0]);
+
+                return true;
+            });
+        }
+    }
+
+    public function test_the_closure_previews_count_only_people_who_will_be_emailed(): void
+    {
+        $slot = $this->thursdaySlot();
+        app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-15');
+        $thanksgiving = $slot->shifts()->where('local_date', '2026-11-26')->sole();
+        // Sam hasn't been invited, so can't be emailed.
+        $sam = User::factory()->notInvited()->create(['name' => 'Sam Example']);
+        Assignment::create(['shift_id' => $thanksgiving->id, 'user_id' => $sam->id, 'type' => AssignmentType::Shadow]);
+        $closure = $this->close('2026-11-26', '2026-11-27');
+        $coordinator = $this->coordinator();
+        // Robin is put on another shift at the same time while the closure stands, so bringing Thanksgiving back removes them from it.
+        $other = app(CreateOneTimeShift::class)->handle($coordinator, Area::factory()->create(['name' => 'Shop']), '2026-11-26', '16:00', '17:00', 1, 0, null);
+        Assignment::create(['shift_id' => $other->id, 'user_id' => $this->robin->id, 'type' => AssignmentType::Regular]);
+
+        $this->actingAs($coordinator)->get(route('calendar.closures.edit', ['closure' => $closure, 'remove' => 1]))->assertOk()
+            ->assertSee('Remove the Front desk closure for Nov 26 to Nov 27? 1 shift comes back and nobody is emailed.');
+        $this->actingAs($coordinator)->get(route('calendar.closures.edit', ['closure' => $closure, 'from' => '2026-11-27', 'to' => '2026-11-27']))->assertOk()
+            ->assertSeeInOrder(['Brings back', 'Thu Nov 26', 'Sam Example shadowing'])
+            ->assertDontSee('We\'ll email');
     }
 }

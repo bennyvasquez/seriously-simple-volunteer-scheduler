@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CreateClosure;
 use App\Actions\Scheduling\RemoveClosure;
+use App\Actions\Scheduling\RestoreShift;
 use App\Actions\Scheduling\UpdateClosure;
 use App\Calendar\PersonSearch;
 use App\Calendar\TimeFormat;
@@ -244,7 +245,7 @@ class ClosureController extends Controller
     }
 
     /**
-     * For the edit page: the shifts the new days would cancel and the ones they would bring back, with who is on each. Null until both days are real dates in order.
+     * For the edit page: the shifts the new days would cancel and the ones they would bring back, with who is on each (a shift coming back shows the time and people it comes back with). `people` counts who is emailed: people who can sign in, leaving out anyone removed from a shift that comes back for an overlap. Null until both days are real dates in order.
      *
      * @return array{cancels: list<array{when: string, people: string}>, brings: list<array{when: string, people: string}>, people: int, onShifts: bool}|null
      */
@@ -265,26 +266,30 @@ class ClosureController extends Controller
             ->orderBy('id')
             ->get();
         $brings = $this->comingBack($closure)->reject(fn (Shift $shift) => $from <= $shift->local_date->toDateString() && $shift->local_date->toDateString() <= $to)->values();
-        $both = $cancels->concat($brings);
+        $back = $this->backPreviews($brings);
+        $shown = $back->pluck('shift');
+        $emailed = $this->activePeople($cancels)->concat($back->flatMap(fn (array $preview) => $preview['staying']))
+            ->filter(fn (User $user) => $user->canSignIn())
+            ->unique('id');
 
         return [
             'cancels' => $this->rows($viewer, $cancels, false),
-            'brings' => $this->rows($viewer, $brings, false),
-            'people' => $this->activePeople($both)->count(),
-            'onShifts' => $both->contains(fn (Shift $shift) => $shift->assignments->isNotEmpty()),
+            'brings' => $this->rows($viewer, $shown, false),
+            'people' => $emailed->count(),
+            'onShifts' => $cancels->concat($shown)->contains(fn (Shift $shift) => $shift->assignments->isNotEmpty()),
         ];
     }
 
     /**
-     * For the remove step: how many shifts come back and how many people are emailed, and whether days have passed.
+     * For the remove step: how many shifts come back and how many people are emailed (people who can sign in and stay on them, including regulars who join), and whether days have passed.
      *
      * @return array{text: string, started: bool}
      */
     private function removePreview(AreaClosure $closure): array
     {
-        $back = $this->comingBack($closure);
+        $back = $this->backPreviews($this->comingBack($closure));
         $count = $back->count();
-        $people = $this->activePeople($back)->count();
+        $people = $back->flatMap(fn (array $preview) => $preview['staying'])->filter(fn (User $user) => $user->canSignIn())->unique('id')->count();
         $days = $closure->starts_on->equalTo($closure->ends_on) ? $closure->starts_on->format('M j') : $closure->starts_on->format('M j').' to '.$closure->ends_on->format('M j');
 
         $what = match (true) {
@@ -322,6 +327,17 @@ class ClosureController extends Controller
     }
 
     /**
+     * What bringing each shift back would do (RestoreShift::preview()): the shift with the details and people it would come back with, who stays on it and who is removed for an overlap.
+     *
+     * @param  Collection<int, Shift>  $shifts
+     * @return Collection<int, array{shift: Shift, staying: Collection<int, User>, removed: Collection<int, User>}>
+     */
+    private function backPreviews(Collection $shifts): Collection
+    {
+        return $shifts->map(fn (Shift $shift) => RestoreShift::preview($shift))->values();
+    }
+
+    /**
      * One row per shift: when it is and who is on it, shown the way the viewer may see them.
      *
      * @param  Collection<int, Shift>  $shifts  With area and assignments.user loaded.
@@ -345,7 +361,8 @@ class ClosureController extends Controller
             $name = function (Assignment $assignment) use ($viewer, &$nameOf) {
                 return $nameOf[$assignment->user_id] ??= PersonSearch::displayName($viewer, $assignment->user);
             };
-            $assignments = $shift->assignments->sortBy('id');
+            // People who would join a shift coming back have no id yet, so they go last.
+            $assignments = $shift->assignments->sortBy(fn (Assignment $assignment) => $assignment->id ?? PHP_INT_MAX);
             $names = [
                 ...$assignments->where('type', AssignmentType::Regular)->map($name)->all(),
                 ...$assignments->where('type', AssignmentType::Shadow)->map(fn (Assignment $assignment) => $name($assignment).' shadowing')->all(),

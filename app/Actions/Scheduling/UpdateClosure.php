@@ -7,6 +7,7 @@ use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
+use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\ShiftCancelledNotification;
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Changes a closure's days or reason (spec section 8.5), with the same checks and messages as adding one. A closure that has started keeps its first day, and its last day can move only to yesterday or later; ending it yesterday reopens today. A closure that ended before yesterday keeps its days. Days that have passed are never changed: to fix them, remove the closure.
  *
- * In one transaction, locking the area, the closure and then every shift the change can touch (by start, then id): days it no longer covers get their shifts back (see releaseLocked()), newly covered days have their shifts cancelled (CreateClosure::cancelCovered()), and a new reason is copied onto the shifts it cancelled, without email. Shifts that have started are never changed. After the transaction commits, each of the area's weekly slots is generated again, so days that reopened get the shifts they never had; generation locks the slot and its regulars, which can't come after the shift locks held inside. After the response, each person gets at most one email: the shifts cancelled, the shifts back on, or both.
+ * In one transaction, locking the area, the closure, the area's weekly slots and their regulars (a shift that comes back catches up with its slot, see RestoreShift::restoreLocked()), and then every shift the change can touch (by start, then id): days it no longer covers get their shifts back (see releaseLocked()), newly covered days have their shifts cancelled (CreateClosure::cancelCovered()), and a new reason is copied onto the shifts it cancelled, without email. Shifts that have started are never changed. After the transaction commits, each of the area's weekly slots is generated again, so days that reopened get the shifts they never had; generation locks the slot and its regulars, which can't come after the shift locks held inside. After the response, each person gets at most one email: the shifts cancelled, the shifts back on, or both.
  */
 class UpdateClosure
 {
@@ -64,6 +65,8 @@ class UpdateClosure
             if ($locked === null) {
                 throw new DomainException('This closure was removed.');
             }
+
+            self::lockSlotsAndRegulars($area);
 
             $oldFirst = $locked->starts_on;
             $oldLast = $locked->ends_on;
@@ -183,6 +186,16 @@ class UpdateClosure
         $this->outcome['emailed'] = self::sendEmails($cancelledByPerson, $released['restoredByPerson'], $saved->reason);
 
         return $saved;
+    }
+
+    /** Locks the area's weekly slots in id order and then their regulars, the rows RestoreShift::restoreLocked() reads, before any shift is locked. The caller holds the area lock. RemoveClosure uses this too. */
+    public static function lockSlotsAndRegulars(Area $area): void
+    {
+        $slotIds = WeeklySlot::query()->where('area_id', $area->id)->orderBy('id')->lockForUpdate()->pluck('id');
+
+        if ($slotIds->isNotEmpty()) {
+            SlotRegular::query()->whereIn('weekly_slot_id', $slotIds)->orderBy('id')->lockForUpdate()->get();
+        }
     }
 
     /**
