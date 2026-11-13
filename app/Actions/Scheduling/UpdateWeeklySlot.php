@@ -45,6 +45,8 @@ class UpdateWeeklySlot
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
             // Then the slot, so two saves of the same slot can't interleave.
             $locked = WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
+            // Then the slot's regulars, before any shift: the order every scheduling action locks in. Bringing dates back and the generator read them again later, and those reads land on rows this transaction already holds, so nothing locks a regular after a shift. Holding the slot also keeps a new regular from being added meanwhile.
+            $regulars = SlotRegular::query()->where('weekly_slot_id', $locked->id)->orderBy('id')->lockForUpdate()->get();
             $values = SlotAttributes::validate($attributes, $locked);
             $locked->fill($values);
             $this->refuseWhatChangesWhenPeopleWork($actor, $locked, $organization);
@@ -93,7 +95,7 @@ class UpdateWeeklySlot
                 }
             }
 
-            $updated = [...$updated, ...$this->revive($actor, $locked, $organization, $cancelled, $via)];
+            $updated = [...$updated, ...$this->revive($actor, $locked, $regulars, $organization, $cancelled, $via)];
             $created = $this->generator->forSlot($organization, $locked);
 
             ChangeLogEntry::record($actor, 'slot.updated', $locked, [
@@ -152,19 +154,19 @@ class UpdateWeeklySlot
     /**
      * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started. A slot change is recognised by the shift's most recent shift.cancelled entry having come from slot.updated, never by the reason text, so a person who typed the same words keeps their cancellation.
      *
-     * The slot's current regulars for that date whose accounts are still on are all put back on it, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
+     * The slot's current regulars for that date (the rows handle() locked) whose accounts are still on, checked with a shared lock on each person, are all put back on it, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
      *
+     * @param  EloquentCollection<int, SlotRegular>  $regulars  The slot's regulars, locked by handle().
      * @param  list<int>  $justCancelled
      * @return list<int> The ids brought back.
      */
-    private function revive(User $actor, WeeklySlot $slot, Organization $organization, array $justCancelled, array $via): array
+    private function revive(User $actor, WeeklySlot $slot, EloquentCollection $regulars, Organization $organization, array $justCancelled, array $via): array
     {
         $candidates = $slot->shifts()->whereNotNull('cancelled_at')
             ->whereNull('area_closure_id')->whereDoesntHave('assignments')
             ->where('local_date', '>=', $organization->today()->toDateString())->whereNotIn('id', $justCancelled)
             ->orderBy('local_date')->lockForUpdate()->get();
 
-        $regulars = $slot->regulars()->with('user')->orderBy('id')->get();
         $revived = [];
 
         foreach ($candidates as $shift) {
@@ -187,7 +189,12 @@ class UpdateWeeklySlot
             $shift->save();
 
             $added = [];
-            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive()) as $regular) {
+            // Each person is read with a shared lock (the only lock a user row may take after a shift row), so a turn-off that committed after this transaction's first read is seen, and one still in progress waits for this save, whose release then finds the shift.
+            $working = $regulars
+                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date))
+                ->filter(fn (SlotRegular $regular) => User::query()->whereKey($regular->user_id)->sharedLock()->first()?->isActive() ?? false);
+
+            foreach ($working as $regular) {
                 $shift->assignments()->create(['user_id' => $regular->user_id, 'type' => AssignmentType::Regular]);
                 $added[] = $regular->user_id;
             }

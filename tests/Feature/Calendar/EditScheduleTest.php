@@ -24,7 +24,9 @@ use App\Notifications\PutOnShiftNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 use Tests\Concerns\InteractsWithTwoFactor;
@@ -298,6 +300,48 @@ class EditScheduleTest extends TestCase
             $this->assertNull($shift->cancelled_at);
             $this->assertSame(0, $shift->assignments()->count());
             $this->assertSame([], ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.updated')->sole()->details['added_regular_ids']);
+        }
+    }
+
+    public function test_bringing_dates_back_reads_regulars_and_people_under_the_lock(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['valid_until' => '2026-11-12'] + $this->slotAttributes($slot));
+        $sam = $this->regular($slot->fresh(), 'Sam Example');
+        $coordinator = $this->coordinator();
+        $stale = $slot->fresh(['regulars.user']);
+
+        // Record the save's locking reads, and turn Sam off right after it locks the cancelled shifts it might bring back, the way a turn-off could commit while the save runs.
+        $locks = [];
+        DB::listen(function (QueryExecuted $query) use (&$locks, $sam) {
+            if (! str_contains($query->sql, 'for update') && ! str_contains($query->sql, 'lock in share mode')) {
+                return;
+            }
+
+            // The table after removing subqueries (a count or a whereHas), so it names the rows being locked.
+            $outer = $query->sql;
+            while (preg_match('/\([^()]*\)/', $outer)) {
+                $outer = preg_replace('/\([^()]*\)/', '', $outer);
+            }
+            preg_match('/from `(\w+)`/', $outer, $table);
+            $locks[] = $table[1].(str_contains($query->sql, 'lock in share mode') ? ' shared' : '');
+
+            if (str_contains($query->sql, '`cancelled_at` is not null') && ! in_array('turned off', $locks, true)) {
+                $locks[] = 'turned off';
+                DB::table('users')->where('id', $sam->id)->update(['deactivated_at' => now()]);
+            }
+        });
+
+        app(UpdateWeeklySlot::class)->handle($coordinator, $stale, ['valid_until' => null] + $this->slotAttributes($slot->fresh()));
+
+        // Area, slot, then the slot's regulars, all before the first shift lock, and each person is read again with a shared lock.
+        $this->assertSame(['areas', 'weekly_slots', 'slot_regulars', 'shifts'], array_slice($locks, 0, 4));
+        $this->assertContains('users shared', array_slice($locks, array_search('turned off', $locks, true)));
+
+        foreach (['2026-11-19', '2026-11-26', '2026-12-03'] as $date) {
+            $shift = $slot->shifts()->where('local_date', $date)->sole();
+            $this->assertNull($shift->cancelled_at);
+            $this->assertSame(0, $shift->assignments()->count());
         }
     }
 

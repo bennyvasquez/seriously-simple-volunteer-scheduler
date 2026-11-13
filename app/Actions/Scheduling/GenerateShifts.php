@@ -113,7 +113,7 @@ class GenerateShifts
             // The same area lock CreateClosure takes, then a locking read of the closures, so a closure saved after the run read them still keeps this date empty.
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
 
-            // Then the slot and its regulars, in the order the other scheduling actions lock them, read again under the lock: the regulars loaded at the start of the run can be stale, for example when a turn-off and its release (ReleaseFutureSchedule) committed while the run waited.
+            // Then the slot and its regulars, read again under the lock, before the shift is created: the area, slot, regulars, shifts order every scheduling action uses. The regulars loaded at the start of the run can be stale, for example when a turn-off and its release (ReleaseFutureSchedule) committed while the run waited. When a slot save calls this inside its own transaction, UpdateWeeklySlot has already locked the slot and its regulars before any shift and CreateWeeklySlot's new slot has none, so these reads take no new lock on a regular after a shift.
             WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->first();
             $regulars = SlotRegular::query()->where('weekly_slot_id', $slot->id)->orderBy('id')->lockForUpdate()->get();
 
