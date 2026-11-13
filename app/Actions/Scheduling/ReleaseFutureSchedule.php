@@ -17,14 +17,14 @@ use Illuminate\Support\Facades\DB;
  *
  * A regular's end date is yesterday, or the day before its start when that's later, so a future regular never works a date (SlotRegular::currentOrFuture() and activeOn() treat it that way). A regular on a slot that has already ended is left alone. Each end is logged as `regular.ended` about the person and each removal by RemoveFromShift::removeLocked(), both with `via` saying why (`user.deactivated` or `user.removed`).
  *
- * The candidates are found before the transaction, so no read inside it fixes the snapshot ahead of the locks. Locks are taken in the order every scheduling action uses: the areas in id order, then the slots in id order, then the regular rows, then the shifts by start and id, and the rows acted on are read again under those locks. A shift or slot someone is put on after the candidates are read is left to the callers: turning off commits first, so PutOnShift and AddRegular refuse after it, and RemovePerson refuses inside its own transaction.
+ * The candidates are found before the transaction, so no read inside it fixes the snapshot ahead of the locks. Locks are taken in the order every scheduling action uses: the areas in id order, then the slots in id order, then the regular rows, then the shifts by start and id, and the rows acted on are read again under those locks. A shift or slot the person lands on after the candidates are read isn't released here, so each way in checks again under its locks. Turning off commits before the release, and PutOnShift, AddRegular and GenerateShifts read the person's row with a shared lock after their own locks: they refuse (or, for generation, leave the person out) once the turn-off has committed, and a turn-off still in progress waits for them to commit, so the release's candidate read then finds what they added. GenerateShifts also reads the slot's regulars again under the area, slot and regular locks, so a regular ended here isn't filled into a new shift. Removal leaves the person on, so RemovePerson refuses inside its own transaction if anything landed in between.
  */
 class ReleaseFutureSchedule
 {
     public function __construct(private readonly RemoveFromShift $removeFromShift) {}
 
     /**
-     * @return array{shifts: int, regulars: int} How many shifts they were removed from and how many regulars were ended.
+     * @return array{shifts: int, regulars: int} How many shifts they were removed from and how many slots their time as a regular was ended on.
      */
     public function handle(User $actor, User $person, string $via): array
     {
@@ -72,12 +72,12 @@ class ReleaseFutureSchedule
                 }
             }
 
-            return ['shifts' => $shifts->count(), 'regulars' => $regulars->count()];
+            return ['shifts' => $shifts->count(), 'regulars' => $regulars->pluck('weekly_slot_id')->unique()->count()];
         });
     }
 
     /**
-     * What handle() would do now, for the person page. Changes nothing.
+     * What handle() would do now, for the person page: how many shifts it removes them from and how many slots it ends their time as a regular on. Changes nothing.
      *
      * @return array{shifts: int, regulars: int}
      */
@@ -85,7 +85,8 @@ class ReleaseFutureSchedule
     {
         return [
             'shifts' => self::shiftsQuery($person)->count(),
-            'regulars' => self::regularsQuery($person, Organization::current()->today()->toDateString())->count(),
+            // Slots, not regular rows: a person can have two stints on one slot, and the page says "a regular on {n} slots".
+            'regulars' => self::regularsQuery($person, Organization::current()->today()->toDateString())->distinct()->count('weekly_slot_id'),
         ];
     }
 

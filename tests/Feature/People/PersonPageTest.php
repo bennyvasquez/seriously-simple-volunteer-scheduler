@@ -289,7 +289,9 @@ class PersonPageTest extends TestCase
         $page = route('people.show', $this->frontDeskRegular);
         $this->onShiftIn($this->frontDeskRegular, $this->outreach);
         $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id]);
-        SlotRegular::create(['weekly_slot_id' => $slot->id, 'user_id' => $this->frontDeskRegular->id, 'starts_on' => '2026-09-03']);
+        // Two stints on the same slot count as one slot.
+        SlotRegular::create(['weekly_slot_id' => $slot->id, 'user_id' => $this->frontDeskRegular->id, 'starts_on' => '2026-09-03', 'ends_on' => '2026-10-31']);
+        SlotRegular::create(['weekly_slot_id' => $slot->id, 'user_id' => $this->frontDeskRegular->id, 'starts_on' => '2026-11-05']);
 
         $this->actingAs($this->coordinator)->get($page)
             ->assertOk()

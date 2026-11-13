@@ -9,6 +9,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
+use App\Models\User;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Creates dated shifts from weekly slots for the organization's generation window (spec section 7).
  *
- * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. A new shift gets the regulars who work that date, leaving out anyone whose account is turned off. All of them go on, even when that is more than the people needed. Running it twice is harmless. A run that creates shifts is logged once, as the system.
+ * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. A new shift gets the regulars who work that date, leaving out anyone whose account is turned off; both are read again under the area, slot and regular locks before each new shift is filled, so a turn-off or an ended regular that commits mid-run is seen. All of them go on, even when that is more than the people needed. Running it twice is harmless. A run that creates shifts is logged once, as the system.
  */
 class GenerateShifts
 {
@@ -64,8 +65,8 @@ class GenerateShifts
         $days = $organization->weeks_ahead * 7;
         $lastDay = $firstDay->addDays($days - 1);
 
-        // Read again, so a change saved since the caller loaded the slot (or a regular added meanwhile) is what gets generated.
-        $slot = $slot->fresh(['regulars' => fn ($query) => $query->orderBy('id'), 'regulars.user']);
+        // Read again, so a change saved since the caller loaded the slot is what gets generated. Its regulars are read under the locks for each new shift (see createShift()).
+        $slot = $slot->fresh();
 
         if ($slot === null) {
             return 0;
@@ -112,6 +113,10 @@ class GenerateShifts
             // The same area lock CreateClosure takes, then a locking read of the closures, so a closure saved after the run read them still keeps this date empty.
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
 
+            // Then the slot and its regulars, in the order the other scheduling actions lock them, read again under the lock: the regulars loaded at the start of the run can be stale, for example when a turn-off and its release (ReleaseFutureSchedule) committed while the run waited.
+            WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->first();
+            $regulars = SlotRegular::query()->where('weekly_slot_id', $slot->id)->orderBy('id')->lockForUpdate()->get();
+
             $closed = AreaClosure::query()
                 ->where('area_id', $slot->area_id)
                 ->where('starts_on', '<=', $date)
@@ -139,9 +144,10 @@ class GenerateShifts
                 return false;
             }
 
-            // Regulars working this date whose accounts are still on, the earliest added first.
-            $working = $slot->regulars
-                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive());
+            // Regulars working this date whose accounts are still on, the earliest added first. Each person is read with a shared lock (the only lock a user row may take after a shift row), so a turn-off that committed is seen, and one still in progress waits for this run and its release then finds the new shift.
+            $working = $regulars
+                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date))
+                ->filter(fn (SlotRegular $regular) => User::query()->whereKey($regular->user_id)->sharedLock()->first()?->isActive() ?? false);
 
             foreach ($working as $regular) {
                 $shift->assignments()->create([

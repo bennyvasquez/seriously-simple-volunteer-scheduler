@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 /**
  * Turns an account off when someone stops volunteering (spec section 13, "People leaving"). Their history stays; they can't log in by any route. The account is turned off and committed first, so anyone putting them on a shift or a slot from then on is refused, and then ReleaseFutureSchedule removes them from every future shift and ends their regular slots, without emailing them.
  *
- * Someone already turned off isn't turned off again (nothing is logged for it), but still gets the release, so people turned off before turning off cleared the schedule can be tidied by turning them off again. Returns the release's counts.
+ * Someone already turned off isn't turned off again (nothing is logged for it), but still gets the release, so people turned off before this change can be tidied by turning them off again. Returns the release's counts.
  */
 class DeactivateUser
 {

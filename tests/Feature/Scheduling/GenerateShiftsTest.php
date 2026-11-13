@@ -13,7 +13,9 @@ use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class GenerateShiftsTest extends TestCase
@@ -102,6 +104,37 @@ class GenerateShiftsTest extends TestCase
         $this->assertSame([$always->id], $peopleOn('2026-10-22'));
         $this->assertSame([$always->id, $joining->id], $peopleOn('2026-10-29'));
         $this->assertSame(AssignmentType::Regular, Assignment::query()->first()->type);
+    }
+
+    public function test_a_turn_off_or_end_that_lands_mid_run_is_seen_under_the_lock(): void
+    {
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 3]);
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $staying = User::factory()->create();
+        $slot->regulars()->create(['user_id' => $robin->id, 'starts_on' => '2026-01-01']);
+        $endingRegular = $slot->regulars()->create(['user_id' => $casey->id, 'starts_on' => '2026-01-01']);
+        $slot->regulars()->create(['user_id' => $staying->id, 'starts_on' => '2026-01-01']);
+
+        // The run has already loaded the slot's regulars and their people. Right after it takes the first area lock, Robin is turned off and Casey's regular ends, the way a turn-off and its release would commit while the run waited for the lock.
+        $landed = false;
+        DB::listen(function (QueryExecuted $query) use (&$landed, $robin, $endingRegular) {
+            if ($landed || ! str_contains($query->sql, 'from `areas`') || ! str_contains($query->sql, 'for update')) {
+                return;
+            }
+
+            $landed = true;
+            DB::table('users')->where('id', $robin->id)->update(['deactivated_at' => now()]);
+            DB::table('slot_regulars')->where('id', $endingRegular->id)->update(['ends_on' => '2026-10-14']);
+        });
+
+        $this->generate();
+
+        $this->assertTrue($landed);
+        $this->assertGreaterThan(0, Shift::query()->count());
+        $this->assertSame(0, Assignment::query()->where('user_id', $robin->id)->count());
+        $this->assertSame(0, Assignment::query()->where('user_id', $casey->id)->count());
+        $this->assertSame(Shift::query()->count(), Assignment::query()->where('user_id', $staying->id)->count());
     }
 
     public function test_it_skips_dates_when_the_area_is_closed(): void
