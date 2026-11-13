@@ -52,6 +52,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePerson'])->name('calendar.shift.remove-person');
         Route::post('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePersonStore'])->name('calendar.shift.remove-person.store');
         Route::post('/calendar/shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('calendar.shift.cancel');
+        Route::post('/calendar/shifts/{shift}/restore', [ShiftController::class, 'restore'])->name('calendar.shift.restore');
         Route::post('/calendar/shifts/{shift}', [ShiftController::class, 'update'])->name('calendar.shift.update');
         Route::get('/calendar/slots/{slot}/regulars/create', [RegularController::class, 'create'])->name('calendar.slots.regulars.create');
         Route::post('/calendar/slots/{slot}/regulars', [RegularController::class, 'store'])->name('calendar.slots.regulars.store');

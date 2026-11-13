@@ -6,6 +6,7 @@ use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Actions\Scheduling\PutOnShift;
 use App\Actions\Scheduling\RemoveFromShift;
+use App\Actions\Scheduling\RestoreShift;
 use App\Actions\Scheduling\UpdateShift;
 use App\Calendar\PersonSearch;
 use App\Enums\AssignmentType;
@@ -42,6 +43,11 @@ class ShiftController extends Controller
         $open = $shift->cancelled_at === null && $shift->starts_at->greaterThan(now());
         $canAssign = $open && Gate::forUser($user)->allows('assign', $shift);
         $canCancel = $open && Gate::forUser($user)->allows('cancel', $shift);
+        // A cancelled shift that hasn't started: who cancelled it decides whether it can be brought back here.
+        $cancelledAhead = $shift->cancelled_at !== null && $shift->starts_at->greaterThan(now());
+        $cancelledBy = $cancelledAhead ? RestoreShift::cancelledBy($shift) : null;
+        $canRestore = $cancelledBy === RestoreShift::HAND && Gate::forUser($user)->allows('restore', $shift);
+        $closure = $cancelledBy === RestoreShift::CLOSURE ? $shift->areaClosure : null;
         $byEmail = PersonSearch::byEmail($user);
         $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         // A regular can always be put on (past the people needed after a confirmation), so putting someone on is open to anyone who can assign.
@@ -80,6 +86,10 @@ class ShiftController extends Controller
             'over' => $over,
             'canAddRegular' => $canAddRegular,
             'picking' => $canPut && ($request->boolean('pick') || $search['query'] !== ''),
+            'cancelledBy' => $cancelledBy,
+            'closure' => $closure,
+            'canRestore' => $canRestore,
+            'restoring' => $canRestore && $request->boolean('restore'),
             'cancelling' => $canCancel && $editing === null && $request->boolean('cancel'),
             'canEdit' => $canEdit,
             'canEditSlot' => $canEditSlot,
@@ -280,6 +290,33 @@ class ShiftController extends Controller
 
         return redirect()->route('calendar.week', ['date' => $shift->local_date->toDateString()] + $areaQuery)
             ->with('status', trim('Cancelled the '.$shift->area->name.' shift on '.$shift->local_date->format('l, F j').'. '.$sentence));
+    }
+
+    public function restore(Request $request, RestoreShift $restoreShift, Shift $shift): RedirectResponse
+    {
+        Gate::forUser($request->user())->authorize('restore', $shift);
+
+        $areaQuery = $this->areaQuery($request);
+
+        try {
+            $result = $restoreShift->handle($request->user(), $shift);
+        } catch (DomainException $e) {
+            return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => $e->getMessage()]);
+        }
+
+        $shift->loadMissing('area');
+        $emailed = $result['emailed'];
+        $removed = $result['removed'];
+        $viewer = $request->user();
+        $names = $removed->map(fn (User $person) => PersonSearch::displayName($viewer, $person))->join(', ', ' and ');
+        $sentence = $emailed === 0 ? '' : ($emailed === 1 ? '1 person was emailed.' : $emailed.' people were emailed.');
+
+        if ($removed->isNotEmpty()) {
+            $sentence = trim($sentence.' '.$names.($removed->count() === 1 ? ' was' : ' were').' removed from it, because they\'re now on another shift at that time.');
+        }
+
+        return redirect()->route('calendar.shift', [$shift] + $areaQuery)
+            ->with('status', trim('Brought back the '.$shift->area->name.' shift on '.$shift->local_date->format('l, F j').'. '.$sentence));
     }
 
     /** "Repeats every Thursday, since Sep 3. No end date." or "One time". */

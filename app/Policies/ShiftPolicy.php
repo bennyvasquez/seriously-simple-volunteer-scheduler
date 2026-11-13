@@ -26,4 +26,9 @@ class ShiftPolicy
     {
         return $user->canManageArea($shift->area);
     }
+
+    public function restore(User $user, Shift $shift): bool
+    {
+        return $user->canManageArea($shift->area);
+    }
 }

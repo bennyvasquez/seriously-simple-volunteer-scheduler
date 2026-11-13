@@ -64,6 +64,7 @@ final class Describe
             'shift.created' => 'Added '.self::shiftWords($entry->subject),
             'shift.updated' => 'Changed '.self::shiftWords($entry->subject, true),
             'shift.cancelled' => 'Cancelled '.self::shiftWords($entry->subject, true),
+            'shift.restored' => 'Brought back '.self::shiftWords($entry->subject, true),
             'assignment.added' => 'Put '.$person.' on '.self::shiftWords($entry->subject, true),
             'assignment.removed' => 'Removed '.$person.' from '.self::shiftWords($entry->subject, true),
             'closure.created' => self::closureWords($entry->subject),

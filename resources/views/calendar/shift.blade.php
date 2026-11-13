@@ -23,6 +23,11 @@
 </div>
 @if ($shift->cancelled_at)
 <p><b>Cancelled: {{ $shift->cancel_reason }}</b></p>
+@if ($cancelledBy === 'closure')
+<p class="muted">Cancelled by the {{ $closure?->reason ?? $shift->cancel_reason }} closure. Change the closure to bring it back.</p>
+@elseif ($cancelledBy === 'slot')
+<p class="muted">The weekly slot doesn't run on this date any more. Change the slot to bring it back.</p>
+@endif
 @endif
 <div aria-label="People on this shift" role="group">
 @forelse ($people as $person)
@@ -138,6 +143,22 @@
 <a href="{{ $panelUrl() }}" class="btn">Keep it</a>
 </div>
 </form>
+@elseif ($restoring)
+<form method="POST" action="{{ route('calendar.shift.restore', $shift) }}">
+@csrf
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<p>{{ $emailCount === 0 ? 'Nobody is emailed.' : ($emailCount === 1 ? '1 person' : $emailCount.' people').' will be emailed that it\'s back on.' }}</p>
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Bring it back</button>
+<a href="{{ $panelUrl() }}" class="btn">Keep it cancelled</a>
+</div>
+</form>
+@elseif ($canRestore)
+<div class="add-actions">
+<a href="{{ $panelUrl(['restore' => 1]) }}" class="btn btn-primary">Bring this shift back</a>
+</div>
 @elseif ($canEdit || $canPut || $canCancel || $canAddRegular)
 <div class="add-actions">
 @if ($canEdit)<a href="{{ $panelUrl(['edit' => 1]) }}" class="btn{{ $canPut ? '' : ' btn-primary' }}">Edit</a>@endif
