@@ -165,7 +165,7 @@ class RestoreShiftTest extends TestCase
         $byClosure = $byClosure->fresh();
         $this->assertSame('closure', RestoreShift::cancelledBy($byClosure));
         $this->actingAs($coordinator)->get(route('calendar.shift', $byClosure))->assertOk()
-            ->assertSee('Cancelled by the Holiday party closure. Change the closure to bring it back.')
+            ->assertSeeText('Cancelled by the Holiday party closure. Change the closure to bring it back.')
             ->assertDontSee('Bring this shift back');
 
         $bySlot = $this->robinOn('2026-10-29');

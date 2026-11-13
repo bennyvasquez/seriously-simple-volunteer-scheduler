@@ -62,6 +62,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/slots/{slot}', [AddController::class, 'updateSlot'])->name('calendar.slots.update');
         Route::get('/calendar/closures/create', [ClosureController::class, 'create'])->name('calendar.closures.create');
         Route::post('/calendar/closures', [ClosureController::class, 'store'])->name('calendar.closures.store');
+        Route::get('/calendar/closures/{closure}/edit', [ClosureController::class, 'edit'])->name('calendar.closures.edit');
+        Route::post('/calendar/closures/{closure}', [ClosureController::class, 'update'])->name('calendar.closures.update');
+        Route::post('/calendar/closures/{closure}/remove', [ClosureController::class, 'remove'])->name('calendar.closures.remove');
         Route::get('/calendar/areas/create', [AreaController::class, 'create'])->name('calendar.areas.create');
         Route::post('/calendar/areas', [AreaController::class, 'store'])->name('calendar.areas.store');
         Route::get('/calendar/areas/{area}/edit', [AreaController::class, 'edit'])->name('calendar.areas.edit');

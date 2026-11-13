@@ -98,7 +98,7 @@ final class CalendarWeek
         return $this->shiftsByDay->get($date, new Collection);
     }
 
-    /** @return list<string> "Closed: Thanksgiving (Front desk)" for each reason the areas shown are closed on a local date. */
+    /** @return list<array{label: string, closure_id: int, area_id: int}> "Closed: Thanksgiving (Front desk)" for each reason the areas shown are closed on a local date, with the closure the label opens (see ClosureLabels). */
     public function closuresOn(string $date): array
     {
         return ClosureLabels::on($this->closures, $date, $this->areasShown);

@@ -89,6 +89,7 @@ class ShiftController extends Controller
             'picking' => $canPut && ($request->boolean('pick') || $search['query'] !== ''),
             'cancelledBy' => $cancelledBy,
             'closure' => $closure,
+            'canChangeClosure' => $closure !== null && Gate::forUser($user)->allows('close', $shift->area),
             'canRestore' => $canRestore,
             'restoreBlocked' => $blocked,
             'restoreCounts' => $canRestore && $request->boolean('restore') ? $this->restoreCounts($shift, $user) : null,

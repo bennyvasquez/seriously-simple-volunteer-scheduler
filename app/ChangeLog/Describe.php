@@ -68,6 +68,8 @@ final class Describe
             'assignment.added' => 'Put '.$person.' on '.self::shiftWords($entry->subject, true),
             'assignment.removed' => 'Removed '.$person.' from '.self::shiftWords($entry->subject, true),
             'closure.created' => self::closureWords($entry->subject),
+            'closure.updated' => self::closureChanged($entry, $areas),
+            'closure.removed' => self::closureRemoved($entry, $areas),
             default => str_starts_with($entry->action, 'user.')
                 ? 'Changed '.$possessive.' account'
                 : ucfirst(str_replace(['.', '_'], ' ', $entry->action)),
@@ -206,6 +208,44 @@ final class Describe
         }
 
         return ($the ? 'the ' : 'a ').($shift->area?->name ?? 'area').' shift on '.$shift->whenText();
+    }
+
+    /** "Changed the Front desk closure to Nov 25 to Nov 28", from the days the entry saved, so it still reads right after a later change or removal. */
+    private static function closureChanged(ChangeLogEntry $entry, ?Collection $areas): string
+    {
+        $details = $entry->details ?? [];
+
+        if (! isset($details['starts_on'], $details['ends_on'])) {
+            return 'Changed a closure';
+        }
+
+        return 'Changed the '.self::closureArea($entry, $areas).' closure to '.self::closureDays($details['starts_on'], $details['ends_on']);
+    }
+
+    /** "Removed the Front desk closure for Nov 25 to Nov 28", from the entry's old values, since the row is gone. */
+    private static function closureRemoved(ChangeLogEntry $entry, ?Collection $areas): string
+    {
+        $changes = $entry->changes ?? [];
+
+        if (! isset($changes['starts_on']['old'], $changes['ends_on']['old'])) {
+            return 'Removed a closure';
+        }
+
+        return 'Removed the '.self::closureArea($entry, $areas).' closure for '.self::closureDays($changes['starts_on']['old'], $changes['ends_on']['old']);
+    }
+
+    private static function closureArea(ChangeLogEntry $entry, ?Collection $areas): string
+    {
+        $id = $entry->details['area_id'] ?? null;
+        $area = $id === null ? null : ($areas !== null ? $areas->get($id) : Area::query()->find($id));
+
+        return $area?->name ?? 'area';
+    }
+
+    /** "Nov 25 to Nov 28". */
+    private static function closureDays(string $first, string $last): string
+    {
+        return CarbonImmutable::parse($first)->format('M j').' to '.CarbonImmutable::parse($last)->format('M j');
     }
 
     private static function closureWords(mixed $closure): string

@@ -44,7 +44,7 @@
 @if ($day['inMonth'])
 <a href="{{ route('calendar.week', ['date' => $day['date']] + $areaQuery) }}" class="num" aria-label="Week of {{ \Carbon\CarbonImmutable::parse($day['date'])->format('l, F j') }}">{{ $day['label'] }}</a>
 @foreach ($day['closures'] as $closure)
-<span class="closed">{{ $closure }}</span>
+@include('calendar._closure-label')
 @endforeach
 @foreach ($day['counts'] as $count)
 <a href="{{ route('calendar.week', ['date' => $day['date']] + $areaQuery) }}" class="cnt {{ $count['area']->color->cssClass() }}">{{ $count['text'] }}</a>

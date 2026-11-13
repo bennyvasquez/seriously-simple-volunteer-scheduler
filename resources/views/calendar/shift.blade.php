@@ -24,7 +24,7 @@
 @if ($shift->cancelled_at)
 <p><b>Cancelled: {{ $shift->cancel_reason }}</b></p>
 @if ($cancelledBy === 'closure')
-<p class="muted">Cancelled by the {{ $closure?->reason ?? $shift->cancel_reason }} closure. Change the closure to bring it back.</p>
+<p class="muted">Cancelled by the {{ $closure?->reason ?? $shift->cancel_reason }} closure. {!! $canChangeClosure ? '<a href="'.e(route('calendar.closures.edit', [$closure] + $areaQuery)).'">Change the closure</a>' : 'Change the closure' !!} to bring it back.</p>
 @elseif ($cancelledBy === 'slot')
 <p class="muted">The weekly slot doesn't run on this date any more. Change the slot to bring it back.</p>
 @elseif ($restoreBlocked)

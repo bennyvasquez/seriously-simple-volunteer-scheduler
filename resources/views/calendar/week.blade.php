@@ -53,7 +53,7 @@
 @if ($week->hasClosures())
 <div class="allday-label muted">All day</div>
 @foreach ($days as $day)
-<div class="allday">@foreach ($week->closuresOn($day) as $closure)<span class="closed">{{ $closure }}</span>@endforeach</div>
+<div class="allday">@foreach ($week->closuresOn($day) as $closure)@include('calendar._closure-label')@endforeach</div>
 @endforeach
 @endif
 
@@ -77,7 +77,7 @@
 @if ($shifts->isNotEmpty() || $closures !== [])
 <div class="day"><span>{{ \Carbon\CarbonImmutable::parse($day)->format('D M j') }}</span><a href="{{ route('calendar.add', ['date' => $day] + $areaQuery) }}" class="muted">Add</a></div>
 @foreach ($closures as $closure)
-<span class="closed">{{ $closure }}</span>
+@include('calendar._closure-label')
 @endforeach
 @foreach ($shifts as $shift)
 @php($info = $week->describe($shift, $now))
