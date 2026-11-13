@@ -322,4 +322,22 @@ class RemoveFromShiftTest extends TestCase
 
         $this->actingAs($coordinator)->get(route('calendar.shift', $started))->assertOk()->assertSee('Robin Example')->assertDontSee('Remove from shift');
     }
+
+    public function test_a_range_past_the_shifts_on_the_calendar_says_those_are_not_included(): void
+    {
+        $shift = $this->robinOn('2026-10-22');
+        $assignment = $this->assignmentOn($shift);
+        $coordinator = $this->coordinator();
+        $note = 'Shifts after Tuesday, December 8 aren\'t on the calendar yet, so they aren\'t included. To stop Robin working those, end their time as a regular.';
+
+        // Shifts are on the calendar 8 weeks ahead, through Tuesday, December 8.
+        $preview = app(RemoveFromShift::class)->rangePreview($coordinator, $this->robin, '2026-10-22', '2026-12-31');
+        $this->assertSame('2026-12-08', $preview['lastOnCalendar']);
+        $this->assertNull(app(RemoveFromShift::class)->rangePreview($coordinator, $this->robin, '2026-10-22', '2026-12-08')['lastOnCalendar']);
+
+        $this->actingAs($coordinator)->get(route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id, 'which' => 'range', 'from' => '2026-10-22', 'to' => '2026-12-31', 'check' => 1]))
+            ->assertOk()->assertSee($note, false);
+        $this->actingAs($coordinator)->get(route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id, 'which' => 'range', 'from' => '2026-10-22', 'to' => '2026-12-08', 'check' => 1]))
+            ->assertOk()->assertDontSee('aren\'t on the calendar yet', false);
+    }
 }

@@ -43,6 +43,7 @@
 <p>{{ $listed->area->name }}, {{ $listed->whenText() }}@if ($listed->cancelled_at) (cancelled)@endif</p>
 @endforeach
 @endif
+@if ($preview['lastOnCalendar'])<p class="muted">Shifts after {{ \Carbon\CarbonImmutable::parse($preview['lastOnCalendar'], 'UTC')->format('l, F j') }} aren't on the calendar yet, so they aren't included. To stop {{ $first }} working those, end their time as a regular.</p>@endif
 @if ($preview['otherAreas'] === 1)<p class="muted">1 shift in areas you don't manage isn't included.</p>@elseif ($preview['otherAreas'] > 1)<p class="muted">{{ $preview['otherAreas'] }} shifts in areas you don't manage aren't included.</p>@endif
 <input type="hidden" name="checked_from" value="{{ $values['from'] }}">
 <input type="hidden" name="checked_to" value="{{ $values['to'] }}">

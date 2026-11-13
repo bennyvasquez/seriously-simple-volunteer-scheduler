@@ -107,13 +107,19 @@ class RemoveFromShift
         return $shifts;
     }
 
-    /** What range() would remove the person from, and how many of their shifts in those dates are in areas the actor can't manage. Changes nothing.
-     * @return array{shifts: Collection<int, Shift>, otherAreas: int} */
+    /**
+     * What range() would remove the person from, and how many of their shifts in those dates are in areas the actor can't manage. Changes nothing. When the range goes past the generation window (today plus the organization's weeks ahead), `lastOnCalendar` is the window's last date (Y-m-d), so the screen can say the later shifts aren't included; otherwise it's null.
+     *
+     * @return array{shifts: Collection<int, Shift>, otherAreas: int, lastOnCalendar: ?string}
+     */
     public function rangePreview(User $actor, User $person, string $from, string $to): array
     {
         $this->checkDates($from, $to);
 
-        return $this->candidates($actor, $person, $from, $to);
+        $organization = Organization::current();
+        $lastOnCalendar = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC')->addDays($organization->weeks_ahead * 7 - 1)->toDateString();
+
+        return $this->candidates($actor, $person, $from, $to) + ['lastOnCalendar' => $to > $lastOnCalendar ? $lastOnCalendar : null];
     }
 
     /** @return array{shifts: Collection<int, Shift>, otherAreas: int} */
