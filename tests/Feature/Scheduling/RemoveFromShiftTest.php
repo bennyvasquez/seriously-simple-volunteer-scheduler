@@ -103,7 +103,11 @@ class RemoveFromShiftTest extends TestCase
         $this->assertTrue($later->assignments()->where('user_id', $this->robin->id)->exists());
         $entries = ChangeLogEntry::query()->ofAction('assignment.removed')->get();
         $this->assertCount(3, $entries);
-        $this->assertSame(['range', '2026-10-20', '2026-10-31'], [$entries[0]->details['via'], $entries[0]->details['from'], $entries[0]->details['to']]);
+        foreach ($entries as $entry) {
+            $this->assertSame(['range', '2026-10-20', '2026-10-31'], [$entry->details['via'], $entry->details['from'], $entry->details['to']]);
+            $this->assertSame($this->robin->id, $entry->affected_user_id);
+            $this->assertSame(['user_id' => ['old' => $this->robin->id, 'new' => null]], $entry->changes);
+        }
         Notification::assertSentToTimes($this->robin, RemovedFromShiftsNotification::class, 1);
         Notification::assertSentTo($this->robin, RemovedFromShiftsNotification::class, fn ($notification) => count($notification->shifts) === 3
             && $notification->toMail($this->robin)->subject === 'You\'ve been removed from 3 shifts');
@@ -284,6 +288,25 @@ class RemoveFromShiftTest extends TestCase
         $this->assertSame(1, Assignment::query()->count());
     }
 
+    public function test_someone_removed_since_the_preview_is_not_counted_logged_or_emailed(): void
+    {
+        Notification::fake();
+        $first = $this->robinOn('2026-10-22');
+        $second = $this->robinOn('2026-10-23');
+        $coordinator = $this->coordinator();
+
+        $this->assertCount(2, app(RemoveFromShift::class)->rangePreview($coordinator, $this->robin, '2026-10-20', '2026-10-31')['shifts']);
+        app(RemoveFromShift::class)->one($coordinator, $first, $this->assignmentOn($first));
+        Notification::fake();
+
+        $removed = app(RemoveFromShift::class)->range($coordinator, $this->robin, '2026-10-20', '2026-10-31');
+
+        $this->assertSame([$second->id], $removed->pluck('id')->all());
+        $this->assertSame(1, ChangeLogEntry::query()->ofAction('assignment.removed')->get()->where('details.via', 'range')->count());
+        Notification::assertSentToTimes($this->robin, RemovedFromShiftsNotification::class, 1);
+        Notification::assertSentTo($this->robin, RemovedFromShiftsNotification::class, fn ($notification) => count($notification->shifts) === 1);
+    }
+
     public function test_the_shift_panel_links_to_removing_people_only_while_the_shift_is_ahead(): void
     {
         $shift = $this->robinOn('2026-10-22');
@@ -291,5 +314,12 @@ class RemoveFromShiftTest extends TestCase
 
         $this->actingAs($coordinator)->get(route('calendar.shift', $shift))->assertOk()->assertSee('Remove from shift');
         $this->actingAs($this->coordinator(Role::AreaLead, $this->hostedEvents))->get(route('calendar.shift', $shift))->assertOk()->assertDontSee('Remove from shift');
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 07:00', self::TIMEZONE));
+        $started = app(CreateOneTimeShift::class)->handle($coordinator, $this->frontDesk, '2026-10-14', '08:00', '12:00', 1, 0, null);
+        Assignment::create(['shift_id' => $started->id, 'user_id' => $this->robin->id, 'type' => AssignmentType::Regular]);
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 09:00', self::TIMEZONE));
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', $started))->assertOk()->assertSee('Robin Example')->assertDontSee('Remove from shift');
     }
 }

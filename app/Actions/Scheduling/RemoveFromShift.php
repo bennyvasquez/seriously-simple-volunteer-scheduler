@@ -73,25 +73,26 @@ class RemoveFromShift
     {
         $this->checkDates($from, $to);
 
-        $shifts = DB::transaction(function () use ($actor, $person, $from, $to) {
-            $areaIds = $this->candidates($actor, $person, $from, $to)['shifts']->pluck('area_id')->unique()->sort()->values();
+        // Found before the transaction, so no read inside it fixes the snapshot ahead of the locks.
+        $areaIds = $this->candidates($actor, $person, $from, $to)['shifts']->pluck('area_id')->unique()->sort()->values();
 
+        $shifts = DB::transaction(function () use ($actor, $person, $from, $to, $areaIds) {
             Area::query()->whereKey($areaIds)->orderBy('id')->lockForUpdate()->get();
 
             $shifts = $this->inRange($person, $from, $to)->whereIn('area_id', $areaIds)->orderBy('starts_at')->orderBy('id')->lockForUpdate()->get();
             $shifts->load('area');
             $shifts = $shifts->filter(fn (Shift $shift) => Gate::forUser($actor)->allows('removePerson', $shift))->values();
 
+            // Read under lock, so someone removed since the preview isn't counted, logged or emailed.
+            $assignments = Assignment::query()->with('user')->where('user_id', $person->id)->whereIn('shift_id', $shifts->modelKeys())->lockForUpdate()->get()->keyBy('shift_id');
+            $shifts = $shifts->filter(fn (Shift $shift) => $assignments->has($shift->id))->values();
+
             if ($shifts->isEmpty()) {
                 throw new DomainException($person->firstName().' isn\'t on any shifts you manage on those dates.');
             }
 
             foreach ($shifts as $shift) {
-                $assignment = Assignment::query()->with('user')->where('shift_id', $shift->id)->where('user_id', $person->id)->first();
-
-                if ($assignment !== null) {
-                    $this->removeLocked($actor, $shift, $assignment, ['via' => 'range', 'from' => $from, 'to' => $to]);
-                }
+                $this->removeLocked($actor, $shift, $assignments[$shift->id], ['via' => 'range', 'from' => $from, 'to' => $to]);
             }
 
             return $shifts;

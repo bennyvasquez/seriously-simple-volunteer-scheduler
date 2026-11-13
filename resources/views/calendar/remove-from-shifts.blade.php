@@ -28,13 +28,9 @@
 <fieldset class="choices">
 <legend>Which shifts?</legend>
 <label class="check"><input type="radio" name="which" value="this" @checked($which === 'this')><span>Just {{ $weekday }}</span></label>
-<label class="check"><input type="radio" name="which" value="range" @checked($which === 'range')><span>All of {{ $first }}'s shifts from a date to a date</span></label>
+<div class="check"><input type="radio" name="which" value="range" id="which-range" @checked($which === 'range')><label for="which-range">All of {{ $first }}'s shifts from <input type="date" name="from" value="{{ $values['from'] }}" aria-label="First date"> to <input type="date" name="to" value="{{ $values['to'] }}" aria-label="Last date"></label></div>
 @error('which')<span class="field-error" role="alert">{{ $message }}</span>@enderror
 </fieldset>
-<div class="add-times add-two">
-<x-field name="from" type="date" label="From" :value="$values['from']" />
-<x-field name="to" type="date" label="To" :value="$values['to']" />
-</div>
 @if ($dateError)<p role="alert" class="field-error">{{ $dateError }}</p>@endif
 <div class="add-actions"><button type="submit" class="btn" name="check" value="1">Check which shifts</button></div>
 
