@@ -152,7 +152,7 @@ class UpdateWeeklySlot
     /**
      * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started. A slot change is recognised by the shift's most recent shift.cancelled entry having come from slot.updated, never by the reason text, so a person who typed the same words keeps their cancellation.
      *
-     * The slot's current regulars for that date whose accounts are still on are put back on it, up to the number of people needed, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
+     * The slot's current regulars for that date whose accounts are still on are all put back on it, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
      *
      * @param  list<int>  $justCancelled
      * @return list<int> The ids brought back.
@@ -187,7 +187,7 @@ class UpdateWeeklySlot
             $shift->save();
 
             $added = [];
-            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive())->take($shift->people_needed) as $regular) {
+            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive()) as $regular) {
                 $shift->assignments()->create(['user_id' => $regular->user_id, 'type' => AssignmentType::Regular]);
                 $added[] = $regular->user_id;
             }

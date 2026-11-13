@@ -197,20 +197,51 @@ class AddRegularScreenTest extends TestCase
         $this->assertSame(0, SlotRegular::query()->count());
     }
 
-    public function test_the_full_slot_message_uses_us_date_order(): void
+    public function test_adding_a_regular_over_people_needed_lists_the_dates_and_asks_first(): void
     {
+        Notification::fake();
+        Organization::current()->update(['weeks_ahead' => 12]);
         $slot = $this->fridaySlot(peopleNeeded: 1);
-        $this->addRegular($slot, 'Jordan', from: '2026-10-09');
-        $avery = User::factory()->create();
+        app(GenerateShifts::class)->handle(Organization::current());
+        $casey = $this->addRegular($slot, 'Casey', from: '2026-10-09');
+        $robin = User::factory()->create(['name' => 'Robin Example']);
         $coordinator = $this->coordinator();
+        $data = ['user' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'];
+        $confirmUrl = route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23', 'over' => 1]);
 
-        $this->postRegular($slot, $coordinator, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
-            ->assertRedirect(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $avery->id]))
-            ->assertSessionHasErrors(['slot' => 'This slot already has as many regulars as it needs on Friday, October 23.']);
-
-        $this->followingRedirects()->actingAs($coordinator)->post(route('calendar.slots.regulars.store', $slot), ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
-            ->assertSee('This slot already has as many regulars as it needs on Friday, October 23.');
+        $this->postRegular($slot, $coordinator, $data)
+            ->assertRedirect($confirmUrl)
+            ->assertSessionHasNoErrors();
         $this->assertSame(1, SlotRegular::query()->count());
+        $this->assertSame(0, ChangeLogEntry::query()->about($robin)->count());
+
+        $page = $this->actingAs($coordinator)->get($confirmUrl)->assertOk()
+            ->assertSee('Friday, October 23 at 2 people. It needs 1.')
+            ->assertSee('Friday, October 30 at 2 people. It needs 1.')
+            ->assertSee('Friday, November 20 at 2 people. It needs 1.')
+            ->assertDontSee('Friday, November 27 at 2 people')
+            ->assertSee('Add Robin anyway')->assertSee('Change the dates')
+            ->assertSee('name="over_confirmed" value="1"', false);
+        $this->assertMatchesRegularExpression('/and \d+ more dates/', $page->getContent());
+
+        $this->postRegular($slot, $coordinator, $data + ['over_confirmed' => 1])->assertRedirect(route('calendar.week', ['date' => '2026-10-23']));
+
+        $this->assertSame(2, SlotRegular::query()->count());
+        $this->assertSame(
+            Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $casey->id))->where('local_date', '>=', '2026-10-23')->count(),
+            Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $robin->id))->count(),
+        );
+        $this->assertSame(1, ChangeLogEntry::query()->about($robin)->ofAction('regular.added')->count());
+    }
+
+    public function test_the_confirm_step_goes_back_without_saving_and_ignores_a_slot_with_room(): void
+    {
+        $slot = $this->fridaySlot(peopleNeeded: 2);
+        $this->addRegular($slot, 'Casey', from: '2026-10-09');
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23', 'over' => 1]))
+            ->assertOk()->assertDontSee('anyway')->assertSee('Add Robin');
     }
 
     public function test_rotation_slots_take_no_regulars(): void

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Calendar\PersonSearch;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
@@ -41,6 +42,13 @@ class RegularController extends Controller
         $person = $this->person($request, $viewer);
         $search = PersonSearch::find($viewer, (string) $request->query('q', ''), $byEmail, $current->pluck('user_id'));
         $firstDate = $this->nextSlotDate($slot, $today);
+        $values = [
+            'frequency' => (string) $request->old('frequency', $request->query('frequency', 'weekly')),
+            'weeks' => (string) $request->old('weeks', $request->query('weeks', '')),
+            'starts_on' => (string) $request->old('starts_on', $request->query('starts_on', $firstDate)),
+            'ends_on' => (string) $request->old('ends_on', $request->query('ends_on', '')),
+        ];
+        $overDates = $request->boolean('over') && $person !== null ? $this->overDates($slot, $person, $values) : [];
 
         return view('calendar.add-regular', $calendar->week($request)->getData() + [
             'slot' => $slot->load('area'),
@@ -51,12 +59,8 @@ class RegularController extends Controller
             'byEmail' => $byEmail,
             'canChooseFrequency' => $slot->frequency === SlotFrequency::Weekly,
             'weekOptions' => $slot->frequency === SlotFrequency::Weekly ? $this->weekOptions($current, $today, $viewer) : [],
-            'values' => [
-                'frequency' => (string) $request->old('frequency', $request->query('frequency', 'weekly')),
-                'weeks' => (string) $request->old('weeks', $request->query('weeks', '')),
-                'starts_on' => (string) $request->old('starts_on', $request->query('starts_on', $firstDate)),
-                'ends_on' => (string) $request->old('ends_on', $request->query('ends_on', '')),
-            ],
+            'values' => $values,
+            'overDates' => $overDates,
         ]);
     }
 
@@ -77,6 +81,7 @@ class RegularController extends Controller
             'weeks' => ['nullable', 'string', 'max:10'],
             'starts_on' => ['required', 'date_format:Y-m-d'],
             'ends_on' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:starts_on'],
+            'over_confirmed' => ['nullable', 'boolean'],
         ], [
             'user.*' => 'Pick a person.',
             'frequency.in' => 'Pick every week or every other week.',
@@ -113,7 +118,12 @@ class RegularController extends Controller
         $regularUser = User::query()->findOrFail($data['user']);
 
         try {
-            $regular = $addRegular->handle($request->user(), $slot, $regularUser, $data['starts_on'], $data['ends_on'] ?? null, $frequency, $anchor);
+            $regular = $addRegular->handle($request->user(), $slot, $regularUser, $data['starts_on'], $data['ends_on'] ?? null, $frequency, $anchor, $request->boolean('over_confirmed'));
+        } catch (NeedsOverConfirmation) {
+            // Back to the same page with what was picked and the flag that shows the confirm step; the dates are worked out again there.
+            $typed = array_filter(['frequency' => $data['frequency'] ?? null, 'weeks' => $data['weeks'] ?? null, 'starts_on' => $data['starts_on'], 'ends_on' => $data['ends_on'] ?? null], fn ($value) => $value !== null && $value !== '');
+
+            return redirect()->route('calendar.slots.regulars.create', array_filter(['slot' => $slot, 'person' => $regularUser->id, 'date' => $request->input('date')]) + $typed + ['over' => 1] + $areaQuery);
         } catch (DomainException|InvalidArgumentException $e) {
             return $back($person)->withErrors(['slot' => $e->getMessage()]);
         }
@@ -130,6 +140,39 @@ class RegularController extends Controller
                 1 => 'We added them to 1 shift already on the schedule.',
                 default => 'We added them to '.$added.' shifts already on the schedule.',
             }.$this->overlapsSentence($regular->skipped_overlaps).($regularUser->canSignIn() ? ' We\'ll email '.$first.' to let them know.' : ''));
+    }
+
+    /**
+     * The dates the picked person would put over the people needed, for the confirm step, from the values in the page's address. Empty when the values don't make a valid regular.
+     *
+     * @param  array{frequency: string, weeks: string, starts_on: string, ends_on: string}  $values
+     * @return list<array{date: string, people: int, needed: int}>
+     */
+    private function overDates(WeeklySlot $slot, User $person, array $values): array
+    {
+        $dateFormat = fn (string $value) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1;
+
+        if (! $dateFormat($values['starts_on']) || ($values['ends_on'] !== '' && (! $dateFormat($values['ends_on']) || $values['ends_on'] < $values['starts_on']))) {
+            return [];
+        }
+
+        $everyOther = $slot->frequency === SlotFrequency::Weekly && $values['frequency'] === 'every_other_week';
+        $anchor = $values['weeks'] === 'pick' ? $values['starts_on'] : $values['weeks'];
+
+        if ($everyOther && (! $dateFormat($anchor) || CarbonImmutable::parse($anchor, 'UTC')->dayOfWeek !== $slot->weekday)) {
+            return [];
+        }
+
+        $regular = new SlotRegular([
+            'user_id' => $person->id,
+            'frequency' => $everyOther ? SlotFrequency::EveryOtherWeek : SlotFrequency::Weekly,
+            'anchor_date' => $everyOther ? $anchor : null,
+            'starts_on' => $values['starts_on'],
+            'ends_on' => $values['ends_on'] === '' ? null : $values['ends_on'],
+        ]);
+        $regular->weeklySlot()->associate($slot);
+
+        return app(AddRegular::class)->overDates($slot, $regular);
     }
 
     /**

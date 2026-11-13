@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Creates dated shifts from weekly slots for the organization's generation window (spec section 7).
  *
- * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. A new shift gets the regulars who work that date, leaving out anyone whose account is turned off, and never more regulars than the people needed. Running it twice is harmless. A run that creates shifts is logged once, as the system.
+ * Existing shifts are never changed, so edits to a single date survive. Dates covered by a closure and shifts that have already started are skipped. A new shift gets the regulars who work that date, leaving out anyone whose account is turned off. All of them go on, even when that is more than the people needed. Running it twice is harmless. A run that creates shifts is logged once, as the system.
  */
 class GenerateShifts
 {
@@ -139,10 +139,9 @@ class GenerateShifts
                 return false;
             }
 
-            // Regulars working this date whose accounts are still on, the earliest added first, up to the number of people the shift needs.
+            // Regulars working this date whose accounts are still on, the earliest added first.
             $working = $slot->regulars
-                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive())
-                ->take($shift->people_needed);
+                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive());
 
             foreach ($working as $regular) {
                 $shift->assignments()->create([

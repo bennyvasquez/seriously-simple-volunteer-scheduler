@@ -13,16 +13,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. Refuses a shift that is cancelled or has started, a person who is already on it, turned off or on another active shift at an overlapping time, and a shift with no open place (or shadow spot). The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
+ * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. Refuses a shift that is cancelled or has started, a person who is already on it, turned off or on another active shift at an overlapping time, and a shadow when the shadow spots are taken. A regular beyond the people the shift needs is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the date and the count. The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
  */
 class PutOnShift
 {
-    public function handle(User $actor, Shift $shift, User $person, AssignmentType $type): Assignment
+    public function handle(User $actor, Shift $shift, User $person, AssignmentType $type, bool $overConfirmed = false): Assignment
     {
         Gate::forUser($actor)->authorize('assign', $shift);
 
-        $assignment = DB::transaction(function () use ($actor, $shift, $person, $type) {
-            // Lock the shift so two people filling the last place at once can't both succeed.
+        $assignment = DB::transaction(function () use ($actor, $shift, $person, $type, $overConfirmed) {
+            // Lock the shift so two people can't both be checked against the same count at once.
             $shift = Shift::query()->whereKey($shift->id)->lockForUpdate()->firstOrFail();
 
             if ($shift->cancelled_at !== null) {
@@ -41,8 +41,8 @@ class PutOnShift
                 throw new DomainException($person->firstName().' is already on this shift.');
             }
 
-            if ($type === AssignmentType::Regular && $shift->openPlaces() === 0) {
-                throw new DomainException('This shift is full.');
+            if ($type === AssignmentType::Regular && ! $overConfirmed && $shift->openPlaces() === 0) {
+                throw new NeedsOverConfirmation([['date' => $shift->local_date->toDateString(), 'people' => $shift->filledCount() + 1, 'needed' => $shift->people_needed]]);
             }
 
             if ($type === AssignmentType::Shadow && $shift->assignments()->where('type', AssignmentType::Shadow)->count() >= $shift->shadow_spots) {

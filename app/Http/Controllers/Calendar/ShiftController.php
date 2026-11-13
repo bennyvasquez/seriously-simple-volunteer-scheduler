@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CancelShift;
+use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Actions\Scheduling\PutOnShift;
 use App\Actions\Scheduling\UpdateShift;
 use App\Calendar\PersonSearch;
@@ -42,7 +43,8 @@ class ShiftController extends Controller
         $canCancel = $open && Gate::forUser($user)->allows('cancel', $shift);
         $byEmail = PersonSearch::byEmail($user);
         $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
-        $canPut = $canAssign && ($shift->openPlaces() > 0 || $shift->shadow_spots > $shift->assignments->where('type', AssignmentType::Shadow)->count());
+        // A regular can always be put on (past the people needed after a confirmation), so putting someone on is open to anyone who can assign.
+        $canPut = $canAssign;
         $search = PersonSearch::find($user, (string) $request->query('q', ''), $byEmail, $shift->assignments->pluck('user_id'), $canPut);
         $canEdit = $open && Gate::forUser($user)->allows('update', $shift);
         $canEditSlot = $canEdit && $shift->weeklySlot !== null && Gate::forUser($user)->allows('manageSchedule', $shift->area);
@@ -59,6 +61,12 @@ class ShiftController extends Controller
             default => null,
         };
 
+        // The confirm step for going over the people needed, from the person and type the coordinator picked.
+        $over = $canPut && $request->boolean('confirm') && $request->query('type') === 'regular' && $shift->openPlaces() === 0
+            ? User::query()->whereNull('deactivated_at')->whereNotIn('id', $shift->assignments->pluck('user_id'))->find((int) $request->query('person'))
+            : null;
+        $over?->setAttribute('display_name', PersonSearch::displayName($user, $over));
+
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
             'when' => $shift->whenText(),
@@ -68,6 +76,7 @@ class ShiftController extends Controller
             'canAssign' => $canAssign,
             'canCancel' => $canCancel,
             'canPut' => $canPut,
+            'over' => $over,
             'canAddRegular' => $canAddRegular,
             'picking' => $canPut && ($request->boolean('pick') || $search['query'] !== ''),
             'cancelling' => $canCancel && $editing === null && $request->boolean('cancel'),
@@ -95,13 +104,16 @@ class ShiftController extends Controller
         $data = $request->validate([
             'person' => ['required', 'integer', 'exists:users,id'],
             'type' => ['required', 'in:regular,shadow'],
+            'over_confirmed' => ['nullable', 'boolean'],
         ], ['person.required' => 'Pick a person.', 'person.exists' => 'Pick a person.', 'person.integer' => 'Pick a person.', 'type.*' => 'Pick regular or shadow.']);
 
         $areaQuery = $this->areaQuery($request);
         $person = User::query()->findOrFail($data['person']);
 
         try {
-            $putOnShift->handle($request->user(), $shift, $person, AssignmentType::from($data['type']));
+            $putOnShift->handle($request->user(), $shift, $person, AssignmentType::from($data['type']), $request->boolean('over_confirmed'));
+        } catch (NeedsOverConfirmation) {
+            return redirect()->route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $person->id, 'type' => $data['type']] + $areaQuery);
         } catch (DomainException $e) {
             return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => $e->getMessage()]);
         }

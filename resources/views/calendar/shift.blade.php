@@ -31,9 +31,24 @@
 <p class="muted">Nobody is on this shift yet.</p>
 @endforelse
 </div>
-<p class="muted">{{ $filled }} of {{ $places }} {{ $places === 1 ? 'place' : 'places' }} filled.@if ($shift->shadow_spots > 0) {{ $shadowsTaken }} of {{ $shift->shadow_spots }} shadow {{ $shift->shadow_spots === 1 ? 'spot' : 'spots' }} taken.@endif</p>
+<p class="muted">@if ($filled > $places){{ $filled }} people on it. It needs {{ $places }}.@else{{ $filled }} of {{ $places }} {{ $places === 1 ? 'place' : 'places' }} filled.@endif @if ($shift->shadow_spots > 0) {{ $shadowsTaken }} of {{ $shift->shadow_spots }} shadow {{ $shift->shadow_spots === 1 ? 'spot' : 'spots' }} taken.@endif</p>
 
-@if ($picking)
+@if ($over)
+<form method="POST" action="{{ route('calendar.shift.assign', $shift) }}">
+@csrf
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<input type="hidden" name="person" value="{{ $over->id }}">
+<input type="hidden" name="type" value="regular">
+<input type="hidden" name="over_confirmed" value="1">
+<p role="alert"><b>This puts {{ $shift->local_date->format('l, F j') }} at {{ $filled + 1 }} people. It needs {{ $places }}.</b></p>
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Put {{ $over->firstName() }} on anyway</button>
+<a href="{{ $panelUrl() }}" class="btn">Keep it as it is</a>
+</div>
+</form>
+@elseif ($picking)
 <form method="GET" action="{{ route('calendar.shift', $shift) }}" role="search">
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
@@ -58,7 +73,7 @@
 <input type="hidden" name="person" value="{{ $match->id }}">
 <div class="row"><span>{{ $match->display_name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
 <div class="add-actions">
-@if ($shift->openPlaces() > 0)<button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->display_name }} on this shift">Put on shift</button>@endif
+<button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->display_name }} on this shift">Put on shift</button>
 @if ($shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->display_name }} on this shift as a shadow">Shadow</button>@endif
 </div>
 </form>

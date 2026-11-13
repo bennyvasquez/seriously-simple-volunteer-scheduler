@@ -5,6 +5,7 @@ namespace Tests\Feature\Calendar;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\CreateOneTimeShift;
+use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Actions\Scheduling\PutOnShift;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
@@ -99,7 +100,7 @@ class ShiftDetailsTest extends TestCase
         Notification::assertSentTo($robin, PutOnShiftNotification::class);
     }
 
-    public function test_putting_someone_on_a_full_or_shared_shift_is_refused(): void
+    public function test_putting_someone_on_a_shared_shift_is_refused(): void
     {
         $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 1);
         $robin = User::factory()->create();
@@ -125,7 +126,7 @@ class ShiftDetailsTest extends TestCase
         $action->handle($coordinator, $shift, $robin, AssignmentType::Regular);
 
         $messages = [];
-        foreach ([[$robin, AssignmentType::Regular], [User::factory()->create(), AssignmentType::Regular], [User::factory()->create(), AssignmentType::Shadow], [User::factory()->create(['deactivated_at' => now()]), AssignmentType::Regular]] as [$person, $type]) {
+        foreach ([[$robin, AssignmentType::Regular], [User::factory()->create(), AssignmentType::Shadow], [User::factory()->create(['deactivated_at' => now()]), AssignmentType::Regular]] as [$person, $type]) {
             try {
                 $action->handle($coordinator, $shift, $person, $type);
             } catch (DomainException $e) {
@@ -135,10 +136,9 @@ class ShiftDetailsTest extends TestCase
 
         $this->assertSame([
             'Robin is already on this shift.',
-            'This shift is full.',
             "There's no shadow spot left on this shift.",
-        ], array_slice($messages, 0, 3));
-        $this->assertCount(4, $messages);
+        ], array_slice($messages, 0, 2));
+        $this->assertCount(3, $messages);
     }
 
     public function test_putting_someone_on_a_shift_that_overlaps_another_of_theirs_is_refused(): void
@@ -333,7 +333,7 @@ class ShiftDetailsTest extends TestCase
     public function test_a_refusal_comes_back_on_the_panel(): void
     {
         $shift = $this->shiftWithPerson();
-        $robin = User::factory()->create();
+        $robin = User::factory()->create(['deactivated_at' => now()]);
 
         $this->actingAs($this->coordinator())->from(route('calendar.shift', $shift))->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular'])
             ->assertRedirect(route('calendar.shift', $shift))->assertSessionHasErrors('shift');
@@ -398,12 +398,98 @@ class ShiftDetailsTest extends TestCase
             ->assertSessionHas('status', fn (string $status) => str_contains($status, '1 person was emailed.'));
     }
 
-    public function test_put_someone_on_it_is_hidden_when_nothing_is_left_to_fill(): void
+    public function test_put_someone_on_it_shows_when_the_shift_has_the_people_it_needs(): void
     {
         $shift = $this->shiftWithPerson();
 
         $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))
-            ->assertOk()->assertDontSee('Put someone on it')->assertSee('Cancel this date');
+            ->assertOk()->assertSee('Put someone on it')->assertSee('Cancel this date');
+    }
+
+    private function shiftNeedingThree(): Shift
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 3);
+
+        foreach (['Sam', 'Casey', 'Jordan'] as $name) {
+            Assignment::create(['shift_id' => $shift->id, 'user_id' => User::factory()->create(['name' => $name])->id, 'type' => AssignmentType::Regular]);
+        }
+
+        return $shift;
+    }
+
+    public function test_putting_someone_on_a_shift_that_has_the_people_it_needs_asks_first(): void
+    {
+        Notification::fake();
+        $shift = $this->shiftNeedingThree();
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $coordinator = $this->coordinator();
+
+        try {
+            app(PutOnShift::class)->handle($coordinator, $shift, $robin, AssignmentType::Regular);
+            $this->fail('Going over people needed was allowed without a confirmation.');
+        } catch (NeedsOverConfirmation $e) {
+            $this->assertSame([['date' => '2026-10-22', 'people' => 4, 'needed' => 3]], $e->dates);
+        }
+
+        $this->assertSame(3, $shift->assignments()->count());
+        $this->assertFalse(ChangeLogEntry::query()->about($robin)->ofAction('assignment.added')->exists());
+        Notification::assertNothingSent();
+
+        app(PutOnShift::class)->handle($coordinator, $shift, $robin, AssignmentType::Regular, overConfirmed: true);
+
+        $this->assertSame(4, $shift->assignments()->count());
+        $this->assertTrue(ChangeLogEntry::query()->about($robin)->ofAction('assignment.added')->exists());
+        Notification::assertSentTo($robin, PutOnShiftNotification::class);
+        $this->actingAs($coordinator)->get(route('calendar.shift', $shift))
+            ->assertOk()->assertSee('4 people on it. It needs 3.')->assertDontSee('places filled')->assertSee('Put someone on it');
+        $this->assertSame(0, $shift->fresh()->openPlaces());
+    }
+
+    public function test_the_panel_confirm_step_reads_the_date_and_counts(): void
+    {
+        $shift = $this->shiftNeedingThree();
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->from(route('calendar.shift', $shift))->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular', 'areas' => [$this->frontDesk->id]])
+            ->assertRedirect(route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $robin->id, 'type' => 'regular', 'areas' => [$this->frontDesk->id]]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(3, $shift->assignments()->count());
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $robin->id, 'type' => 'regular']))
+            ->assertOk()
+            ->assertSee('This puts Thursday, October 22 at 4 people. It needs 3.')
+            ->assertSee('Put Robin on anyway')->assertSee('Keep it as it is')
+            ->assertSee('name="over_confirmed" value="1"', false);
+
+        $this->actingAs($coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular', 'over_confirmed' => 1])
+            ->assertRedirect(route('calendar.shift', $shift))->assertSessionHas('status', 'Robin is on this shift. They were emailed.');
+        $this->assertSame(4, $shift->assignments()->count());
+    }
+
+    public function test_the_confirm_step_does_not_show_for_a_shift_with_room(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 2);
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $robin->id, 'type' => 'regular']))
+            ->assertOk()->assertDontSee('anyway');
+    }
+
+    public function test_shadow_spots_stay_a_limit(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', shadowSpots: 1);
+        $coordinator = $this->coordinator();
+        app(PutOnShift::class)->handle($coordinator, $shift, User::factory()->create(), AssignmentType::Shadow);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage("There's no shadow spot left on this shift.");
+
+        try {
+            app(PutOnShift::class)->handle($coordinator, $shift, User::factory()->create(), AssignmentType::Shadow, overConfirmed: true);
+        } catch (NeedsOverConfirmation) {
+            $this->fail('A shadow spot went over its limit with a confirmation.');
+        }
     }
 
     public function test_a_lead_searches_by_name_only_and_sees_emails_only_of_people_they_may_see(): void

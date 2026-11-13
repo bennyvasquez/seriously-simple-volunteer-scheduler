@@ -219,18 +219,22 @@ class GenerateShiftsTest extends TestCase
         $this->assertFalse(Assignment::query()->where('user_id', $turnedOff->id)->exists());
     }
 
-    public function test_it_adds_no_more_regulars_than_the_shift_needs(): void
+    public function test_generation_puts_every_regular_on(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 1]);
-        $first = User::factory()->create();
-        $second = User::factory()->create();
-        $slot->regulars()->create(['user_id' => $first->id, 'starts_on' => '2026-01-01']);
-        $slot->regulars()->create(['user_id' => $second->id, 'starts_on' => '2026-01-01']);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2]);
+        $ids = [];
+
+        foreach (range(1, 3) as $ignored) {
+            $user = User::factory()->create();
+            $ids[] = $user->id;
+            $slot->regulars()->create(['user_id' => $user->id, 'starts_on' => '2026-01-01']);
+        }
 
         $this->generate();
 
+        $this->assertGreaterThan(0, Shift::query()->count());
         foreach (Shift::query()->get() as $shift) {
-            $this->assertSame([$first->id], $shift->assignments()->pluck('user_id')->all());
+            $this->assertEqualsCanonicalizing($ids, $shift->assignments()->pluck('user_id')->all());
         }
     }
 }
