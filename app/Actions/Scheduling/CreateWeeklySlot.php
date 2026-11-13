@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Creates a weekly slot and generates its shifts right away, so the calendar shows them without waiting for the nightly run. Times are local wall-clock times. For every other week, the first date is the anchor, so it has to fall on the slot's weekday.
  *
- * Attribute keys: weekday (0 is Sunday), start_time, end_time, headcount, shadow_spots, frequency, valid_from, valid_until, title, is_rotation. SlotAttributes checks them.
+ * Attribute keys: weekday (0 is Sunday), start_time, end_time, people_needed, shadow_spots, frequency, valid_from, valid_until, title, is_rotation. SlotAttributes checks them.
  */
 class CreateWeeklySlot
 {

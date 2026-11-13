@@ -104,7 +104,7 @@ class DescribeTest extends TestCase
         $shift = Shift::query()->create([
             'area_id' => $this->frontDesk->id, 'local_date' => '2026-11-05',
             'starts_at' => CarbonImmutable::parse('2026-11-05 18:00', 'America/Detroit')->utc(), 'ends_at' => CarbonImmutable::parse('2026-11-05 21:00', 'America/Detroit')->utc(),
-            'headcount' => 1, 'shadow_spots' => 0,
+            'people_needed' => 1, 'shadow_spots' => 0,
         ]);
         $when = 'Thursday, November 5, 6 to 9pm';
         $this->assertSame('Added a Front desk shift on '.$when, $this->say(ChangeLogEntry::record($this->coordinator, 'shift.created', $shift)));
@@ -135,7 +135,7 @@ class DescribeTest extends TestCase
 
         $this->assertSame('Invited Robin E.', $this->say($entry, $lead));
 
-        $shift = Shift::query()->create(['area_id' => $this->frontDesk->id, 'local_date' => '2026-11-05', 'starts_at' => '2026-11-05 23:00:00', 'ends_at' => '2026-11-06 02:00:00', 'headcount' => 1, 'shadow_spots' => 0]);
+        $shift = Shift::query()->create(['area_id' => $this->frontDesk->id, 'local_date' => '2026-11-05', 'starts_at' => '2026-11-05 23:00:00', 'ends_at' => '2026-11-06 02:00:00', 'people_needed' => 1, 'shadow_spots' => 0]);
         Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->robin->id, 'type' => AssignmentType::Regular]);
         $this->assertSame('Invited Robin Example', $this->say($entry, $lead));
     }

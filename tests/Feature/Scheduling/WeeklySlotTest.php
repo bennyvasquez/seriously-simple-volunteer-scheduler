@@ -79,7 +79,7 @@ class WeeklySlotTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
 
-        WeeklySlot::factory()->create(['headcount' => 0]);
+        WeeklySlot::factory()->create(['people_needed' => 0]);
     }
 
     public function test_local_times_stay_put_when_daylight_saving_time_ends(): void

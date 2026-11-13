@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Shift extends Model
 {
     protected $fillable = [
-        'area_id', 'weekly_slot_id', 'local_date', 'starts_at', 'ends_at', 'headcount', 'shadow_spots',
+        'area_id', 'weekly_slot_id', 'local_date', 'starts_at', 'ends_at', 'people_needed', 'shadow_spots',
         'title', 'cancelled_at', 'cancel_reason', 'area_closure_id', 'edited_at',
     ];
 
@@ -26,7 +26,7 @@ class Shift extends Model
             'local_date' => 'immutable_date',
             'starts_at' => 'immutable_datetime',
             'ends_at' => 'immutable_datetime',
-            'headcount' => 'integer',
+            'people_needed' => 'integer',
             'shadow_spots' => 'integer',
             'cancelled_at' => 'immutable_datetime',
             'edited_at' => 'immutable_datetime',
@@ -76,7 +76,7 @@ class Shift extends Model
             return 0;
         }
 
-        return max(0, $this->headcount - $this->filledCount());
+        return max(0, $this->people_needed - $this->filledCount());
     }
 
     /** Open places and starting within the next 24 hours. */

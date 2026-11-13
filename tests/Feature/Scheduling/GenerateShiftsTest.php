@@ -46,7 +46,7 @@ class GenerateShiftsTest extends TestCase
 
     public function test_it_creates_shifts_for_the_coming_weeks(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 2, 'shadow_spots' => 1]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2, 'shadow_spots' => 1]);
 
         $this->assertSame(2, $this->generate());
         $this->assertSame(['2026-10-15', '2026-10-22'], $this->localDates());
@@ -55,7 +55,7 @@ class GenerateShiftsTest extends TestCase
         $this->assertSame('2026-10-15 19:30:00', $first->starts_at->format('Y-m-d H:i:s'));
         $this->assertSame('2026-10-15 22:30:00', $first->ends_at->format('Y-m-d H:i:s'));
         $this->assertSame($slot->area_id, $first->area_id);
-        $this->assertSame(2, $first->headcount);
+        $this->assertSame(2, $first->people_needed);
         $this->assertSame(1, $first->shadow_spots);
     }
 
@@ -85,7 +85,7 @@ class GenerateShiftsTest extends TestCase
     public function test_it_fills_in_regulars_who_are_active_on_each_date(): void
     {
         $this->organization->update(['weeks_ahead' => 3]);
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 2]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2]);
         $always = User::factory()->create();
         $leaving = User::factory()->create();
         $joining = User::factory()->create();
@@ -207,7 +207,7 @@ class GenerateShiftsTest extends TestCase
 
     public function test_it_leaves_out_regulars_who_have_been_turned_off(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 2]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2]);
         $active = User::factory()->create();
         $turnedOff = User::factory()->create(['deactivated_at' => now()]);
         $slot->regulars()->create(['user_id' => $active->id, 'starts_on' => '2026-01-01']);
@@ -221,7 +221,7 @@ class GenerateShiftsTest extends TestCase
 
     public function test_it_adds_no_more_regulars_than_the_shift_needs(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 1]);
         $first = User::factory()->create();
         $second = User::factory()->create();
         $slot->regulars()->create(['user_id' => $first->id, 'starts_on' => '2026-01-01']);

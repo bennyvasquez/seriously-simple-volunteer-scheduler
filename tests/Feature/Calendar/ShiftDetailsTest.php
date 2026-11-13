@@ -59,9 +59,9 @@ class ShiftDetailsTest extends TestCase
         return $user;
     }
 
-    private function shiftOn(string $date, string $start, string $end, int $headcount = 1, int $shadowSpots = 0, ?Area $area = null): Shift
+    private function shiftOn(string $date, string $start, string $end, int $peopleNeeded = 1, int $shadowSpots = 0, ?Area $area = null): Shift
     {
-        return app(CreateOneTimeShift::class)->handle($this->coordinator(), $area ?? $this->frontDesk, $date, $start, $end, $headcount, $shadowSpots, null);
+        return app(CreateOneTimeShift::class)->handle($this->coordinator(), $area ?? $this->frontDesk, $date, $start, $end, $peopleNeeded, $shadowSpots, null);
     }
 
     /** A shift from 8am to noon today, which started an hour ago. CreateOneTimeShift refuses a start time that has passed, so it's made earlier in the morning. */
@@ -89,7 +89,7 @@ class ShiftDetailsTest extends TestCase
     public function test_putting_someone_on_a_shift_logs_and_emails_them(): void
     {
         Notification::fake();
-        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', headcount: 1);
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 1);
         $robin = User::factory()->create(['name' => 'Robin']);
 
         app(PutOnShift::class)->handle($this->coordinator(), $shift, $robin, AssignmentType::Regular);
@@ -101,7 +101,7 @@ class ShiftDetailsTest extends TestCase
 
     public function test_putting_someone_on_a_full_or_shared_shift_is_refused(): void
     {
-        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', headcount: 1);
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 1);
         $robin = User::factory()->create();
         app(PutOnShift::class)->handle($this->coordinator(), $shift, $robin, AssignmentType::Regular);
 
@@ -118,7 +118,7 @@ class ShiftDetailsTest extends TestCase
 
     public function test_the_refusals_say_why(): void
     {
-        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', headcount: 1);
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 1);
         $robin = User::factory()->create(['name' => 'Robin Example']);
         $action = app(PutOnShift::class);
         $coordinator = $this->coordinator();
@@ -182,7 +182,7 @@ class ShiftDetailsTest extends TestCase
 
     public function test_a_shadow_goes_in_a_shadow_spot_and_not_in_a_place(): void
     {
-        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', headcount: 1, shadowSpots: 1);
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 1, shadowSpots: 1);
 
         app(PutOnShift::class)->handle($this->coordinator(), $shift, User::factory()->create(), AssignmentType::Shadow);
 
@@ -287,7 +287,7 @@ class ShiftDetailsTest extends TestCase
         $shift = Shift::create([
             'area_id' => $this->frontDesk->id, 'weekly_slot_id' => $slot->id, 'local_date' => '2026-10-22',
             'starts_at' => CarbonImmutable::parse('2026-10-22 18:30', self::TIMEZONE)->utc(), 'ends_at' => CarbonImmutable::parse('2026-10-22 21:30', self::TIMEZONE)->utc(),
-            'headcount' => 1, 'shadow_spots' => 0,
+            'people_needed' => 1, 'shadow_spots' => 0,
         ]);
         Assignment::create(['shift_id' => $shift->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);
 

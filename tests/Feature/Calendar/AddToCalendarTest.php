@@ -51,14 +51,14 @@ class AddToCalendarTest extends TestCase
 
     private function slotAttributes(array $overrides = []): array
     {
-        return $overrides + ['weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'valid_from' => '2026-10-22', 'valid_until' => null, 'title' => null, 'is_rotation' => false];
+        return $overrides + ['weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'people_needed' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'valid_from' => '2026-10-22', 'valid_until' => null, 'title' => null, 'is_rotation' => false];
     }
 
     private function panelPost(array $overrides = []): array
     {
         return $overrides + [
             'area' => $this->frontDesk->id, 'date' => '2026-10-21', 'start_time' => '18:00', 'end_time' => '21:00',
-            'repeats' => 'none', 'headcount' => 1, 'shadow_spots' => 0,
+            'repeats' => 'none', 'people_needed' => 1, 'shadow_spots' => 0,
         ];
     }
 
@@ -210,7 +210,7 @@ class AddToCalendarTest extends TestCase
         // Thursday, October 22, 9am: the 8-week window then holds eight Thursdays starting today.
         $this->travelTo(CarbonImmutable::parse('2026-10-22 09:00', self::TIMEZONE));
         $this->actingAs($this->coordinator())->post(route('calendar.slots.store'), [
-            'area' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'area' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'fills_by' => 'rotation', 'valid_from' => '2026-10-22', 'valid_until' => '',
         ])->assertRedirect(route('calendar.week', ['date' => '2026-10-22']))
             ->assertSessionHas('status', 'Added Thursdays, 6:30 to 9:30pm, starting Thursday, October 22. 8 shifts are on the calendar.');
@@ -255,7 +255,7 @@ class AddToCalendarTest extends TestCase
 
         $this->actingAs($lead)->post(route('calendar.add.store'), $this->panelPost(['area' => $this->hostedEvents->id]))->assertForbidden();
         $this->actingAs($lead)->post(route('calendar.slots.store'), [
-            'area' => $this->hostedEvents->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'area' => $this->hostedEvents->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-22',
         ])->assertForbidden();
 
@@ -280,8 +280,8 @@ class AddToCalendarTest extends TestCase
             ->assertSessionHasErrors(['end_time' => 'A shift has to end at a different time than it starts.']);
         $this->actingAs($user)->post(route('calendar.add.store'), $this->panelPost(['date' => '2026-10-13']))
             ->assertSessionHasErrors(['date' => 'Pick a date from today on.']);
-        $this->actingAs($user)->post(route('calendar.add.store'), $this->panelPost(['headcount' => 0]))
-            ->assertSessionHasErrors(['headcount' => 'At least 1 person is needed.']);
+        $this->actingAs($user)->post(route('calendar.add.store'), $this->panelPost(['people_needed' => 0]))
+            ->assertSessionHasErrors(['people_needed' => 'At least 1 person is needed.']);
         $this->assertSame(0, Shift::query()->count());
     }
 
@@ -329,7 +329,7 @@ class AddToCalendarTest extends TestCase
     private function slotFormPost(array $overrides = []): array
     {
         return $overrides + [
-            'area' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'area' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-22', 'valid_until' => '',
         ];
     }

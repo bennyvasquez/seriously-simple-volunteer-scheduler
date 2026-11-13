@@ -78,7 +78,7 @@ class ShiftController extends Controller
             'editValues' => [
                 'start_time' => (string) $request->old('start_time', $shift->starts_at->setTimezone(Organization::current()->timezone)->format('H:i')),
                 'end_time' => (string) $request->old('end_time', $shift->ends_at->setTimezone(Organization::current()->timezone)->format('H:i')),
-                'headcount' => (string) $request->old('headcount', $shift->headcount),
+                'people_needed' => (string) $request->old('people_needed', $shift->people_needed),
                 'shadow_spots' => (string) $request->old('shadow_spots', $shift->shadow_spots),
                 'title' => (string) $request->old('title', (string) $shift->title),
             ],
@@ -124,15 +124,15 @@ class ShiftController extends Controller
                 'title' => ['nullable', 'string', 'max:80'],
                 'start_time' => ['required', 'date_format:H:i'],
                 'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
-                'headcount' => ['required', 'integer', 'min:1', 'max:200'],
+                'people_needed' => ['required', 'integer', 'min:1', 'max:200'],
                 'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
             ], [
                 'title.max' => 'Keep it to 80 characters or fewer.',
                 'start_time.*' => 'Pick a start time.',
                 'end_time.different' => 'A shift has to end at a different time than it starts.',
                 'end_time.*' => 'Pick an end time.',
-                'headcount.max' => 'That is more people than one shift can have. Use 200 or fewer.',
-                'headcount.*' => 'At least 1 person is needed.',
+                'people_needed.max' => 'That is more people than one shift can have. Use 200 or fewer.',
+                'people_needed.*' => 'At least 1 person is needed.',
                 'shadow_spots.max' => 'That is more shadow spots than one shift can have. Use 200 or fewer.',
                 'shadow_spots.*' => 'Enter 0 if there are no shadow spots.',
             ]);

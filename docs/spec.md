@@ -42,7 +42,7 @@ Volunteer-run organizations keep a shared calendar, a chat channel, and a lot of
 | Shift | One dated occurrence. Generated from a weekly slot, or created on its own (one-time shifts and event shifts). |
 | Regular | A person attached to a weekly slot, with a start date, an optional end date, and whether they work every week or every other week (with an anchor date). Regulars are filled into each generated shift they cover automatically. |
 | Assignment | A person on a specific shift. Type is regular or shadow. |
-| Shadow spot | An optional extra place on a shift for someone in training. It never counts toward the shift's headcount and never triggers cover requests. |
+| Shadow spot | An optional extra place on a shift for someone in training. It never counts toward the shift's people needed and never triggers cover requests. |
 | Skill | A qualification a lead grants, such as "Blacksmithing demos". A shift can require one. |
 | Closure | A date or date range when an area is closed. Cancels shifts on those dates. |
 | Cleared | A flag on a volunteer meaning they can take regular shifts. Off until a coordinator turns it on. |
@@ -61,11 +61,11 @@ One person can hold several roles. Nobody sees schedule details until a coordina
 
 ## 7. Scheduling model
 
-- **Weekly slots generate shifts** a set number of weeks ahead (setting, default 8). Each generated shift copies the slot's details and fills in its regulars, leaving out anyone whose account is turned off and never more than the shift's headcount.
+- **Weekly slots generate shifts** a set number of weeks ahead (setting, default 8). Each generated shift copies the slot's details and fills in its regulars, leaving out anyone whose account is turned off and never more than the shift's people needed.
 - **Generation runs daily** and never changes a shift that already exists, so per-date edits survive. It skips dates covered by a closure and shifts that have already started. Adding a regular also adds them to the slot's already-generated shifts that haven't started, aren't cancelled, still have room and don't overlap another shift they're on.
-- **Every week or every other week.** An every-other-week slot has an anchor date. On a weekly slot, each regular can also work every week or every other week, with their own anchor date, so two people can split one weekly slot by each holding alternate weeks. A slot's headcount is checked per date, so alternating regulars don't count against each other.
-- **Overlapping shifts are allowed.** A day can have several shifts in the same area at overlapping times, each with its own headcount. Coordinators set the times; volunteers only claim shifts that exist. One person can't be on two active shifts whose times overlap (back to back is fine): putting them on one is refused with the shift they're already on, and adding a regular leaves those dates out and says which.
-- **Headcount varies by slot.** Seasonal changes are handled by editing a slot from a date forward (section 8.4).
+- **Every week or every other week.** An every-other-week slot has an anchor date. On a weekly slot, each regular can also work every week or every other week, with their own anchor date, so two people can split one weekly slot by each holding alternate weeks. A slot's people needed is checked per date, so alternating regulars don't count against each other.
+- **Overlapping shifts are allowed.** A day can have several shifts in the same area at overlapping times, each with its own people needed. Coordinators set the times; volunteers only claim shifts that exist. One person can't be on two active shifts whose times overlap (back to back is fine): putting them on one is refused with the shift they're already on, and adding a regular leaves those dates out and says which.
+- **People needed varies by slot.** Seasonal changes are handled by editing a slot from a date forward (section 8.4).
 - **Times are stored in the organization's local time** for slots, so a weekly shift doesn't move by an hour when daylight saving time changes. Dated shifts store their start and end in UTC, plus the local date.
 - **Exceptions are per date.** Releasing one date never changes the slot or the regular's other dates.
 - **Closures** cancel the shifts they cover and notify everyone on them.

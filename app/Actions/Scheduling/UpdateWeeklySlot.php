@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Saves changes to a weekly slot and brings its future shifts up to date, as far as that is safe without change notices.
  *
- * Future shifts that nobody is on and nobody edited by hand get the slot's new times, headcount, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), that shift is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars. The generator then adds any new dates. Shifts someone is on, or that were edited on their own, keep their old details and are returned as kept when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
+ * Future shifts that nobody is on and nobody edited by hand get the slot's new times, people needed, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), that shift is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars. The generator then adds any new dates. Shifts someone is on, or that were edited on their own, keep their old details and are returned as kept when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
  *
  * Changing the day or how often the slot repeats (including the first date of an every-other-week slot, which sets its weeks) is refused while the slot has current or future regulars or a future shift someone is on, since that changes when they work. Switching to a rotation is refused while it has current or future regulars. The refusals are written to be shown on screen.
  *
@@ -152,7 +152,7 @@ class UpdateWeeklySlot
     /**
      * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started. A slot change is recognised by the shift's most recent shift.cancelled entry having come from slot.updated, never by the reason text, so a person who typed the same words keeps their cancellation.
      *
-     * The slot's current regulars for that date whose accounts are still on are put back on it, up to its headcount, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
+     * The slot's current regulars for that date whose accounts are still on are put back on it, up to the number of people needed, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
      *
      * @param  list<int>  $justCancelled
      * @return list<int> The ids brought back.
@@ -187,7 +187,7 @@ class UpdateWeeklySlot
             $shift->save();
 
             $added = [];
-            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive())->take($shift->headcount) as $regular) {
+            foreach ($regulars->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && $regular->user->isActive())->take($shift->people_needed) as $regular) {
                 $shift->assignments()->create(['user_id' => $regular->user_id, 'type' => AssignmentType::Regular]);
                 $added[] = $regular->user_id;
             }
@@ -221,7 +221,7 @@ class UpdateWeeklySlot
         $shift->fill([
             'starts_at' => $startsAt,
             'ends_at' => $endsAt,
-            'headcount' => $slot->headcount,
+            'people_needed' => $slot->people_needed,
             'shadow_spots' => $slot->shadow_spots,
             'title' => $slot->title,
         ]);

@@ -66,7 +66,7 @@ class EditScheduleTest extends TestCase
     private function thursdaySlot(string $start, string $end, string $frequency = 'weekly', ?Area $area = null): WeeklySlot
     {
         return app(CreateWeeklySlot::class)->handle($this->coordinator(), $area ?? $this->frontDesk, [
-            'weekday' => 4, 'start_time' => $start, 'end_time' => $end, 'headcount' => 1, 'shadow_spots' => 0,
+            'weekday' => 4, 'start_time' => $start, 'end_time' => $end, 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => $frequency, 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
         ]);
     }
@@ -76,7 +76,7 @@ class EditScheduleTest extends TestCase
     {
         return [
             'weekday' => $slot->weekday, 'start_time' => substr($slot->start_time, 0, 5), 'end_time' => substr($slot->end_time, 0, 5),
-            'headcount' => $slot->headcount, 'shadow_spots' => $slot->shadow_spots, 'frequency' => $slot->frequency->value,
+            'people_needed' => $slot->people_needed, 'shadow_spots' => $slot->shadow_spots, 'frequency' => $slot->frequency->value,
             'valid_from' => $slot->valid_from->toDateString(), 'valid_until' => $slot->valid_until?->toDateString(),
             'title' => $slot->title, 'is_rotation' => $slot->is_rotation,
         ];
@@ -122,12 +122,12 @@ class EditScheduleTest extends TestCase
         // A week later, the first shift has started.
         $this->travelTo(CarbonImmutable::parse('2026-10-15 19:00', self::TIMEZONE));
 
-        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['headcount' => 3, 'title' => 'Greeter'] + $this->slotAttributes($slot));
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['people_needed' => 3, 'title' => 'Greeter'] + $this->slotAttributes($slot));
 
-        $this->assertSame(1, $shifts[0]->fresh()->headcount);
-        $this->assertSame(1, $shifts[1]->fresh()->headcount);
+        $this->assertSame(1, $shifts[0]->fresh()->people_needed);
+        $this->assertSame(1, $shifts[1]->fresh()->people_needed);
         $this->assertSame('Power outage', $shifts[1]->fresh()->cancel_reason);
-        $this->assertSame(3, $shifts[2]->fresh()->headcount);
+        $this->assertSame(3, $shifts[2]->fresh()->people_needed);
         $this->assertSame('Greeter', $shifts[2]->fresh()->title);
     }
 
@@ -137,7 +137,7 @@ class EditScheduleTest extends TestCase
 
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('Someone is on this shift. Editing shifts with people on them comes soon; for now, cancel this date and add a one-time shift.');
-        app(UpdateShift::class)->handle($this->coordinator(), $shift, ['headcount' => 3]);
+        app(UpdateShift::class)->handle($this->coordinator(), $shift, ['people_needed' => 3]);
     }
 
     public function test_editing_one_shift_sets_edited_at_and_is_logged(): void
@@ -145,15 +145,15 @@ class EditScheduleTest extends TestCase
         $slot = $this->thursdaySlot('18:30', '21:30');
         $shift = $slot->shifts()->orderBy('local_date')->first();
 
-        app(UpdateShift::class)->handle($this->coordinator(), $shift, ['start_time' => '17:00', 'end_time' => '20:00', 'headcount' => 2, 'shadow_spots' => 1, 'title' => 'Open house']);
+        app(UpdateShift::class)->handle($this->coordinator(), $shift, ['start_time' => '17:00', 'end_time' => '20:00', 'people_needed' => 2, 'shadow_spots' => 1, 'title' => 'Open house']);
 
         $shift->refresh();
         $this->assertSame('17:00', $this->localStart($shift));
         $this->assertSame('2026-10-16 00:00', $shift->ends_at->format('Y-m-d H:i')); // 8pm in Detroit is midnight UTC.
-        $this->assertSame([2, 1, 'Open house'], [$shift->headcount, $shift->shadow_spots, $shift->title]);
+        $this->assertSame([2, 1, 'Open house'], [$shift->people_needed, $shift->shadow_spots, $shift->title]);
         $this->assertNotNull($shift->edited_at);
         $entry = ChangeLogEntry::query()->ofAction('shift.updated')->sole();
-        $this->assertSame([1, 2], [$entry->changes['headcount']['old'], $entry->changes['headcount']['new']]);
+        $this->assertSame([1, 2], [$entry->changes['people_needed']['old'], $entry->changes['people_needed']['new']]);
     }
 
     public function test_editing_one_shift_is_checked_against_its_area_and_refuses_started_shifts(): void
@@ -162,17 +162,17 @@ class EditScheduleTest extends TestCase
         $shift = $slot->shifts()->orderBy('local_date')->first();
 
         try {
-            app(UpdateShift::class)->handle($this->coordinator(Role::AreaLead, $this->hostedEvents), $shift, ['headcount' => 2]);
+            app(UpdateShift::class)->handle($this->coordinator(Role::AreaLead, $this->hostedEvents), $shift, ['people_needed' => 2]);
             $this->fail('A lead of another area edited the shift.');
         } catch (AuthorizationException) {
         }
 
-        app(UpdateShift::class)->handle($this->coordinator(Role::AreaLead, $this->frontDesk), $shift, ['headcount' => 2]);
-        $this->assertSame(2, $shift->fresh()->headcount);
+        app(UpdateShift::class)->handle($this->coordinator(Role::AreaLead, $this->frontDesk), $shift, ['people_needed' => 2]);
+        $this->assertSame(2, $shift->fresh()->people_needed);
 
         $this->travelTo(CarbonImmutable::parse('2026-10-15 19:00', self::TIMEZONE));
         $this->expectException(DomainException::class);
-        app(UpdateShift::class)->handle($this->coordinator(), $shift->fresh(), ['headcount' => 3]);
+        app(UpdateShift::class)->handle($this->coordinator(), $shift->fresh(), ['people_needed' => 3]);
     }
 
     public function test_editing_a_slot_is_checked_against_its_area(): void
@@ -180,7 +180,7 @@ class EditScheduleTest extends TestCase
         $slot = $this->thursdaySlot('18:30', '21:30');
 
         $this->expectException(AuthorizationException::class);
-        app(UpdateWeeklySlot::class)->handle($this->coordinator(Role::AreaLead, $this->hostedEvents), $slot, ['headcount' => 2] + $this->slotAttributes($slot));
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(Role::AreaLead, $this->hostedEvents), $slot, ['people_needed' => 2] + $this->slotAttributes($slot));
     }
 
     public function test_a_hand_edited_shift_is_kept_when_the_slot_changes(): void
@@ -250,7 +250,7 @@ class EditScheduleTest extends TestCase
         app(CancelShift::class)->handle($this->coordinator(), $outage, 'Power outage');
         app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['frequency' => 'every_other_week'] + $this->slotAttributes($slot));
 
-        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['frequency' => 'weekly', 'headcount' => 2] + $this->slotAttributes($slot->fresh()));
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['frequency' => 'weekly', 'people_needed' => 2] + $this->slotAttributes($slot->fresh()));
 
         // Nov 5, Nov 19 and Dec 3 come back with the slot's new details; Oct 22 was cancelled by a person and stays cancelled.
         $this->assertSame(0, $result->createdShifts);
@@ -260,7 +260,7 @@ class EditScheduleTest extends TestCase
         $this->assertSame('Power outage', $outage->fresh()->cancel_reason);
         $revived = $slot->shifts()->where('local_date', '2026-11-05')->sole();
         $this->assertNull($revived->cancel_reason);
-        $this->assertSame(2, $revived->headcount);
+        $this->assertSame(2, $revived->people_needed);
         $this->assertTrue(ChangeLogEntry::query()->forSubject($revived)->ofAction('shift.updated')->exists());
     }
 
@@ -307,10 +307,10 @@ class EditScheduleTest extends TestCase
         $shift = $slot->shifts()->where('local_date', '2026-10-22')->sole();
         app(CancelShift::class)->handle($this->coordinator(), $shift, 'The weekly slot changed');
 
-        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['headcount' => 2] + $this->slotAttributes($slot));
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['people_needed' => 2] + $this->slotAttributes($slot));
 
         $this->assertNotNull($shift->fresh()->cancelled_at);
-        $this->assertSame(1, $shift->fresh()->headcount);
+        $this->assertSame(1, $shift->fresh()->people_needed);
     }
 
     /** Runs a slot edit that has to be refused with $message, and checks nothing changed. */
@@ -403,7 +403,7 @@ class EditScheduleTest extends TestCase
         $this->regular($slot, 'Sam Example');
 
         $this->actingAs($this->coordinator())->followingRedirects()
-            ->post(route('calendar.slots.update', $slot), ['weekday' => 5, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => ''])
+            ->post(route('calendar.slots.update', $slot), ['weekday' => 5, 'start_time' => '18:30', 'end_time' => '21:30', 'people_needed' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => ''])
             ->assertOk()
             ->assertSee('Sam Example works this slot. Changing its day or how often it repeats changes when they work')
             ->assertSee('<option value="5" selected', false);
@@ -424,10 +424,10 @@ class EditScheduleTest extends TestCase
         $slot = $this->thursdaySlot('18:30', '21:30');
         $this->travelTo(CarbonImmutable::parse('2026-10-30 09:00', self::TIMEZONE));
 
-        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['headcount' => 2] + $this->slotAttributes($slot));
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['people_needed' => 2] + $this->slotAttributes($slot));
 
         $this->assertSame('2026-10-15', $slot->fresh()->valid_from->toDateString());
-        $this->assertSame(2, $slot->fresh()->headcount);
+        $this->assertSame(2, $slot->fresh()->people_needed);
         $this->assertGreaterThan(0, $result->updatedShifts);
     }
 
@@ -450,7 +450,7 @@ class EditScheduleTest extends TestCase
 
         $this->actingAs($user)->followingRedirects()
             ->post(route('calendar.slots.update', $slot), [
-                'weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'headcount' => 1, 'shadow_spots' => 0,
+                'weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'people_needed' => 1, 'shadow_spots' => 0,
                 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => '',
             ])
             ->assertOk()
@@ -473,7 +473,7 @@ class EditScheduleTest extends TestCase
 
         $this->actingAs($user)->followingRedirects()
             ->post(route('calendar.slots.update', $slot), [
-                'weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'headcount' => 1, 'shadow_spots' => 0,
+                'weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'people_needed' => 1, 'shadow_spots' => 0,
                 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => '2026-11-12',
             ])
             ->assertOk()
@@ -491,7 +491,7 @@ class EditScheduleTest extends TestCase
         $slot = $this->thursdaySlot('18:30', '21:30');
 
         $this->actingAs($this->coordinator(Role::AreaLead, $this->hostedEvents))
-            ->post(route('calendar.slots.update', $slot), ['weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'headcount' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => ''])
+            ->post(route('calendar.slots.update', $slot), ['weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'people_needed' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => ''])
             ->assertForbidden();
     }
 
@@ -523,7 +523,7 @@ class EditScheduleTest extends TestCase
         $shift = $slot->shifts()->orderBy('local_date')->first();
 
         $this->actingAs($this->coordinator())->followingRedirects()
-            ->post(route('calendar.shift.update', $shift), ['start_time' => '17:00', 'end_time' => '20:00', 'headcount' => 2, 'shadow_spots' => 0, 'title' => ''])
+            ->post(route('calendar.shift.update', $shift), ['start_time' => '17:00', 'end_time' => '20:00', 'people_needed' => 2, 'shadow_spots' => 0, 'title' => ''])
             ->assertOk()
             ->assertSee('Saved the changes to this shift.');
 
@@ -541,8 +541,8 @@ class EditScheduleTest extends TestCase
             ->assertSee('Someone is on this shift. Editing shifts with people on them comes soon; for now, cancel this date and add a one-time shift.')
             ->assertDontSee('Save this shift');
 
-        $this->actingAs($user)->post(route('calendar.shift.update', $shift), ['start_time' => '17:00', 'end_time' => '20:00', 'headcount' => 2, 'shadow_spots' => 0])
+        $this->actingAs($user)->post(route('calendar.shift.update', $shift), ['start_time' => '17:00', 'end_time' => '20:00', 'people_needed' => 2, 'shadow_spots' => 0])
             ->assertRedirect();
-        $this->assertSame(1, $shift->fresh()->headcount);
+        $this->assertSame(1, $shift->fresh()->people_needed);
     }
 }

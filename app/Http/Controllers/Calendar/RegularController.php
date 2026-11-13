@@ -159,7 +159,7 @@ class RegularController extends Controller
     /** "Needs 2 people every week. Now: Jordan every week, and Carol every other week from Oct 9." */
     private function needs(WeeklySlot $slot, Collection $current, User $viewer): string
     {
-        $needs = 'Needs '.$slot->headcount.($slot->headcount === 1 ? ' person' : ' people').($slot->frequency === SlotFrequency::EveryOtherWeek ? ' every other week.' : ' every week.');
+        $needs = 'Needs '.$slot->people_needed.($slot->people_needed === 1 ? ' person' : ' people').($slot->frequency === SlotFrequency::EveryOtherWeek ? ' every other week.' : ' every week.');
 
         if ($current->isEmpty()) {
             return $needs.' No regulars yet.';

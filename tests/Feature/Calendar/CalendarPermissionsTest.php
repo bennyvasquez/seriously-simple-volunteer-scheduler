@@ -29,7 +29,7 @@ class CalendarPermissionsTest extends TestCase
             'local_date' => '2026-10-22',
             'starts_at' => '2026-10-22 16:00:00',
             'ends_at' => '2026-10-22 19:00:00',
-            'headcount' => 1,
+            'people_needed' => 1,
         ]);
     }
 

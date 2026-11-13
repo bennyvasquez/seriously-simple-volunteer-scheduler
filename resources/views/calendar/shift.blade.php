@@ -4,7 +4,7 @@
 @php
     $backUrl = route('calendar.week', ['date' => $shift->local_date->toDateString()] + $areaQuery);
     $panelUrl = fn (array $extra = []) => route('calendar.shift', [$shift] + $extra + $areaQuery);
-    $places = $shift->headcount;
+    $places = $shift->people_needed;
     $filled = $shift->filledCount();
 @endphp
 
@@ -101,7 +101,7 @@
 <x-field name="end_time" type="time" label="Ends at" :value="$editValues['end_time']" required />
 </div>
 <div class="slot-grid">
-<x-field name="headcount" type="number" label="People needed" :value="$editValues['headcount']" min="1" max="200" required />
+<x-field name="people_needed" type="number" label="People needed" :value="$editValues['people_needed']" min="1" max="200" required />
 <x-field name="shadow_spots" type="number" label="Shadow spots" :value="$editValues['shadow_spots']" min="0" max="200" required />
 </div>
 @if ($shift->weeklySlot)<p class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.</p>@endif

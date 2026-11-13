@@ -74,7 +74,7 @@ class RemovePersonTest extends TestCase
         return Shift::query()->create([
             'area_id' => $this->frontDesk->id, 'local_date' => $localDate,
             'starts_at' => CarbonImmutable::parse($localDate.' 18:00', 'America/Detroit')->utc(), 'ends_at' => CarbonImmutable::parse($localDate.' 21:00', 'America/Detroit')->utc(),
-            'headcount' => 2, 'shadow_spots' => 0, 'cancelled_at' => $cancelled ? now() : null,
+            'people_needed' => 2, 'shadow_spots' => 0, 'cancelled_at' => $cancelled ? now() : null,
         ]);
     }
 
@@ -82,7 +82,7 @@ class RemovePersonTest extends TestCase
     private function slotAttributes(array $overrides): array
     {
         return $overrides + [
-            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'title' => null, 'is_rotation' => false,
         ];
     }

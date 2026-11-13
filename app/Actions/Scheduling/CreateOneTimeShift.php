@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
  */
 class CreateOneTimeShift
 {
-    public function handle(User $actor, Area $area, string $localDate, string $startTime, string $endTime, int $headcount, int $shadowSpots, ?string $title): Shift
+    public function handle(User $actor, Area $area, string $localDate, string $startTime, string $endTime, int $peopleNeeded, int $shadowSpots, ?string $title): Shift
     {
         Gate::forUser($actor)->authorize('manageSchedule', $area);
 
@@ -35,8 +35,8 @@ class CreateOneTimeShift
             throw ValidationException::withMessages(['end_time' => 'A shift has to end at a different time than it starts.']);
         }
 
-        if ($headcount < 1) {
-            throw ValidationException::withMessages(['headcount' => 'At least 1 person is needed.']);
+        if ($peopleNeeded < 1) {
+            throw ValidationException::withMessages(['people_needed' => 'At least 1 person is needed.']);
         }
 
         $endDate = $end < $start ? CarbonImmutable::parse($localDate, 'UTC')->addDay()->toDateString() : $localDate;
@@ -46,7 +46,7 @@ class CreateOneTimeShift
             'local_date' => $localDate,
             'starts_at' => CarbonImmutable::parse("{$localDate} {$start}", $organization->timezone)->utc(),
             'ends_at' => CarbonImmutable::parse("{$endDate} {$end}", $organization->timezone)->utc(),
-            'headcount' => $headcount,
+            'people_needed' => $peopleNeeded,
             'shadow_spots' => $shadowSpots,
             'title' => $title,
         ]);

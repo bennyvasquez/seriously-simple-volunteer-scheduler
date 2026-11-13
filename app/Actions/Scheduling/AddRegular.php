@@ -23,7 +23,7 @@ use InvalidArgumentException;
  *
  * The actor is who made the change, or null when the system did. Adding a regular is logged about the person, with the ids of the shifts they were added to.
  *
- * A regular can work every week or, on a weekly slot, every other week from an anchor date. Headcount is checked date by date, so two people alternating weeks don't count against each other.
+ * A regular can work every week or, on a weekly slot, every other week from an anchor date. People needed is checked date by date, so two people alternating weeks don't count against each other.
  *
  * Shifts that have started, are cancelled, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
  *
@@ -111,7 +111,7 @@ class AddRegular
                 $date = $shift->local_date->toDateString();
 
                 if ($shift->cancelled_at !== null || ! $regular->activeOn($date) || $on->contains('user_id', $user->id)
-                    || $on->where('type', AssignmentType::Regular)->count() >= $shift->headcount) {
+                    || $on->where('type', AssignmentType::Regular)->count() >= $shift->people_needed) {
                     continue;
                 }
 
@@ -149,7 +149,7 @@ class AddRegular
     }
 
     /**
-     * Returns the first date (Y-m-d) the new regular would work on which the slot already has its full headcount of regulars, or null. After the last start or end date among the slot and these regulars, who works when repeats every two weeks, so checking two weeks past it covers every later date.
+     * Returns the first date (Y-m-d) the new regular would work on which the slot already has as many regulars as it needs people, or null. After the last start or end date among the slot and these regulars, who works when repeats every two weeks, so checking two weeks past it covers every later date.
      *
      * @param  Collection<int, SlotRegular>  $overlapping
      */
@@ -175,7 +175,7 @@ class AddRegular
                 continue;
             }
 
-            if ($overlapping->filter(fn (SlotRegular $other) => $other->activeOn($date))->count() >= $slot->headcount) {
+            if ($overlapping->filter(fn (SlotRegular $other) => $other->activeOn($date))->count() >= $slot->people_needed) {
                 return $date;
             }
         }

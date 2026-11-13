@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A person on a specific shift. Shadow assignments never count toward the shift's headcount.
+ * A person on a specific shift. Shadow assignments never count toward the shift's number of people needed.
  */
 class Assignment extends Model
 {

@@ -58,7 +58,7 @@
 </fieldset>
 @endif
 <div class="add-times add-two">
-<x-field name="headcount" type="number" label="People needed" :value="$values['headcount']" min="1" max="200" required />
+<x-field name="people_needed" type="number" label="People needed" :value="$values['people_needed']" min="1" max="200" required />
 <x-field name="shadow_spots" type="number" label="Shadow spots" :value="$values['shadow_spots']" min="0" max="200" required />
 </div>
 <div class="add-actions">

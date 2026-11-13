@@ -48,7 +48,7 @@ class AddController extends Controller
             'start_time' => (string) $request->old('start_time', '18:00'),
             'end_time' => (string) $request->old('end_time', '21:00'),
             'repeats' => (string) $request->old('repeats', 'none'),
-            'headcount' => (string) $request->old('headcount', '1'),
+            'people_needed' => (string) $request->old('people_needed', '1'),
             'shadow_spots' => (string) $request->old('shadow_spots', '0'),
             'ends' => (string) $request->old('ends', 'never'),
             'ends_on' => (string) $request->old('ends_on', ''),
@@ -79,7 +79,7 @@ class AddController extends Controller
 
         if ($request->filled('more')) {
             // Sent as a POST so the CSRF token never lands in a URL; the typed values travel in the redirect's query.
-            return redirect()->route('calendar.slots.create', array_filter($request->only(['area', 'title', 'date', 'start_time', 'end_time', 'repeats', 'headcount', 'shadow_spots', 'ends', 'ends_on', 'fills_by']), fn ($value) => is_string($value) && $value !== '') + $areaQuery);
+            return redirect()->route('calendar.slots.create', array_filter($request->only(['area', 'title', 'date', 'start_time', 'end_time', 'repeats', 'people_needed', 'shadow_spots', 'ends', 'ends_on', 'fills_by']), fn ($value) => is_string($value) && $value !== '') + $areaQuery);
         }
 
         $area = $this->authorizedArea($request);
@@ -92,7 +92,7 @@ class AddController extends Controller
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
             'repeats' => ['required', Rule::in(['none', 'weekly', 'every_other_week'])],
-            'headcount' => ['required', 'integer', 'min:1', 'max:200'],
+            'people_needed' => ['required', 'integer', 'min:1', 'max:200'],
             'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
             'ends' => [Rule::requiredIf($repeating), Rule::in(['never', 'on'])],
             'ends_on' => [Rule::requiredIf($repeating && $request->input('ends') === 'on'), 'nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:date'],
@@ -103,7 +103,7 @@ class AddController extends Controller
         $date = CarbonImmutable::parse($data['date'], 'UTC');
 
         if (! $repeating) {
-            $shift = $createShift->handle($actor, $area, $data['date'], $data['start_time'], $data['end_time'], (int) $data['headcount'], (int) $data['shadow_spots'], $data['title'] ?? null);
+            $shift = $createShift->handle($actor, $area, $data['date'], $data['start_time'], $data['end_time'], (int) $data['people_needed'], (int) $data['shadow_spots'], $data['title'] ?? null);
 
             return redirect()->route('calendar.week', ['date' => $data['date']] + $areaQuery)->with('status', 'Added '.($shift->title === null ? 'a shift for '.$area->name : 'the '.$this->lowerFirst($shift->title)).' on '.$date->format('l, F j').'.');
         }
@@ -112,7 +112,7 @@ class AddController extends Controller
             'weekday' => $date->dayOfWeek,
             'start_time' => $data['start_time'],
             'end_time' => $data['end_time'],
-            'headcount' => $data['headcount'],
+            'people_needed' => $data['people_needed'],
             'shadow_spots' => $data['shadow_spots'],
             'frequency' => $data['repeats'],
             'valid_from' => $data['date'],
@@ -139,7 +139,7 @@ class AddController extends Controller
             'weekday' => (string) CarbonImmutable::parse($date, 'UTC')->dayOfWeek,
             'start_time' => (string) $request->query('start_time', '18:00'),
             'end_time' => (string) $request->query('end_time', '21:00'),
-            'headcount' => (string) $request->query('headcount', '1'),
+            'people_needed' => (string) $request->query('people_needed', '1'),
             'shadow_spots' => (string) $request->query('shadow_spots', '0'),
             'frequency' => $repeats,
             'fills_by' => $request->query('fills_by') === 'rotation' ? 'rotation' : 'regulars',
@@ -163,7 +163,7 @@ class AddController extends Controller
             'weekday' => (string) $slot->weekday,
             'start_time' => substr($slot->start_time, 0, 5),
             'end_time' => substr($slot->end_time, 0, 5),
-            'headcount' => (string) $slot->headcount,
+            'people_needed' => (string) $slot->people_needed,
             'shadow_spots' => (string) $slot->shadow_spots,
             'frequency' => $slot->frequency->value,
             'fills_by' => $slot->is_rotation ? 'rotation' : 'regulars',
@@ -504,10 +504,10 @@ class AddController extends Controller
             'end_time.required' => 'Pick an end time.',
             'end_time.date_format' => 'Pick an end time.',
             'end_time.different' => 'A shift has to end at a different time than it starts.',
-            'headcount.required' => 'At least 1 person is needed.',
-            'headcount.integer' => 'At least 1 person is needed.',
-            'headcount.min' => 'At least 1 person is needed.',
-            'headcount.max' => 'That is more people than one shift can have. Use 200 or fewer.',
+            'people_needed.required' => 'At least 1 person is needed.',
+            'people_needed.integer' => 'At least 1 person is needed.',
+            'people_needed.min' => 'At least 1 person is needed.',
+            'people_needed.max' => 'That is more people than one shift can have. Use 200 or fewer.',
             'shadow_spots.required' => 'Enter 0 if there are no shadow spots.',
             'shadow_spots.integer' => 'Enter 0 if there are no shadow spots.',
             'shadow_spots.min' => 'Enter 0 if there are no shadow spots.',

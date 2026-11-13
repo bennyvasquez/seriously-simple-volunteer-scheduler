@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * The one place a weekly slot's values are checked and turned into model attributes, shared by CreateWeeklySlot, UpdateWeeklySlot and the slot form.
  *
- * Action keys: weekday (0 is Sunday), start_time, end_time, headcount, shadow_spots, frequency, valid_from, valid_until, title, is_rotation. Form keys are the same, except "fills_by" (regulars or rotation) in place of is_rotation and an empty last date for none.
+ * Action keys: weekday (0 is Sunday), start_time, end_time, people_needed, shadow_spots, frequency, valid_from, valid_until, title, is_rotation. Form keys are the same, except "fills_by" (regulars or rotation) in place of is_rotation and an empty last date for none.
  */
 final class SlotAttributes
 {
@@ -54,8 +54,8 @@ final class SlotAttributes
             throw ValidationException::withMessages(['end_time' => 'A shift has to end at a different time than it starts.']);
         }
 
-        if ((int) $input['headcount'] < 1) {
-            throw ValidationException::withMessages(['headcount' => 'At least 1 person is needed.']);
+        if ((int) $input['people_needed'] < 1) {
+            throw ValidationException::withMessages(['people_needed' => 'At least 1 person is needed.']);
         }
 
         if ((int) $input['shadow_spots'] < 0) {
@@ -70,7 +70,7 @@ final class SlotAttributes
             'weekday' => $weekday,
             'start_time' => $start,
             'end_time' => $end,
-            'headcount' => (int) $input['headcount'],
+            'people_needed' => (int) $input['people_needed'],
             'shadow_spots' => (int) $input['shadow_spots'],
             'frequency' => $frequency,
             'anchor_date' => $frequency === SlotFrequency::EveryOtherWeek ? $validFrom : null,
@@ -99,7 +99,7 @@ final class SlotAttributes
             'weekday' => ['required', 'integer', 'between:0,6'],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
-            'headcount' => ['required', 'integer', 'min:1', 'max:200'],
+            'people_needed' => ['required', 'integer', 'min:1', 'max:200'],
             'shadow_spots' => ['required', 'integer', 'min:0', 'max:200'],
             'frequency' => ['required', Rule::enum(SlotFrequency::class)],
             'fills_by' => ['required', Rule::in(['regulars', 'rotation'])],
@@ -119,7 +119,7 @@ final class SlotAttributes
             'weekday' => $data['weekday'],
             'start_time' => $data['start_time'],
             'end_time' => $data['end_time'],
-            'headcount' => $data['headcount'],
+            'people_needed' => $data['people_needed'],
             'shadow_spots' => $data['shadow_spots'],
             'frequency' => $data['frequency'],
             'valid_from' => $data['valid_from'],

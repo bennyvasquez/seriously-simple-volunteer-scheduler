@@ -69,7 +69,7 @@ class CalendarColumnsTest extends TestCase
             'local_date' => $now->addHours(20)->toDateString(),
             'starts_at' => $now->addHours(20),
             'ends_at' => $now->addHours(23),
-            'headcount' => 2,
+            'people_needed' => 2,
             'shadow_spots' => 1,
         ]);
         $shift->assignments()->create(['user_id' => User::factory()->create()->id, 'type' => AssignmentType::Regular]);

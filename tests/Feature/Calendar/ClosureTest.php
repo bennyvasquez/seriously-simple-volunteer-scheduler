@@ -198,11 +198,11 @@ class ClosureTest extends TestCase
     {
         Notification::fake();
         $slot = app(CreateWeeklySlot::class)->handle($this->coordinator(), $this->frontDesk, [
-            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
         ]);
         app(CreateClosure::class)->handle($this->coordinator(), [$this->frontDesk->id], '2026-11-26', '2026-11-26', 'Thanksgiving');
-        $attributes = ['weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => 1, 'shadow_spots' => 0, 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false];
+        $attributes = ['weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => 1, 'shadow_spots' => 0, 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false];
 
         app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['frequency' => 'every_other_week'] + $attributes);
         app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['frequency' => 'weekly'] + $attributes);

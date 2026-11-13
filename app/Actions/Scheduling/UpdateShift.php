@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Changes one shift's times, headcount, shadow spots or title. The date stays. Times are local wall-clock times, and an end before the start means the next day. Keys left out keep their current value.
+ * Changes one shift's times, people needed, shadow spots or title. The date stays. Times are local wall-clock times, and an end before the start means the next day. Keys left out keep their current value.
  *
  * Only a shift nobody is on can be edited for now, since changing a shift someone is on needs the change notices from the editing plan. Sets edited_at, so later changes to its weekly slot leave it alone. Refuses a shift that has started or is cancelled. Saving without a change does nothing.
  */
@@ -45,7 +45,7 @@ class UpdateShift
 
             $start = CarbonImmutable::parse($attributes['start_time'] ?? $fresh->starts_at->setTimezone($timezone)->format('H:i'))->format('H:i');
             $end = CarbonImmutable::parse($attributes['end_time'] ?? $fresh->ends_at->setTimezone($timezone)->format('H:i'))->format('H:i');
-            $headcount = (int) ($attributes['headcount'] ?? $fresh->headcount);
+            $peopleNeeded = (int) ($attributes['people_needed'] ?? $fresh->people_needed);
             $shadowSpots = (int) ($attributes['shadow_spots'] ?? $fresh->shadow_spots);
             $title = array_key_exists('title', $attributes) ? trim((string) $attributes['title']) : (string) $fresh->title;
 
@@ -53,8 +53,8 @@ class UpdateShift
                 throw ValidationException::withMessages(['end_time' => 'A shift has to end at a different time than it starts.']);
             }
 
-            if ($headcount < 1) {
-                throw ValidationException::withMessages(['headcount' => 'At least 1 person is needed.']);
+            if ($peopleNeeded < 1) {
+                throw ValidationException::withMessages(['people_needed' => 'At least 1 person is needed.']);
             }
 
             if ($shadowSpots < 0) {
@@ -72,7 +72,7 @@ class UpdateShift
             $fresh->fill([
                 'starts_at' => $startsAt,
                 'ends_at' => CarbonImmutable::parse("{$endDate} {$end}", $timezone)->utc(),
-                'headcount' => $headcount,
+                'people_needed' => $peopleNeeded,
                 'shadow_spots' => $shadowSpots,
                 'title' => $title === '' ? null : $title,
             ]);

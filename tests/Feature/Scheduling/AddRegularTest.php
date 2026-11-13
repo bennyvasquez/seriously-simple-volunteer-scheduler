@@ -35,7 +35,7 @@ class AddRegularTest extends TestCase
         // Thursday 15 October 2026, 10:00 in New York. Generates shifts on 15, 22 and 29 October.
         $this->travelTo(CarbonImmutable::parse('2026-10-15 10:00', 'America/New_York'));
         $organization = Organization::factory()->create(['timezone' => 'America/New_York', 'weeks_ahead' => 3]);
-        $this->slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1]);
+        $this->slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 1]);
         app(GenerateShifts::class)->handle($organization);
     }
 
@@ -144,8 +144,8 @@ class AddRegularTest extends TestCase
 
     public function test_someone_who_took_one_date_can_become_the_regular(): void
     {
-        $this->slot->update(['headcount' => 2]);
-        Shift::query()->update(['headcount' => 2]);
+        $this->slot->update(['people_needed' => 2]);
+        Shift::query()->update(['people_needed' => 2]);
         $user = User::factory()->create();
         $shift = Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail();
         $shift->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Regular]);
@@ -158,7 +158,7 @@ class AddRegularTest extends TestCase
 
     public function test_the_same_person_cannot_be_added_twice_for_overlapping_dates(): void
     {
-        $this->slot->update(['headcount' => 2]);
+        $this->slot->update(['people_needed' => 2]);
         $user = User::factory()->create();
         $this->addRegular($user, '2026-10-01');
 
@@ -228,11 +228,11 @@ class AddRegularTest extends TestCase
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-29');
     }
 
-    public function test_headcount_is_checked_date_by_date(): void
+    public function test_people_needed_is_checked_date_by_date(): void
     {
-        // Shifts copy headcount when generated, so give the existing ones room too.
-        $this->slot->update(['headcount' => 2]);
-        Shift::query()->update(['headcount' => 2]);
+        // Shifts copy people needed when generated, so give the existing ones room too.
+        $this->slot->update(['people_needed' => 2]);
+        Shift::query()->update(['people_needed' => 2]);
         $this->addRegular(User::factory()->create(), '2026-10-01', '2026-10-15');
         $this->addRegular(User::factory()->create(), '2026-10-20');
         $user = User::factory()->create();
@@ -267,9 +267,9 @@ class AddRegularTest extends TestCase
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-15', $slot);
     }
 
-    public function test_headcount_is_checked_for_a_slot_that_starts_later(): void
+    public function test_people_needed_is_checked_for_a_slot_that_starts_later(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1, 'valid_from' => '2027-01-07']);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 1, 'valid_from' => '2027-01-07']);
         app(AddRegular::class)->handle(null, $slot, User::factory()->create(), '2026-10-15');
 
         $this->expectException(DomainException::class);
@@ -336,7 +336,7 @@ class AddRegularTest extends TestCase
             'local_date' => $date,
             'starts_at' => CarbonImmutable::parse("{$date} {$start}", 'America/New_York')->utc(),
             'ends_at' => CarbonImmutable::parse("{$date} {$end}", 'America/New_York')->utc(),
-            'headcount' => 1,
+            'people_needed' => 1,
             'shadow_spots' => 0,
             'cancelled_at' => $cancelled ? now() : null,
         ]);
