@@ -98,7 +98,6 @@ class ShiftController extends Controller
             'canEdit' => $canEdit,
             'canEditSlot' => $canEditSlot,
             'editing' => $editing,
-            'peopleOnIt' => $shift->assignments->count(),
             'editValues' => [
                 'start_time' => (string) $request->old('start_time', $shift->starts_at->setTimezone(Organization::current()->timezone)->format('H:i')),
                 'end_time' => (string) $request->old('end_time', $shift->ends_at->setTimezone(Organization::current()->timezone)->format('H:i')),

@@ -10,6 +10,7 @@ use App\Actions\Scheduling\UpdateShift;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Models\Area;
+use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
@@ -76,7 +77,10 @@ class EditStaffedShiftTest extends TestCase
         app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '17:00', 'end_time' => '20:00']);
 
         $entry = ChangeLogEntry::query()->ofAction('shift.updated')->sole();
-        $this->assertArrayHasKey('starts_at', $entry->changes);
+        $this->assertSame(
+            ['old' => CarbonImmutable::parse('2026-10-22 18:00', self::TIMEZONE)->utc()->format('Y-m-d H:i:s'), 'new' => CarbonImmutable::parse('2026-10-22 17:00', self::TIMEZONE)->utc()->format('Y-m-d H:i:s')],
+            $entry->changes['starts_at'],
+        );
 
         foreach ([$robin, $casey] as $person) {
             Notification::assertSentTo($person, ShiftChangedNotification::class, function (ShiftChangedNotification $notification) use ($person) {
@@ -179,9 +183,69 @@ class EditStaffedShiftTest extends TestCase
 
         $this->actingAs($this->coordinator)->get(route('calendar.shift', [$shift, 'edit' => 1]))
             ->assertOk()
-            ->assertSee("Only Thursday, October 15. Later changes to the weekly slot won't overwrite it. The 2 people on it are emailed if the time changes.", false)
+            ->assertSee("Only Thursday, October 15. Later changes to the weekly slot won't overwrite it. The 2 people on it are emailed if the time or what it's for changes.", false)
             ->assertSee('The weekly slot (future shifts nobody changed on their own)');
 
         $this->actingAs($this->coordinator)->get(route('calendar.shift', [$shift, 'edit' => 'shift']))->assertOk()->assertSee('Save this shift');
+    }
+
+    public function test_only_people_who_can_sign_in_are_counted_and_emailed(): void
+    {
+        $slot = app(CreateWeeklySlot::class)->handle($this->coordinator, $this->frontDesk, [
+            'weekday' => 4, 'start_time' => '18:00', 'end_time' => '21:00', 'people_needed' => 2, 'shadow_spots' => 0,
+            'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
+        ]);
+        $shift = $slot->shifts()->orderBy('local_date')->first();
+        $robin = $this->person('Robin');
+        $casey = User::factory()->notInvited()->create(['name' => 'Casey', 'email' => 'casey@example.org']);
+        $this->putOn($shift, $robin);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $casey->id, 'type' => AssignmentType::Regular]);
+
+        $this->actingAs($this->coordinator)->get(route('calendar.shift', [$shift, 'edit' => 1]))
+            ->assertOk()
+            ->assertSee("The 1 person on it is emailed if the time or what it's for changes.", false);
+
+        Notification::fake();
+        app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '17:00', 'end_time' => '20:00']);
+
+        Notification::assertSentTo($robin, ShiftChangedNotification::class);
+        Notification::assertNotSentTo($casey, ShiftChangedNotification::class);
+        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+    }
+
+    public function test_the_notification_for_several_shifts(): void
+    {
+        $desk = $this->shift($this->frontDesk, '17:00', '20:00');
+        $events = $this->shift($this->hostedEvents, '19:30', '22:00', 1);
+        $robin = $this->person('Robin');
+        $notification = new ShiftChangedNotification(collect([
+            ['shift' => $desk->load('area'), 'was' => '6 to 9pm', 'wasTitle' => null],
+            ['shift' => $events->load('area'), 'was' => '8 to 10pm', 'wasTitle' => null],
+        ]));
+        $mail = $notification->toMail($robin);
+
+        $this->assertSame('Your shifts changed', $mail->subject);
+        $this->assertSame([
+            "Your Front desk shift on Thursday, October 22 changed. It's now 5 to 8pm; it was 6 to 9pm.",
+            "Your Hosted events shift on Thursday, October 22 changed. It's now 7:30 to 10pm; it was 8 to 10pm.",
+            "If you can't make it, let your coordinator know.",
+        ], $mail->introLines);
+    }
+
+    public function test_a_refused_edit_shows_its_message_beside_start_time(): void
+    {
+        $robin = $this->person('Robin');
+        $desk = $this->shift($this->frontDesk, '17:00', '19:00');
+        $events = $this->shift($this->hostedEvents, '20:00', '22:00');
+        $this->putOn($desk, $robin);
+        $this->putOn($events, $robin);
+
+        $this->actingAs($this->coordinator)->followingRedirects()
+            ->post(route('calendar.shift.update', $desk), ['start_time' => '19:00', 'end_time' => '21:00', 'people_needed' => 2, 'shadow_spots' => 0, 'title' => ''])
+            ->assertOk()
+            ->assertSee('Robin is on Hosted events, Thursday, October 22, 8 to 10pm at that time.')
+            ->assertSee('Save this shift');
+
+        $this->assertSame('17:00', $desk->fresh()->starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
     }
 }
