@@ -89,9 +89,10 @@ class AddRegular
                 throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
             }
 
+            // A regular whose end is before its start (ended before it started, or released by a turn-off) never works a date, so it's left out.
             $overlapping = $slot->regulars()
                 ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))
-                ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $startsOn))
+                ->where(fn ($query) => $query->whereNull('ends_on')->orWhere(fn ($dated) => $dated->where('ends_on', '>=', $startsOn)->whereColumn('ends_on', '>=', 'starts_on')))
                 ->lockForUpdate()
                 ->get();
 
@@ -175,7 +176,7 @@ class AddRegular
 
         $overlapping ??= $slot->regulars()
             ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))
-            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $startsOn))
+            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere(fn ($dated) => $dated->where('ends_on', '>=', $startsOn)->whereColumn('ends_on', '>=', 'starts_on')))
             ->get();
 
         $lastChange = $overlapping

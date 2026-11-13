@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Actions\Accounts\DeactivateUser;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\EndRegular;
@@ -444,5 +445,24 @@ class AddRegularTest extends TestCase
 
         $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29', '2026-11-12', '2026-11-19'], $this->datesFor($robin));
         $this->assertNotContains('2026-11-05', $this->datesFor($robin));
+    }
+
+    public function test_someone_whose_future_regular_never_started_can_be_added_again_from_an_earlier_date(): void
+    {
+        $coordinator = User::factory()->create(['name' => 'Alex']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+        $robin = User::factory()->create();
+        $future = app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-11-05');
+
+        // Turning Robin off releases the regular before it starts, storing an end the day before its start.
+        app(DeactivateUser::class)->handle($coordinator, $robin);
+        $this->assertSame('2026-11-04', $future->fresh()->ends_on->toDateString());
+        // Robin comes back.
+        $robin->forceFill(['deactivated_at' => null])->save();
+
+        $again = app(AddRegular::class)->handle(null, $this->slot, $robin->fresh(), '2026-10-22');
+
+        $this->assertTrue($again->exists);
+        $this->assertSame(['2026-10-22', '2026-10-29'], $this->datesFor($robin));
     }
 }
