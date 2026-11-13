@@ -68,6 +68,8 @@ class RemovePerson
         $today = Organization::current()->today()->toDateString();
         $stillRegular = $person->regulars()
             ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today))
+            // A regular ended before it started never works a date.
+            ->where(fn ($query) => $query->whereNull('ends_on')->orWhereColumn('ends_on', '>=', 'starts_on'))
             ->whereHas('weeklySlot', fn ($slot) => $slot->where(fn ($valid) => $valid->whereNull('valid_until')->orWhere('valid_until', '>=', $today)))
             ->exists();
 

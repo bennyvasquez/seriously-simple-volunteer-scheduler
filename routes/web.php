@@ -55,6 +55,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/shifts/{shift}', [ShiftController::class, 'update'])->name('calendar.shift.update');
         Route::get('/calendar/slots/{slot}/regulars/create', [RegularController::class, 'create'])->name('calendar.slots.regulars.create');
         Route::post('/calendar/slots/{slot}/regulars', [RegularController::class, 'store'])->name('calendar.slots.regulars.store');
+        Route::get('/calendar/slots/{slot}/regulars/{regular}/end', [RegularController::class, 'end'])->name('calendar.slots.regulars.end');
+        Route::post('/calendar/slots/{slot}/regulars/{regular}/end', [RegularController::class, 'endStore'])->name('calendar.slots.regulars.end.store');
         Route::get('/calendar/slots/{slot}/edit', [AddController::class, 'editSlot'])->name('calendar.slots.edit');
         Route::post('/calendar/slots/{slot}', [AddController::class, 'updateSlot'])->name('calendar.slots.update');
         Route::get('/calendar/closures/create', [ClosureController::class, 'create'])->name('calendar.closures.create');

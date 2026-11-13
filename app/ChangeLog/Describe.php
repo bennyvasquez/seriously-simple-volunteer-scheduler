@@ -60,6 +60,7 @@ final class Describe
             'slot.created' => 'Added the weekly slot for '.self::slotWords($entry->subject),
             'slot.updated' => 'Changed the weekly slot for '.self::slotWords($entry->subject),
             'regular.added' => 'Added '.$person.' as the regular for '.self::slotWords($entry->subject instanceof SlotRegular ? $entry->subject->weeklySlot : null),
+            'regular.ended' => 'Ended '.$possessive.' time as the regular for '.self::slotWords($entry->subject instanceof SlotRegular ? $entry->subject->weeklySlot : null),
             'shift.created' => 'Added '.self::shiftWords($entry->subject),
             'shift.updated' => 'Changed '.self::shiftWords($entry->subject, true),
             'shift.cancelled' => 'Cancelled '.self::shiftWords($entry->subject, true),

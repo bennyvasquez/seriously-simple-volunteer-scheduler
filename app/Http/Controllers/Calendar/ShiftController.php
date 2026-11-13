@@ -72,7 +72,7 @@ class ShiftController extends Controller
             'shift' => $shift,
             'when' => $shift->whenText(),
             'repeats' => $this->repeats($shift),
-            'people' => $this->people($shift, $user),
+            'people' => $this->people($shift, $user, $canAddRegular),
             'shadowsTaken' => $shift->assignments->where('type', AssignmentType::Shadow)->count(),
             'canAssign' => $canAssign,
             'canCancel' => $canCancel,
@@ -297,8 +297,8 @@ class ShiftController extends Controller
         return 'Repeats '.$every.', since '.$slot->valid_from->format('M j').'. '.($slot->valid_until === null ? 'No end date.' : 'Ends '.$slot->valid_until->format('M j').'.');
     }
 
-    /** @return Collection<int, array{name: string, role: string, remove: ?string}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
-    private function people(Shift $shift, User $viewer): Collection
+    /** @return Collection<int, array{name: string, role: string, remove: ?string, end: ?string}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
+    private function people(Shift $shift, User $viewer, bool $canManageSlot): Collection
     {
         $date = $shift->local_date->toDateString();
         $slot = $shift->weeklySlot;
@@ -307,23 +307,26 @@ class ShiftController extends Controller
         $canRemove = $shift->starts_at->greaterThan(now()) && Gate::forUser($viewer)->allows('removePerson', $shift);
         $remove = fn (Assignment $assignment) => $canRemove ? route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id] + $this->areaQuery(request())) : null;
 
-        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer, $remove) {
+        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer, $remove, $canManageSlot) {
             $name = PersonSearch::displayName($viewer, $assignment->user);
 
             if ($assignment->type === AssignmentType::Shadow) {
-                return ['name' => $name, 'role' => 'Shadowing', 'remove' => $remove($assignment)];
+                return ['name' => $name, 'role' => 'Shadowing', 'remove' => $remove($assignment), 'end' => null];
             }
 
             $regular = $slot?->regulars->first(fn (SlotRegular $regular) => $regular->user_id === $assignment->user_id && $regular->activeOn($date));
 
             if ($regular === null) {
-                return ['name' => $name, 'role' => 'Regular', 'remove' => $remove($assignment)];
+                return ['name' => $name, 'role' => 'Regular', 'remove' => $remove($assignment), 'end' => null];
             }
 
             // On a slot that already runs every other week, its regulars work every date it runs.
             $everyOther = $regular->frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek;
 
-            return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week', 'remove' => $remove($assignment)];
+            // The link to end their time as a regular, for people who manage the slot's area.
+            $end = $canManageSlot ? route('calendar.slots.regulars.end', [$slot, $regular, 'date' => $date] + $this->areaQuery(request())) : null;
+
+            return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week', 'remove' => $remove($assignment), 'end' => $end];
         })->values();
     }
 }

@@ -4,6 +4,7 @@ namespace App\Actions\Scheduling;
 
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
+use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Shift;
@@ -24,6 +25,8 @@ use InvalidArgumentException;
  * The actor is who made the change, or null when the system did. Adding a regular is logged about the person, with the ids of the shifts they were added to.
  *
  * A regular can work every week or, on a weekly slot, every other week from an anchor date. People needed is checked date by date, so two people alternating weeks don't count against each other. Going over it is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the dates (see overDates()).
+ *
+ * The transaction locks the area, then the slot, then reads the regulars and locks the shifts, the same order EndRegular uses, so the two can't interleave.
  *
  * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
  *
@@ -75,6 +78,10 @@ class AddRegular
         $regular->ensureValid();
 
         $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn, $overConfirmed) {
+            // The area then the slot, before reading the regulars: the order EndRegular and the other scheduling actions lock in.
+            Area::query()->whereKey($slot->area_id)->lockForUpdate()->firstOrFail();
+            WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
+
             $overlapping = $slot->regulars()
                 ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))
                 ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $startsOn))

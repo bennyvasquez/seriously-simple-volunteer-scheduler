@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\EndRegular;
 use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Calendar\PersonSearch;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
+use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
@@ -140,6 +142,86 @@ class RegularController extends Controller
                 1 => 'We added them to 1 shift already on the schedule.',
                 default => 'We added them to '.$added.' shifts already on the schedule.',
             }.$this->overlapsSentence($regular->skipped_overlaps).($regularUser->canSignIn() ? ' We\'ll email '.$first.' to let them know.' : ''));
+    }
+
+    /** Ending a regular's time on the slot, beside the week, opened from a shift (`?date=`) the regular is on. */
+    public function end(Request $request, CalendarController $calendar, WeeklySlot $slot, SlotRegular $regular): View
+    {
+        $this->checkEnd($request, $slot, $regular);
+        $date = $this->dateParam($request);
+        $lastDate = (string) $request->old('last_date', $request->query('last_date', CarbonImmutable::parse($date, 'UTC')->subDay()->toDateString()));
+
+        return $this->endView($request, $calendar, $slot, $regular, $date, $lastDate);
+    }
+
+    /** Ends the regular's time. A last date that has already passed with past shifts after it comes back to the same page, listing them, until the coordinator confirms. */
+    public function endStore(Request $request, CalendarController $calendar, EndRegular $endRegular, WeeklySlot $slot, SlotRegular $regular): View|RedirectResponse
+    {
+        $this->checkEnd($request, $slot, $regular);
+        $viewer = $request->user();
+        $date = $this->dateParam($request);
+        $areaQuery = $this->areaQuery($request);
+        $back = fn (array $extra = []) => redirect()->route('calendar.slots.regulars.end', [$slot, $regular, 'date' => $date] + $extra + $areaQuery)->withInput();
+
+        $validator = Validator::make($request->all(), ['last_date' => ['required', 'date_format:Y-m-d']], ['last_date.*' => 'Pick the last date they work.']);
+
+        if ($validator->fails()) {
+            return $back()->withErrors($validator);
+        }
+
+        $lastDate = (string) $validator->validated()['last_date'];
+        $past = $endRegular->pastShifts($regular, $lastDate);
+
+        if ($past->isNotEmpty() && ! $request->boolean('past_confirmed')) {
+            return $this->endView($request, $calendar, $slot, $regular, $date, $lastDate, $past);
+        }
+
+        try {
+            $ended = $endRegular->handle($viewer, $regular, $lastDate, $request->boolean('past_confirmed'));
+        } catch (DomainException $e) {
+            return $back()->withErrors(['last_date' => $e->getMessage()]);
+        }
+
+        $first = $regular->user->firstName();
+        $count = $ended->removed_from_shifts;
+        $shift = $slot->shifts()->where('local_date', $date)->first();
+        $status = $first.' is no longer a regular after '.CarbonImmutable::parse($lastDate, 'UTC')->format('l, F j').'. They were removed from '.$count.($count === 1 ? ' shift.' : ' shifts.');
+
+        return ($shift !== null
+            ? redirect()->route('calendar.shift', [$shift] + $areaQuery)
+            : redirect()->route('calendar.week', ['date' => $date] + $areaQuery))->with('status', $status);
+    }
+
+    private function checkEnd(Request $request, WeeklySlot $slot, SlotRegular $regular): void
+    {
+        abort_unless($regular->weekly_slot_id === $slot->id, 404);
+        Gate::forUser($request->user())->authorize('manageSchedule', $slot->area);
+    }
+
+    /** The date of the shift the page was opened from, today when it's missing or isn't a date. */
+    private function dateParam(Request $request): string
+    {
+        $date = (string) $request->input('date', $request->query('date', ''));
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Organization::current()->today()->toDateString();
+    }
+
+    /** @param  Collection<int, Shift>  $past */
+    private function endView(Request $request, CalendarController $calendar, WeeklySlot $slot, SlotRegular $regular, string $date, string $lastDate, ?Collection $past = null): View
+    {
+        $request->query->set('date', $date);
+        $viewer = $request->user();
+        $regular->loadMissing('user');
+
+        return view('calendar.end-regular', $calendar->week($request)->getData() + [
+            'slot' => $slot->load('area'),
+            'slotText' => $slot->describe(),
+            'regular' => $regular,
+            'person' => $regular->user,
+            'personName' => PersonSearch::displayName($viewer, $regular->user),
+            'lastDate' => $lastDate,
+            'pastShifts' => $past,
+        ]);
     }
 
     /**

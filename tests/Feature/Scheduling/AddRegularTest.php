@@ -4,6 +4,7 @@ namespace Tests\Feature\Scheduling;
 
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\EndRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Enums\AssignmentType;
@@ -426,5 +427,22 @@ class AddRegularTest extends TestCase
             $this->assertSame($shift->id, $entry->changes['shift_id']['new']);
         }
         $this->assertSame(3, ChangeLogEntry::query()->about($robin)->ofAction('assignment.added')->count());
+    }
+
+    public function test_adding_a_regular_after_their_end_does_not_put_them_back(): void
+    {
+        Organization::current()->update(['weeks_ahead' => 6]);
+        app(GenerateShifts::class)->handle(Organization::current());
+        $coordinator = User::factory()->create(['name' => 'Alex']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+        $robin = User::factory()->create();
+        $first = app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-10-01');
+
+        // The area and slot locks AddRegular takes match EndRegular's order (area, slot, regular, shifts), checked in review because a race can't be tested reliably.
+        app(EndRegular::class)->handle($coordinator, $first, '2026-10-29');
+        app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-11-12');
+
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29', '2026-11-12', '2026-11-19'], $this->datesFor($robin));
+        $this->assertNotContains('2026-11-05', $this->datesFor($robin));
     }
 }
