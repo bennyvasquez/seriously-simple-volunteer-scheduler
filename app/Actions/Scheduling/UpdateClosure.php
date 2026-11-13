@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Changes a closure's days or reason (spec section 8.5), with the same checks and messages as adding one. A closure that has started keeps its first day, and its last day can move only while it's yesterday or later; ending it yesterday reopens today. Days that have passed are never changed: to fix them, remove the closure.
+ * Changes a closure's days or reason (spec section 8.5), with the same checks and messages as adding one. A closure that has started keeps its first day, and its last day can move only to yesterday or later; ending it yesterday reopens today. A closure that ended before yesterday keeps its days. Days that have passed are never changed: to fix them, remove the closure.
  *
  * In one transaction, locking the area, the closure and then every shift the change can touch (by start, then id): days it no longer covers get their shifts back (see releaseLocked()), newly covered days have their shifts cancelled (CreateClosure::cancelCovered()), and a new reason is copied onto the shifts it cancelled, without email. Shifts that have started are never changed. After the transaction commits, each of the area's weekly slots is generated again, so days that reopened get the shifts they never had; generation locks the slot and its regulars, which can't come after the shift locks held inside. After the response, each person gets at most one email: the shifts cancelled, the shifts back on, or both.
  */
@@ -28,6 +28,11 @@ class UpdateClosure
     public const SLOT_CHANGED = 'The weekly slot changed';
 
     public const STARTED = 'This closure has already started, so only its last day can change. To fix days that have passed, remove it.';
+
+    public const BEFORE_YESTERDAY = 'The last day can\'t be before yesterday.';
+
+    /** A closure whose last day was before yesterday keeps its days; only its reason can change. */
+    public const ENDED = 'This closure has ended. To close more days, add a new closure.';
 
     /**
      * What the last handle() did, for the status line: the shifts cancelled and brought back, how many people are emailed, and who was removed from a shift that came back because they're now on another shift at that time.
@@ -66,8 +71,18 @@ class UpdateClosure
             if ($oldFirst->lessThan($today)) {
                 $yesterday = $today->subDay();
 
-                if (! $first->equalTo($oldFirst) || (! $last->equalTo($oldLast) && ($last->lessThan($yesterday) || $oldLast->lessThan($yesterday)))) {
+                $daysChanged = ! $first->equalTo($oldFirst) || ! $last->equalTo($oldLast);
+
+                if ($daysChanged && $oldLast->lessThan($yesterday)) {
+                    throw new DomainException(self::ENDED);
+                }
+
+                if (! $first->equalTo($oldFirst)) {
                     throw new DomainException(self::STARTED);
+                }
+
+                if ($daysChanged && $last->lessThan($yesterday)) {
+                    throw new DomainException(self::BEFORE_YESTERDAY);
                 }
             } else {
                 if ($last->lessThan($today)) {

@@ -104,6 +104,7 @@ a{color:#1a1a1a}a:hover{color:#000}
 .cnt{border-radius:4px;padding:2px 6px;text-decoration:none}
 .op{border:1px dashed #1a1a1a;border-radius:4px;padding:2px 6px}
 .closed{background:#4f4f4f;color:#fff;border-radius:4px;padding:2px 6px;font-weight:700}
+.closed a{color:#fff}
 @media (max-width:699px){
 .cal-grid-wrap{display:none}
 .cal-list{display:flex}

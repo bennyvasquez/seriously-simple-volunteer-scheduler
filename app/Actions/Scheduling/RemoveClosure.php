@@ -34,7 +34,7 @@ class RemoveClosure
     {
         Gate::forUser($actor)->authorize('close', $closure->area);
 
-        [$area, $released] = DB::transaction(function () use ($actor, $closure) {
+        [$area, $released, $endsOn] = DB::transaction(function () use ($actor, $closure) {
             $area = Area::query()->whereKey($closure->area_id)->lockForUpdate()->firstOrFail();
             $locked = AreaClosure::query()->whereKey($closure->id)->lockForUpdate()->first();
 
@@ -67,11 +67,11 @@ class RemoveClosure
 
             $locked->delete();
 
-            return [$area, $released];
+            return [$area, $released, $locked->ends_on->toDateString()];
         });
 
         // Only a closure that still covered today or later kept days from being made.
-        if ($closure->ends_on->toDateString() >= Organization::current()->today()->toDateString()) {
+        if ($endsOn >= Organization::current()->today()->toDateString()) {
             $this->updateClosure->generate($actor, $area, 'closure.removed');
         }
 

@@ -65,7 +65,7 @@ final class CalendarMonth
         return new self($month, $weeks);
     }
 
-    /** @return list<list<array{date: string, label: string, inMonth: bool, counts: list<array{area: Area, text: string}>, cancelled: list<string>, open: int, closures: list<array{label: string, closure_id: int, area_id: int}>}>> */
+    /** @return list<list<array{date: string, label: string, inMonth: bool, counts: list<array{area: Area, text: string}>, cancelled: list<string>, open: int, closures: list<array{label: string, closures: list<array{closure_id: int, area_id: int, name: string}>}>}>> */
     public function weeks(): array
     {
         return $this->weeks;

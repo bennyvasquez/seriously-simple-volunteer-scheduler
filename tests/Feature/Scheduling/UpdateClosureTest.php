@@ -125,7 +125,13 @@ class UpdateClosureTest extends TestCase
 
         $entry = ChangeLogEntry::query()->forSubject($closure)->ofAction('closure.updated')->sole();
         $this->assertSame(['old' => '2026-11-28', 'new' => '2026-11-25'], $entry->changes['ends_on']);
-        $this->assertSame('Changed the Front desk closure to Nov 25 to Nov 25', Describe::entry($entry->load('subject.area'), $coordinator));
+        $this->assertSame('Changed the Front desk closure to Nov 25', Describe::entry($entry->load('subject.area'), $coordinator));
+
+        // The generator made Thursday's shift after the change, logged once with who caused it.
+        $generated = ChangeLogEntry::query()->ofAction('shifts.generated')->where('actor_id', $coordinator->id)->sole();
+        $this->assertSame('closure.updated', $generated->details['via']);
+        $this->assertSame($this->frontDesk->id, $generated->details['area_id']);
+        $this->assertSame(1, $generated->details['created']);
 
         // One email each, listing every shift that came back.
         Notification::assertSentToTimes($this->robin, ShiftRestoredNotification::class, 1);
@@ -267,9 +273,25 @@ class UpdateClosureTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-10-14 09:00', self::TIMEZONE));
 
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('This closure has already started, so only its last day can change. To fix days that have passed, remove it.');
+        $this->expectExceptionMessage('This closure has ended. To close more days, add a new closure.');
 
         app(UpdateClosure::class)->handle($this->coordinator(), $closure, '2026-10-05', '2026-10-20', 'Floor repairs');
+    }
+
+    public function test_a_started_closure_cannot_end_before_yesterday(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 09:00', self::TIMEZONE));
+        $closure = $this->close('2026-10-12', '2026-10-20', 'Floor repairs');
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 09:00', self::TIMEZONE));
+
+        try {
+            app(UpdateClosure::class)->handle($this->coordinator(), $closure, '2026-10-12', '2026-10-12', 'Floor repairs');
+            $this->fail('A last day before yesterday should be refused.');
+        } catch (DomainException $e) {
+            $this->assertSame('The last day can\'t be before yesterday.', $e->getMessage());
+        }
+
+        $this->assertSame('2026-10-20', $closure->fresh()->ends_on->toDateString());
     }
 
     public function test_updating_checks_the_area_and_the_values(): void
@@ -389,6 +411,36 @@ class UpdateClosureTest extends TestCase
         $this->actingAs($lead)->get(route('calendar.closures.edit', $closure))->assertForbidden();
         $this->actingAs($lead)->post(route('calendar.closures.update', $closure), ['from' => '2026-11-26', 'to' => '2026-11-28', 'reason' => 'Thanksgiving'])->assertForbidden();
         $this->actingAs($lead)->post(route('calendar.closures.remove', $closure))->assertForbidden();
+    }
+
+    public function test_a_reason_shared_by_several_areas_links_each_areas_closure(): void
+    {
+        $shop = Area::factory()->create(['name' => 'Shop']);
+        $closures = app(CreateClosure::class)->handle($this->coordinator(), [$this->frontDesk->id, $shop->id], '2026-11-26', '2026-11-26', 'Thanksgiving');
+        $deskLink = '<a href="'.route('calendar.closures.edit', $closures->firstWhere('area_id', $this->frontDesk->id)).'">Front desk</a>';
+        $shopLink = '<a href="'.route('calendar.closures.edit', $closures->firstWhere('area_id', $shop->id)).'">Shop</a>';
+        $coordinator = $this->coordinator();
+        // Only coordinators and admins can change a closure, so a Shop lead sees the label without links.
+        $lead = $this->withRole(Role::AreaLead, $shop);
+
+        foreach ([route('calendar.week', ['date' => '2026-11-26']), route('calendar.day', ['date' => '2026-11-26']), route('calendar.month', ['month' => '2026-11'])] as $url) {
+            $this->actingAs($coordinator)->get($url)->assertOk()
+                ->assertSee('Closed: Thanksgiving. Change: '.$deskLink.', '.$shopLink, false);
+            $this->actingAs($lead)->get($url)->assertOk()
+                ->assertSee('<span class="closed">Closed: Thanksgiving</span>', false)
+                ->assertDontSee('closures/', false);
+        }
+    }
+
+    public function test_the_remove_step_names_a_single_day_once(): void
+    {
+        $closure = $this->close('2026-11-25', '2026-11-25');
+
+        $this->actingAs($this->coordinator())->get(route('calendar.closures.edit', ['closure' => $closure, 'remove' => 1]))->assertOk()
+            ->assertSee('Remove the Front desk closure for Nov 25? No shifts come back.');
+        app(RemoveClosure::class)->handle($this->coordinator(), $closure);
+        $entry = ChangeLogEntry::query()->forSubject($closure)->ofAction('closure.removed')->sole();
+        $this->assertSame('Removed the Front desk closure for Nov 25', Describe::entry($entry, $this->coordinator()));
     }
 
     public function test_the_shift_panel_links_to_the_closure_for_coordinators(): void

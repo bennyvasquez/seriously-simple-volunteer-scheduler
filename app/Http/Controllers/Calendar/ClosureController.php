@@ -285,7 +285,7 @@ class ClosureController extends Controller
         $back = $this->comingBack($closure);
         $count = $back->count();
         $people = $this->activePeople($back)->count();
-        $days = $closure->starts_on->format('M j').' to '.$closure->ends_on->format('M j');
+        $days = $closure->starts_on->equalTo($closure->ends_on) ? $closure->starts_on->format('M j') : $closure->starts_on->format('M j').' to '.$closure->ends_on->format('M j');
 
         $what = match (true) {
             $count === 0 => 'No shifts come back.',

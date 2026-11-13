@@ -242,10 +242,13 @@ final class Describe
         return $area?->name ?? 'area';
     }
 
-    /** "Nov 25 to Nov 28". */
+    /** "Nov 25 to Nov 28", or "Nov 25" for one day. */
     private static function closureDays(string $first, string $last): string
     {
-        return CarbonImmutable::parse($first)->format('M j').' to '.CarbonImmutable::parse($last)->format('M j');
+        $from = CarbonImmutable::parse($first)->format('M j');
+        $to = CarbonImmutable::parse($last)->format('M j');
+
+        return $from === $to ? $from : $from.' to '.$to;
     }
 
     private static function closureWords(mixed $closure): string
