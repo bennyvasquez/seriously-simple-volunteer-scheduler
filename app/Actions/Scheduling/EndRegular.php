@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Gate;
  *
  * `$lastDate` is the last date they work. When it's before the regular's start date, the stored end date is the day before the start, so the regular never works a date. Only shifts inside the regular's own dates are touched, so a later stint added for the same person isn't removed, and only the regular's own assignments (type regular) are removed, so a shadow spot stays.
  *
- * Locks are taken area, weekly slot, the regular's row, then the slot's shifts in date order, and the assignments are read under those locks, the same order AddRegular uses. Each removal is logged by RemoveFromShift::removeLocked() and the end is logged as `regular.ended` about the person. The returned regular carries a `removed_from_shifts` attribute with how many shifts they were removed from. The refusals are written to be shown on screen. The person is emailed after the response, listing only future shifts that weren't cancelled.
+ * Locks are taken area, weekly slot, the regular's row, then the slot's shifts in date order, and the assignments are read under those locks, the same order AddRegular uses. Each removal is logged by RemoveFromShift::removeLocked() and the end is logged as `regular.ended` about the person. The returned regular carries a `removed_from_shifts` attribute with how many shifts they were removed from, and a `before_start` attribute that is true when the last date was before the regular's start. The refusals are written to be shown on screen. The person is emailed after the response, listing only future shifts that weren't cancelled.
  */
 class EndRegular
 {
@@ -98,8 +98,12 @@ class EndRegular
         [$ended, $shifts] = $result;
         $ended->setAttribute('removed_from_shifts', $shifts->count());
 
+        // A last date before the start stores the day before the start, so the regular never worked a date.
+        $ended->setAttribute('before_start', $lastDate < $ended->starts_on->toDateString());
+
         $future = $shifts->filter(fn (Shift $shift) => $shift->starts_at->greaterThan(now()) && $shift->cancelled_at === null)->values();
-        defer(fn () => $ended->user->notify(new RegularEndedNotification($slot->loadMissing('area'), $lastDate, $future)));
+        $beforeStart = $ended->before_start;
+        defer(fn () => $ended->user->notify(new RegularEndedNotification($slot->loadMissing('area'), $lastDate, $future, $beforeStart)));
 
         return $ended;
     }

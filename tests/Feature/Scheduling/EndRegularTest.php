@@ -373,4 +373,35 @@ class EndRegularTest extends TestCase
         $this->actingAs($this->coordinator(Role::AreaLead, $this->hostedEvents))->get(route('calendar.shift', $shift))
             ->assertDontSee('End regular');
     }
+
+    public function test_ending_a_regular_before_their_start_reads_as_no_longer_a_regular(): void
+    {
+        Notification::fake();
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-11-05');
+        $shift = $this->shiftOn($slot, '2026-10-29');
+        $removed = $slot->shifts()->where('local_date', '>=', '2026-11-05')->count();
+
+        $this->actingAs($this->coordinator())->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-10-20', 'date' => '2026-10-29'])
+            ->assertRedirect(route('calendar.shift', $shift))
+            ->assertSessionHas('status', 'Robin is no longer a regular. They were removed from '.$removed.' shifts.');
+
+        Notification::assertSentTo($this->robin, RegularEndedNotification::class, function (RegularEndedNotification $notification) {
+            $this->assertSame('You\'re no longer the regular for the Front desk shift on Thursdays.', $notification->toMail($this->robin)->introLines[0]);
+
+            return true;
+        });
+    }
+
+    public function test_the_status_leaves_out_the_shifts_sentence_when_there_were_none(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-15');
+        $shift = $this->shiftOn($slot, '2026-10-29');
+
+        // Shifts are on the calendar through December 8, so none come after December 31.
+        $this->actingAs($this->coordinator())->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-12-31', 'date' => '2026-10-29'])
+            ->assertRedirect(route('calendar.shift', $shift))
+            ->assertSessionHas('status', 'Robin is no longer a regular after Thursday, December 31.');
+    }
 }

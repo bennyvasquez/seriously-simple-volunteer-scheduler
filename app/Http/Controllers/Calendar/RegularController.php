@@ -185,7 +185,9 @@ class RegularController extends Controller
         $first = $regular->user->firstName();
         $count = $ended->removed_from_shifts;
         $shift = $slot->shifts()->where('local_date', $date)->first();
-        $status = $first.' is no longer a regular after '.CarbonImmutable::parse($lastDate, 'UTC')->format('l, F j').'. They were removed from '.$count.($count === 1 ? ' shift.' : ' shifts.');
+        // A last date before the regular's start means they never worked a date, so the date isn't named. A sentence about shifts only when they were removed from some.
+        $status = $first.' is no longer a regular'.($ended->before_start ? '.' : ' after '.CarbonImmutable::parse($lastDate, 'UTC')->format('l, F j').'.')
+            .($count === 0 ? '' : ' They were removed from '.$count.($count === 1 ? ' shift.' : ' shifts.'));
 
         return ($shift !== null
             ? redirect()->route('calendar.shift', [$shift] + $areaQuery)
