@@ -237,6 +237,7 @@ class EditScheduleTest extends TestCase
         $robin = $this->robinOnThreeWeeks($slot);
         $casey = User::factory()->notInvited()->create(['name' => 'Casey Example', 'email' => 'casey@example.org']);
         app(AddRegular::class)->handle(null, $slot, $casey, '2026-10-15', '2026-10-29', SlotFrequency::Weekly, null, true);
+        $this->assertSame(3, Assignment::query()->where('user_id', $casey->id)->count());
 
         $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['people_needed' => 3, 'shadow_spots' => 1] + $this->slotAttributes($slot));
 
@@ -251,6 +252,59 @@ class EditScheduleTest extends TestCase
         Notification::assertSentTo($robin, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => count($notification->lines) === 3
             && $notification->lines[0] === "Your Front desk shift on Thursday, October 15 changed. It's now for Greeter.");
         Notification::assertNotSentTo($casey, ShiftChangedNotification::class);
+    }
+
+    public function test_who_is_on_each_shift_is_read_under_the_lock(): void
+    {
+        $slot = $this->thursdaySlot('18:00', '21:00');
+        $casey = User::factory()->create(['name' => 'Casey Example', 'email' => 'casey@example.org']);
+        $shift = $slot->shifts()->where('local_date', '2026-10-22')->sole();
+        $coordinator = $this->coordinator();
+
+        // Record the save's locking reads, and put Casey on a shift right after the save locks its shifts, the way a PutOnShift could commit while the save waited for those locks.
+        $locks = [];
+        DB::listen(function (QueryExecuted $query) use (&$locks, $casey, $shift) {
+            if (! str_contains($query->sql, 'for update') && ! str_contains($query->sql, 'lock in share mode')) {
+                return;
+            }
+
+            preg_match('/from `(\w+)`/', $query->sql, $table);
+            $locks[] = $table[1];
+
+            if ($table[1] === 'shifts' && ! in_array('put on', $locks, true)) {
+                $locks[] = 'put on';
+                DB::table('assignments')->insert(['shift_id' => $shift->id, 'user_id' => $casey->id, 'type' => AssignmentType::Regular->value, 'created_at' => now(), 'updated_at' => now()]);
+            }
+        });
+
+        $result = app(UpdateWeeklySlot::class)->handle($coordinator, $slot, ['start_time' => '17:00', 'end_time' => '20:00'] + $this->slotAttributes($slot));
+
+        // Area, slot, regulars, shifts, then the people on those shifts.
+        $this->assertSame(['areas', 'weekly_slots', 'slot_regulars', 'shifts', 'put on', 'assignments'], array_slice($locks, 0, 6));
+        $this->assertSame('17:00', $this->localStart($shift->fresh()));
+        $this->assertSame(1, $result->emailed);
+        Notification::assertSentTo($casey, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => $notification->lines === [
+            "Your Front desk shift on Thursday, October 22 changed. It's now 5 to 8pm; it was 6 to 9pm.",
+        ]);
+    }
+
+    public function test_a_shift_someone_was_just_put_on_is_not_cancelled_when_the_slot_stops_running_on_it(): void
+    {
+        $slot = $this->thursdaySlot('18:00', '21:00');
+        $casey = User::factory()->create(['name' => 'Casey Example', 'email' => 'casey@example.org']);
+        $last = $slot->shifts()->where('local_date', '2026-12-03')->sole();
+        $inserted = false;
+        DB::listen(function (QueryExecuted $query) use (&$inserted, $casey, $last) {
+            if (! $inserted && str_contains($query->sql, 'for update') && preg_match('/^select \* from `shifts`/', $query->sql)) {
+                $inserted = true;
+                DB::table('assignments')->insert(['shift_id' => $last->id, 'user_id' => $casey->id, 'type' => AssignmentType::Regular->value, 'created_at' => now(), 'updated_at' => now()]);
+            }
+        });
+
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['valid_until' => '2026-11-26'] + $this->slotAttributes($slot));
+
+        $this->assertNull($last->fresh()->cancelled_at);
+        $this->assertSame([$last->id => "The slot doesn't run on this date any more"], $result->keptReasons);
     }
 
     public function test_lowering_shadow_spots_below_the_shadows_on_a_shift_keeps_it(): void

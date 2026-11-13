@@ -65,9 +65,12 @@ class UpdateWeeklySlot
             $timezone = $organization->timezone;
             $via = ['via' => 'slot.updated', 'weekly_slot_id' => $locked->id];
 
-            // Locked so nobody is put on a shift between counting its people and changing it.
+            // Locked so nobody is put on a shift between reading its people and changing it.
             $shifts = $locked->shifts()->whereNull('cancelled_at')->where('starts_at', '>', now())
-                ->orderBy('local_date')->lockForUpdate()->withCount('assignments')->get();
+                ->orderBy('starts_at')->orderBy('id')->lockForUpdate()->get();
+            // Who is on each shift, read with a lock after the shift locks, so someone put on a shift while this save waited for it is seen here and emailed, not missed by an earlier snapshot.
+            $assignments = Assignment::query()->with('user')->whereIn('shift_id', $shifts->modelKeys())
+                ->orderBy('id')->lockForUpdate()->get()->groupBy('shift_id');
 
             $updated = [];
             // An Eloquent collection, so contains() matches a shift by its id.
@@ -78,8 +81,9 @@ class UpdateWeeklySlot
             foreach ($shifts as $shift) {
                 $date = $shift->local_date->toDateString();
                 $runs = $locked->occursOn($date);
+                $people = $assignments->get($shift->id, collect())->pluck('user');
 
-                if ($shift->edited_at !== null || ($shift->assignments_count > 0 && ! $runs)) {
+                if ($shift->edited_at !== null || ($people->isNotEmpty() && ! $runs)) {
                     if (! $runs || $this->differs($shift, $locked, $date, $timezone)) {
                         $kept->push($shift);
                         $keptReasons[$shift->id] = $runs ? self::KEPT_EDITED : self::KEPT_OFF_SCHEDULE;
@@ -105,8 +109,8 @@ class UpdateWeeklySlot
                     continue;
                 }
 
-                if ($shift->assignments_count > 0) {
-                    // Reads the people on it with a lock, after the shift locks above.
+                if ($people->isNotEmpty()) {
+                    // Reads the people on it again with a lock, on rows this transaction already holds.
                     $problem = StaffedShiftChecks::problem($actor, $shift);
 
                     if ($problem !== null) {
@@ -118,13 +122,12 @@ class UpdateWeeklySlot
                     }
                 }
 
-                $notify = $shift->assignments_count > 0 && $shift->isDirty(['starts_at', 'ends_at', 'title']);
+                $notify = $people->isNotEmpty() && $shift->isDirty(['starts_at', 'ends_at', 'title']);
                 $this->saveAndLog($actor, $shift, 'shift.updated', $via);
                 $updated[] = $shift->id;
 
                 if ($notify) {
                     $shift->setRelation('area', $slot->area);
-                    $people = Assignment::query()->with('user')->where('shift_id', $shift->id)->orderBy('id')->get()->pluck('user');
 
                     foreach ($people->filter(fn (User $person) => $person->canSignIn()) as $person) {
                         $emails[$person->id] ??= ['person' => $person, 'changes' => []];
