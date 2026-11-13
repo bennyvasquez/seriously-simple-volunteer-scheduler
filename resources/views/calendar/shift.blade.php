@@ -97,8 +97,8 @@
 @endforeach
 <fieldset class="choices">
 <legend>Edit which shifts?</legend>
-<label class="check"><input type="radio" name="edit" value="shift" @checked($staffedMessage === null) @disabled($staffedMessage !== null)><span>This shift<br><span class="muted">{{ $staffedMessage ?? 'Only '.$shift->local_date->format('l, F j').'. Later changes to the weekly slot won\'t overwrite it.' }}</span></span></label>
-<label class="check"><input type="radio" name="edit" value="slot" @checked($staffedMessage !== null)><span>The weekly slot (shifts nobody is on yet)<br><span class="muted">{{ $shift->weeklySlot->describe() }}. Shifts with people on them keep their old details.</span></span></label>
+<label class="check"><input type="radio" name="edit" value="shift" checked><span>This shift<br><span class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.@if ($peopleOnIt > 0) {{ $peopleOnIt === 1 ? 'The 1 person on it is' : 'The '.$peopleOnIt.' people on it are' }} emailed if the time changes.@endif</span></span></label>
+<label class="check"><input type="radio" name="edit" value="slot"><span>The weekly slot (future shifts nobody changed on their own)<br><span class="muted">{{ $shift->weeklySlot->describe() }}. Shifts with people on them keep their old details.</span></span></label>
 </fieldset>
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Continue</button>
@@ -106,12 +106,6 @@
 </div>
 </form>
 @elseif ($editing === 'shift')
-@if ($staffedMessage !== null)
-<p>{{ $staffedMessage }}</p>
-<div class="add-actions">
-<a href="{{ $panelUrl() }}" class="btn">Back</a>
-</div>
-@else
 <form method="POST" action="{{ route('calendar.shift.update', $shift) }}">
 @csrf
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
@@ -127,12 +121,12 @@
 <x-field name="shadow_spots" type="number" label="Shadow spots" :value="$editValues['shadow_spots']" min="0" max="200" required />
 </div>
 @if ($shift->weeklySlot)<p class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.</p>@endif
+@if ($peopleOnIt > 0)<p class="muted">{{ $peopleOnIt === 1 ? 'The 1 person on it is' : 'The '.$peopleOnIt.' people on it are' }} emailed if the time or what it's for changes.</p>@endif
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Save this shift</button>
 <a href="{{ $panelUrl() }}" class="btn">Back</a>
 </div>
 </form>
-@endif
 @elseif ($cancelling)
 <form method="POST" action="{{ route('calendar.shift.cancel', $shift) }}">
 @csrf

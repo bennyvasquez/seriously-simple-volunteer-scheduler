@@ -133,15 +133,6 @@ class EditScheduleTest extends TestCase
         $this->assertSame('Greeter', $shifts[2]->fresh()->title);
     }
 
-    public function test_a_shift_with_people_on_it_cannot_be_edited_yet(): void
-    {
-        $shift = $this->shiftWithPerson();
-
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Someone is on this shift. Editing shifts with people on them comes soon; for now, cancel this date and add a one-time shift.');
-        app(UpdateShift::class)->handle($this->coordinator(), $shift, ['people_needed' => 3]);
-    }
-
     public function test_editing_one_shift_sets_edited_at_and_is_logged(): void
     {
         $slot = $this->thursdaySlot('18:30', '21:30');
@@ -552,8 +543,8 @@ class EditScheduleTest extends TestCase
             ->assertOk()
             ->assertSee('Edit which shifts?')
             ->assertSee('This shift')
-            ->assertSee('Only Thursday, October 15. Later changes to the weekly slot won&#039;t overwrite it.', false)
-            ->assertSee('The weekly slot (shifts nobody is on yet)')
+            ->assertSee("Only Thursday, October 15. Later changes to the weekly slot won't overwrite it.", false)
+            ->assertSee('The weekly slot (future shifts nobody changed on their own)')
             ->assertDontSee('This and following shifts')
             ->assertDontSee('After pressing Edit');
 
@@ -573,20 +564,5 @@ class EditScheduleTest extends TestCase
 
         $this->assertSame('17:00', $this->localStart($shift->fresh()));
         $this->assertNotNull($shift->fresh()->edited_at);
-    }
-
-    public function test_the_shift_edit_form_explains_why_a_shift_with_people_cannot_be_edited(): void
-    {
-        $shift = $this->shiftWithPerson();
-        $user = $this->coordinator();
-
-        $this->actingAs($user)->get(route('calendar.shift', [$shift, 'edit' => 'shift']))
-            ->assertOk()
-            ->assertSee('Someone is on this shift. Editing shifts with people on them comes soon; for now, cancel this date and add a one-time shift.')
-            ->assertDontSee('Save this shift');
-
-        $this->actingAs($user)->post(route('calendar.shift.update', $shift), ['start_time' => '17:00', 'end_time' => '20:00', 'people_needed' => 2, 'shadow_spots' => 0])
-            ->assertRedirect();
-        $this->assertSame(1, $shift->fresh()->people_needed);
     }
 }
