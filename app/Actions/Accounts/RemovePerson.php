@@ -2,6 +2,7 @@
 
 namespace App\Actions\Accounts;
 
+use App\Actions\Scheduling\ReleaseFutureSchedule;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
@@ -11,13 +12,17 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Removes someone who asked to be removed (spec section 13, "People leaving"). Their shifts, regular slots and change log entries move onto the one shared "Removed person" record, their name, email address and membership ID are scrubbed from the change log, and their own row is deleted, so nothing left can tell one removed person from another. It can't be undone. Refused while they're on a shift that hasn't started or are a regular on a slot that hasn't ended; the refusals are written to be shown on screen.
+ * Removes someone who asked to be removed (spec section 13, "People leaving"). First ReleaseFutureSchedule removes them from every shift that hasn't started and ends their regular slots, without emailing them, in its own transaction. Then their shifts, regular slots and change log entries move onto the one shared "Removed person" record, their name, email address and membership ID are scrubbed from the change log (including the release's entries), and their own row is deleted, so nothing left can tell one removed person from another. It can't be undone. If someone put them on a shift or made them a regular between the two steps, the removal is refused with a message written to be shown on screen, and trying again releases that too.
  */
 class RemovePerson
 {
+    public function __construct(private readonly ReleaseFutureSchedule $releaseFutureSchedule) {}
+
     public function handle(User $actor, User $person): void
     {
         Gate::forUser($actor)->authorize('manage', $person);
+
+        $this->releaseFutureSchedule->handle($actor, $person, 'user.removed');
 
         DB::transaction(function () use ($actor, $person) {
             // Locking the row also holds back anyone putting them on a shift or a slot meanwhile: adding that row needs a shared lock on this one for its foreign key, and once this commits the row is gone, so the add fails instead of landing on the removed person.
@@ -51,30 +56,22 @@ class RemovePerson
         });
     }
 
-    /** Why this person can't be removed yet, or null when they can. */
+    /** Why this person can't be removed, or null when they can. A safety net: the release in handle() clears their future schedule first, so this only speaks when something was added to it in between. */
     public static function refusal(User $person): ?string
     {
         $futureShifts = Assignment::query()
             ->where('user_id', $person->id)
             ->whereHas('shift', fn ($shift) => $shift->whereNull('cancelled_at')->where('starts_at', '>', now()))
-            ->count();
-
-        if ($futureShifts > 0) {
-            return $futureShifts === 1
-                ? $person->firstName().' is still on 1 future shift. Take them off that first.'
-                : $person->firstName().' is still on '.$futureShifts.' future shifts. Take them off those first.';
-        }
+            ->exists();
 
         $today = Organization::current()->today()->toDateString();
         $stillRegular = $person->regulars()
-            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today))
-            // A regular ended before it started never works a date.
-            ->where(fn ($query) => $query->whereNull('ends_on')->orWhereColumn('ends_on', '>=', 'starts_on'))
+            ->currentOrFuture($today)
             ->whereHas('weeklySlot', fn ($slot) => $slot->where(fn ($valid) => $valid->whereNull('valid_until')->orWhere('valid_until', '>=', $today)))
             ->exists();
 
-        if ($stillRegular) {
-            return $person->firstName().' is still a regular. End that first.';
+        if ($futureShifts || $stillRegular) {
+            return 'Something was added to '.$person->firstName().'\'s schedule while removing them. Try again.';
         }
 
         return null;

@@ -76,7 +76,11 @@
 @if ($canManage && $person->isActive())
 <section class="panel" aria-labelledby="turn-off-heading">
 <h2 id="turn-off-heading">Turn off this account</h2>
-<p class="muted">{{ $firstName }} is logged out everywhere and can't log in. Their history stays. Turning off doesn't take them off future shifts yet, so check the calendar for their shifts.</p>
+@php
+$shiftWords = $releases['shifts'].' future '.($releases['shifts'] === 1 ? 'shift' : 'shifts');
+$slotWords = $releases['regulars'].' '.($releases['regulars'] === 1 ? 'slot' : 'slots');
+@endphp
+<p class="muted">{{ $firstName }} is logged out everywhere and can't log in. Their history stays.@if ($releases['shifts'] > 0 && $releases['regulars'] > 0) This removes them from {{ $shiftWords }} and ends their time as a regular on {{ $slotWords }}.@elseif ($releases['shifts'] > 0) This removes them from {{ $shiftWords }}.@elseif ($releases['regulars'] > 0) This ends their time as a regular on {{ $slotWords }}.@endif</p>
 <form method="POST" action="{{ route('people.turn-off', $person) }}">
 @csrf
 <button type="submit" class="btn">Turn off {{ $firstName }}'s account</button>

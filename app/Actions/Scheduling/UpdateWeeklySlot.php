@@ -116,7 +116,7 @@ class UpdateWeeklySlot
     {
         $today = $organization->today()->toDateString();
         $regulars = $slot->regulars()->with('user')
-            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today))
+            ->currentOrFuture($today)
             ->orderBy('id')->get()->pluck('user');
 
         if ($slot->isDirty(['weekday', 'frequency', 'anchor_date'])) {

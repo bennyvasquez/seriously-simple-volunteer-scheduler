@@ -209,71 +209,85 @@ class RemovePersonTest extends TestCase
         $this->assertSame(1, User::query()->where('is_removed_person', true)->count());
     }
 
-    public function test_removal_waits_for_future_shifts_and_regular_slots(): void
+    public function test_removing_someone_with_future_shifts_now_works(): void
     {
         $robin = User::factory()->create(['name' => 'Robin Example']);
+        $past = $this->shift('2026-10-07');
+        Assignment::create(['shift_id' => $past->id, 'user_id' => $robin->id, 'type' => AssignmentType::Regular]);
+        $future = collect(['2026-10-20', '2026-10-21', '2026-10-22'])->map(fn (string $date) => $this->shift($date));
+        $future->each(fn (Shift $shift) => Assignment::create(['shift_id' => $shift->id, 'user_id' => $robin->id, 'type' => AssignmentType::Regular]));
+        $cancelled = $this->shift('2026-10-24', cancelled: true);
+        Assignment::create(['shift_id' => $cancelled->id, 'user_id' => $robin->id, 'type' => AssignmentType::Regular]);
+        $open = $this->regular($robin, null);
+        $endingToday = $this->regular($robin, '2026-10-14');
 
-        foreach (['2026-10-20', '2026-10-21', '2026-10-22'] as $date) {
-            Assignment::create(['shift_id' => $this->shift($date)->id, 'user_id' => $robin->id, 'type' => AssignmentType::Regular]);
-        }
-
-        try {
-            app(RemovePerson::class)->handle($this->coordinator, $robin);
-            $this->fail('Removal should wait for future shifts.');
-        } catch (DomainException $e) {
-            $this->assertSame('Robin is still on 3 future shifts. Take them off those first.', $e->getMessage());
-        }
-
-        $this->assertDatabaseHas('users', ['id' => $robin->id]);
-        $this->assertSame(0, ChangeLogEntry::query()->ofAction('user.removed')->count());
-        $this->assertSame(0, User::query()->where('is_removed_person', true)->count());
-
-        // On screen, the refusal shows on the confirmation page, before and after pressing the button.
+        // The confirmation page says what comes first, and offers the form.
         $this->actingAs($this->coordinator)->get(route('people.remove', $robin))
             ->assertOk()
-            ->assertSee('Robin is still on 3 future shifts. Take them off those first.')
-            ->assertSee('Back to Robin\'s page', false)
-            ->assertSee(route('people.show', $robin))
-            ->assertDontSee('Remove Robin for good')
-            ->assertDontSee('name="confirm"', false);
-        $this->actingAs($this->coordinator)->from(route('people.remove', $robin))->post(route('people.remove.store', $robin), ['confirm' => 'Robin'])
-            ->assertRedirect(route('people.remove', $robin))
-            ->assertSessionHasErrors(['remove' => 'Robin is still on 3 future shifts. Take them off those first.']);
-        $this->assertDatabaseHas('users', ['id' => $robin->id]);
+            ->assertSee('This removes them from their future shifts first.')
+            ->assertSee('Remove Robin for good')
+            ->assertSee('name="confirm"', false);
 
+        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => 'Robin'])
+            ->assertRedirect(route('people.index'))
+            ->assertSessionHas('status', 'Robin was removed.');
+
+        $removed = User::removedPerson();
+        $this->assertDatabaseMissing('users', ['id' => $robin->id]);
+        $this->assertSame($removed->id, $past->assignments()->sole()->user_id);
+        $future->each(fn (Shift $shift) => $this->assertSame(0, $shift->assignments()->count()));
+        $this->assertSame(0, $cancelled->assignments()->count());
+        $this->assertSame('2026-10-13', $open->fresh()->ends_on->toDateString());
+        $this->assertSame('2026-10-13', $endingToday->fresh()->ends_on->toDateString());
+        $this->assertSame($removed->id, $open->fresh()->user_id);
+        Notification::assertNothingSent();
+
+        $removals = ChangeLogEntry::query()->ofAction('assignment.removed')->get();
+        $this->assertCount(4, $removals);
+        $this->assertTrue($removals->every(fn (ChangeLogEntry $entry) => $entry->details['via'] === 'user.removed' && $entry->affected_user_id === $removed->id && $entry->changes['user_id']['old'] === $removed->id));
+        $ended = ChangeLogEntry::query()->ofAction('regular.ended')->get();
+        $this->assertCount(2, $ended);
+        $this->assertTrue($ended->every(fn (ChangeLogEntry $entry) => $entry->details['via'] === 'user.removed' && $entry->affected_user_id === $removed->id));
+    }
+
+    public function test_the_refusal_stays_as_a_safety_net(): void
+    {
         $sam = User::factory()->create(['name' => 'Sam Example']);
-        Assignment::create(['shift_id' => $this->shift('2026-10-23')->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);
-        $this->expectRefusal($sam, 'Sam is still on 1 future shift. Take them off that first.');
+        $this->assertNull(RemovePerson::refusal($sam));
 
-        // A cancelled future shift and a regular slot that ended yesterday don't block.
+        Assignment::create(['shift_id' => $this->shift('2026-10-23')->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);
+        $this->assertSame('Something was added to Sam\'s schedule while removing them. Try again.', RemovePerson::refusal($sam));
+
+        $jordan = User::factory()->create(['name' => 'Jordan Example']);
+        $this->regular($jordan, null);
+        $this->assertSame('Something was added to Jordan\'s schedule while removing them. Try again.', RemovePerson::refusal($jordan));
+
+        // A cancelled future shift, a regular slot that ended yesterday and one that ended before it started don't count.
         $casey = User::factory()->create(['name' => 'Casey Example']);
         Assignment::create(['shift_id' => $this->shift('2026-10-24', cancelled: true)->id, 'user_id' => $casey->id, 'type' => AssignmentType::Regular]);
         $this->regular($casey, '2026-10-13');
-        app(RemovePerson::class)->handle($this->coordinator, $casey);
-        $this->assertDatabaseMissing('users', ['id' => $casey->id]);
-
-        // A regular slot with no end date, or one ending today, blocks.
-        $jordan = User::factory()->create(['name' => 'Jordan Example']);
-        $this->regular($jordan, null);
-        $this->expectRefusal($jordan, 'Jordan is still a regular. End that first.');
-
-        $taylor = User::factory()->create(['name' => 'Taylor Example']);
-        $this->regular($taylor, '2026-10-14');
-        $this->expectRefusal($taylor, 'Taylor is still a regular. End that first.');
+        $never = $this->regular($casey, null);
+        $never->update(['starts_on' => '2026-11-05', 'ends_on' => '2026-11-04']);
+        $this->assertNull(RemovePerson::refusal($casey));
     }
 
-    public function test_a_regular_on_a_slot_that_has_ended_does_not_block_removal(): void
+    public function test_a_regular_on_a_slot_that_has_ended_is_left_as_it_is(): void
     {
         $robin = User::factory()->create(['name' => 'Robin Example']);
         $ended = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'valid_until' => '2026-10-13']);
-        SlotRegular::create(['weekly_slot_id' => $ended->id, 'user_id' => $robin->id, 'starts_on' => '2026-09-03', 'ends_on' => null]);
+        $old = SlotRegular::create(['weekly_slot_id' => $ended->id, 'user_id' => $robin->id, 'starts_on' => '2026-09-03', 'ends_on' => null]);
         app(RemovePerson::class)->handle($this->coordinator, $robin);
         $this->assertDatabaseMissing('users', ['id' => $robin->id]);
+        $this->assertNull($old->fresh()->ends_on);
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('regular.ended')->count());
 
+        // A slot whose last date is today is still running, so the regular is ended first.
         $sam = User::factory()->create(['name' => 'Sam Example']);
         $ending = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'valid_until' => '2026-10-14']);
-        SlotRegular::create(['weekly_slot_id' => $ending->id, 'user_id' => $sam->id, 'starts_on' => '2026-09-03', 'ends_on' => null]);
-        $this->expectRefusal($sam, 'Sam is still a regular. End that first.');
+        $current = SlotRegular::create(['weekly_slot_id' => $ending->id, 'user_id' => $sam->id, 'starts_on' => '2026-09-03', 'ends_on' => null]);
+        app(RemovePerson::class)->handle($this->coordinator, $sam);
+        $this->assertDatabaseMissing('users', ['id' => $sam->id]);
+        $this->assertSame('2026-10-13', $current->fresh()->ends_on->toDateString());
     }
 
     public function test_the_removed_persons_security_page_is_not_found(): void
@@ -282,18 +296,6 @@ class RemovePersonTest extends TestCase
 
         $this->actingAs($this->admin)->get(route('people.security', $removed))->assertNotFound();
         $this->actingAs($this->admin)->post(route('people.two-factor.reset', $removed), ['identity_checked' => '1'])->assertNotFound();
-    }
-
-    private function expectRefusal(User $person, string $message): void
-    {
-        try {
-            app(RemovePerson::class)->handle($this->coordinator, $person);
-            $this->fail('Removal should have been refused.');
-        } catch (DomainException $e) {
-            $this->assertSame($message, $e->getMessage());
-        }
-
-        $this->assertDatabaseHas('users', ['id' => $person->id]);
     }
 
     public function test_the_confirmation_needs_the_first_name(): void

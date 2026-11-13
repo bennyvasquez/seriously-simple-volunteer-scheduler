@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * A coordinator or area lead removes someone from one shift, or from every shift they're on in a range of dates (in the areas the actor manages). Nothing is removed from a shift that has started. A cancelled future shift is allowed, but nobody is emailed about it. A range sends the person one email listing every shift. The refusals are written to be shown on screen. removeLocked() is the shared step: other actions (ending a regular, turning someone off) call it with the shift already locked and send their own email.
+ * A coordinator or area lead removes someone from one shift, or from every shift they're on in a range of dates (in the areas the actor manages). Nothing is removed from a shift that has started. A cancelled future shift is allowed, but nobody is emailed about it. A range sends the person one email listing every shift. The refusals are written to be shown on screen. removeLocked() is the shared step: other actions (ending a regular, turning someone off or removing them) call it with the shift already locked and send any email themselves.
  */
 class RemoveFromShift
 {

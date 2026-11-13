@@ -277,7 +277,7 @@ class RegularController extends Controller
     private function currentRegulars(WeeklySlot $slot, CarbonImmutable $today): Collection
     {
         return $slot->regulars()->with('user')
-            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today->toDateString()))
+            ->currentOrFuture($today->toDateString())
             ->orderBy('id')->get();
     }
 

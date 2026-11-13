@@ -32,7 +32,7 @@ use InvalidArgumentException;
  *
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, and a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on.
  *
- * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one. The refusals are written to be shown on screen. The new regular is emailed after the response.
+ * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
  */
 class AddRegular
 {
@@ -81,6 +81,13 @@ class AddRegular
             // The area then the slot, before reading the regulars: the order EndRegular and the other scheduling actions lock in.
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->firstOrFail();
             WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
+
+            // Read again under the locks, so a turn-off that committed since the check above is seen. A shared lock: it holds a turn-off back until this commits, and the release that follows it then finds this regular.
+            $current = User::query()->whereKey($user->id)->sharedLock()->first();
+
+            if ($current === null || ! $current->isActive()) {
+                throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
+            }
 
             $overlapping = $slot->regulars()
                 ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))

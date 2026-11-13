@@ -2,6 +2,7 @@
 
 namespace App\Actions\Accounts;
 
+use App\Actions\Scheduling\ReleaseFutureSchedule;
 use App\Enums\Role;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
@@ -10,11 +11,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Turns an account off when someone stops volunteering (spec section 13, "People leaving"). Their history stays; they can't log in by any route. Releasing their future shifts comes with the release flow.
+ * Turns an account off when someone stops volunteering (spec section 13, "People leaving"). Their history stays; they can't log in by any route. The account is turned off and committed first, so anyone putting them on a shift or a slot from then on is refused, and then ReleaseFutureSchedule removes them from every future shift and ends their regular slots, without emailing them.
+ *
+ * Someone already turned off isn't turned off again (nothing is logged for it), but still gets the release, so people turned off before turning off cleared the schedule can be tidied by turning them off again. Returns the release's counts.
  */
 class DeactivateUser
 {
-    public function handle(User $actor, User $user): void
+    public function __construct(private readonly ReleaseFutureSchedule $releaseFutureSchedule) {}
+
+    /** @return array{shifts: int, regulars: int} */
+    public function handle(User $actor, User $user): array
     {
         if (! $actor->isCoordinator()) {
             throw new AuthorizationException('Only coordinators and admins can deactivate accounts.');
@@ -29,6 +35,14 @@ class DeactivateUser
         }
 
         DB::transaction(function () use ($actor, $user) {
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->deactivated_at !== null) {
+                $user->setRawAttributes($locked->getAttributes(), true);
+
+                return;
+            }
+
             $user->forceFill(['deactivated_at' => now(), 'remember_token' => Str::random(60)]);
             $changes = ChangeLogEntry::changesOf($user);
             $user->save();
@@ -37,5 +51,7 @@ class DeactivateUser
 
             ChangeLogEntry::record($actor, 'user.deactivated', $user, changes: $changes);
         });
+
+        return $this->releaseFutureSchedule->handle($actor, $user, 'user.deactivated');
     }
 }

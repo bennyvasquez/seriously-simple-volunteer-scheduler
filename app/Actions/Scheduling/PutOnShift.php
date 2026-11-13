@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. Refuses a shift that is cancelled or has started, a person who is already on it, turned off or on another active shift at an overlapping time, and a shadow when the shadow spots are taken. A regular beyond the people the shift needs is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the date and the count. The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
+ * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. Refuses a shift that is cancelled or has started, a person who is already on it, turned off (checked again under the shift lock) or on another active shift at an overlapping time, and a shadow when the shadow spots are taken. A regular beyond the people the shift needs is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the date and the count. The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
  */
 class PutOnShift
 {
@@ -33,7 +33,10 @@ class PutOnShift
                 throw new DomainException('This shift has already started.');
             }
 
-            if (! $person->isActive()) {
+            // Read again after the shift lock, so a turn-off that committed since the caller loaded the person is seen. A shared lock, never a lock for update, because a user row is never locked for update after a shift row; it also holds a turn-off back until this commits, and the release that follows it then finds this shift.
+            $current = User::query()->whereKey($person->id)->sharedLock()->first();
+
+            if ($current === null || ! $current->isActive()) {
                 throw new DomainException($person->firstName().' has been turned off and can\'t be put on a shift.');
             }
 

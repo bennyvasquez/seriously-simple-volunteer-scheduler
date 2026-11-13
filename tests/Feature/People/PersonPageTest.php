@@ -9,7 +9,9 @@ use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
+use App\Models\SlotRegular;
 use App\Models\User;
+use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -81,7 +83,8 @@ class PersonPageTest extends TestCase
             ->assertSee('Logs in with')
             ->assertSee('Password')
             ->assertSee('Turn off this account')
-            ->assertSee("Robin is logged out everywhere and can't log in. Their history stays. Turning off doesn't take them off future shifts yet, so check the calendar for their shifts.", false)
+            ->assertSee("Robin is logged out everywhere and can't log in. Their history stays.", false)
+            ->assertSee('This removes them from 1 future shift.')
             ->assertDontSee('Login and security');
 
         $this->actingAs($this->admin)->get(route('people.show', $this->frontDeskRegular))->assertOk()->assertSee('Login and security');
@@ -279,5 +282,29 @@ class PersonPageTest extends TestCase
         $this->actingAs($this->coordinator)->post(route('people.turn-off', $this->frontDeskRegular))
             ->assertRedirect($page)->assertSessionHas('status', 'Nothing changed.');
         $this->assertSame(1, ChangeLogEntry::query()->where('action', 'user.deactivated')->about($this->frontDeskRegular)->count());
+    }
+
+    public function test_the_turn_off_section_says_what_it_will_remove(): void
+    {
+        $page = route('people.show', $this->frontDeskRegular);
+        $this->onShiftIn($this->frontDeskRegular, $this->outreach);
+        $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id]);
+        SlotRegular::create(['weekly_slot_id' => $slot->id, 'user_id' => $this->frontDeskRegular->id, 'starts_on' => '2026-09-03']);
+
+        $this->actingAs($this->coordinator)->get($page)
+            ->assertOk()
+            ->assertSee("Robin is logged out everywhere and can't log in. Their history stays.", false)
+            ->assertSee('This removes them from 2 future shifts and ends their time as a regular on 1 slot.')
+            ->assertDontSee('Turning off doesn');
+
+        // Someone with nothing ahead gets no second sentence.
+        $this->actingAs($this->coordinator)->get(route('people.show', $this->frontDeskLead))
+            ->assertOk()
+            ->assertDontSee('This removes them from');
+
+        $this->actingAs($this->coordinator)->post(route('people.turn-off', $this->frontDeskRegular))
+            ->assertRedirect($page)
+            ->assertSessionHas('status', 'Robin\'s account is turned off. They were removed from 2 future shifts.');
+        $this->assertSame(0, Assignment::query()->where('user_id', $this->frontDeskRegular->id)->count());
     }
 }
