@@ -46,7 +46,8 @@ class ShiftController extends Controller
         // A cancelled shift that hasn't started: who cancelled it decides whether it can be brought back here.
         $cancelledAhead = $shift->cancelled_at !== null && $shift->starts_at->greaterThan(now());
         $cancelledBy = $cancelledAhead ? RestoreShift::cancelledBy($shift) : null;
-        $canRestore = $cancelledBy === RestoreShift::HAND && Gate::forUser($user)->allows('restore', $shift);
+        $blocked = $cancelledBy === RestoreShift::HAND ? RestoreShift::blockedBy($shift) : null;
+        $canRestore = $cancelledBy === RestoreShift::HAND && $blocked === null && Gate::forUser($user)->allows('restore', $shift);
         $closure = $cancelledBy === RestoreShift::CLOSURE ? $shift->areaClosure : null;
         $byEmail = PersonSearch::byEmail($user);
         $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
@@ -89,6 +90,8 @@ class ShiftController extends Controller
             'cancelledBy' => $cancelledBy,
             'closure' => $closure,
             'canRestore' => $canRestore,
+            'restoreBlocked' => $blocked,
+            'restoreCounts' => $canRestore && $request->boolean('restore') ? $this->restoreCounts($shift, $user) : null,
             'restoring' => $canRestore && $request->boolean('restore'),
             'cancelling' => $canCancel && $editing === null && $request->boolean('cancel'),
             'canEdit' => $canEdit,
@@ -290,6 +293,23 @@ class ShiftController extends Controller
 
         return redirect()->route('calendar.week', ['date' => $shift->local_date->toDateString()] + $areaQuery)
             ->with('status', trim('Cancelled the '.$shift->area->name.' shift on '.$shift->local_date->format('l, F j').'. '.$sentence));
+    }
+
+    /** @return array{emailed: int, removed: string, removedCount: int} Who a restore would email, and the names (as the viewer may see them) of people who would be removed for an overlap. */
+    private function restoreCounts(Shift $shift, User $viewer): array
+    {
+        $emailed = 0;
+        $removed = collect();
+
+        foreach ($shift->assignments as $assignment) {
+            if (PutOnShift::overlappingShift($assignment->user, $shift) !== null) {
+                $removed->push(PersonSearch::displayName($viewer, $assignment->user));
+            } elseif ($assignment->user->canSignIn()) {
+                $emailed++;
+            }
+        }
+
+        return ['emailed' => $emailed, 'removed' => $removed->join(', ', ' and '), 'removedCount' => $removed->count()];
     }
 
     public function restore(Request $request, RestoreShift $restoreShift, Shift $shift): RedirectResponse

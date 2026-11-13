@@ -27,6 +27,8 @@
 <p class="muted">Cancelled by the {{ $closure?->reason ?? $shift->cancel_reason }} closure. Change the closure to bring it back.</p>
 @elseif ($cancelledBy === 'slot')
 <p class="muted">The weekly slot doesn't run on this date any more. Change the slot to bring it back.</p>
+@elseif ($restoreBlocked)
+<p class="muted">{{ $restoreBlocked }}</p>
 @endif
 @endif
 <div aria-label="People on this shift" role="group">
@@ -149,7 +151,10 @@
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
-<p>{{ $emailCount === 0 ? 'Nobody is emailed.' : ($emailCount === 1 ? '1 person' : $emailCount.' people').' will be emailed that it\'s back on.' }}</p>
+<p>{{ $restoreCounts['emailed'] === 0 ? 'Nobody is emailed.' : ($restoreCounts['emailed'] === 1 ? '1 person' : $restoreCounts['emailed'].' people').' will be emailed that it\'s back on.' }}</p>
+@if ($restoreCounts['removedCount'] > 0)
+<p>{{ $restoreCounts['removed'] }} {{ $restoreCounts['removedCount'] === 1 ? 'is' : 'are' }} on another shift at that time and will be removed from this one.</p>
+@endif
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Bring it back</button>
 <a href="{{ $panelUrl() }}" class="btn">Keep it cancelled</a>

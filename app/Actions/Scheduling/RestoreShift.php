@@ -37,6 +37,21 @@ class RestoreShift
         return ($entry?->details['via'] ?? null) === 'slot.updated' ? self::SLOT : self::HAND;
     }
 
+    /** Why a hand-cancelled shift can't come back right now, as a sentence for the screen: its weekly slot no longer runs on its date, or a closure covers the date. Null when nothing stands in the way. */
+    public static function blockedBy(Shift $shift): ?string
+    {
+        $date = $shift->local_date->toDateString();
+        $slot = $shift->weeklySlot;
+
+        if ($slot !== null && ! $slot->occursOn($date)) {
+            return 'The weekly slot doesn\'t run on this date any more. Change the slot to bring it back.';
+        }
+
+        $closure = AreaClosure::query()->where('area_id', $shift->area_id)->where('starts_on', '<=', $date)->where('ends_on', '>=', $date)->first();
+
+        return $closure === null ? null : ($shift->area?->name ?? Area::query()->find($shift->area_id)->name).' is closed that day: '.$closure->reason.'.';
+    }
+
     /**
      * Clears the cancellation, logs shift.restored with `$via`, and removes each person now on another active shift at an overlapping time. The caller holds the area and shift locks, has authorized the actor, checked the shift is cancelled and hasn't started, and sends any email.
      *
@@ -89,18 +104,17 @@ class RestoreShift
             $by = self::cancelledBy($locked);
 
             if ($by === self::CLOSURE) {
-                throw new DomainException('This shift was cancelled by a closure. Change the closure to bring it back.');
+                throw new DomainException('Cancelled by the '.($locked->areaClosure?->reason ?? $locked->cancel_reason).' closure. Change the closure to bring it back.');
             }
 
             if ($by === self::SLOT) {
                 throw new DomainException('The weekly slot doesn\'t run on this date any more. Change the slot to bring it back.');
             }
 
-            $closure = AreaClosure::query()->where('area_id', $locked->area_id)
-                ->where('starts_on', '<=', $locked->local_date->toDateString())->where('ends_on', '>=', $locked->local_date->toDateString())->first();
+            $blocked = self::blockedBy($locked->load('weeklySlot'));
 
-            if ($closure !== null) {
-                throw new DomainException(Area::query()->find($locked->area_id)->name.' is closed that day: '.$closure->reason.'.');
+            if ($blocked !== null) {
+                throw new DomainException($blocked);
             }
 
             $result = $this->restoreLocked($actor, $locked, []);

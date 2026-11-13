@@ -18,6 +18,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Models\WeeklySlot;
 use App\Notifications\ShiftRestoredNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -226,5 +227,59 @@ class RestoreShiftTest extends TestCase
 
         $this->expectException(AuthorizationException::class);
         app(RestoreShift::class)->handle($this->coordinator(Role::AreaLead, $this->hostedEvents), $shift);
+    }
+
+    public function test_a_hand_cancelled_date_the_slot_no_longer_runs_on_is_not_offered_and_is_refused(): void
+    {
+        $coordinator = $this->coordinator();
+        $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'start_time' => '18:30', 'end_time' => '21:30', 'valid_from' => '2026-09-03']);
+        $shift = $this->robinOn('2026-10-22');
+        $shift->forceFill(['weekly_slot_id' => $slot->id])->save();
+        app(CancelShift::class)->handle($coordinator, $shift, 'Power outage');
+        $slot->forceFill(['valid_until' => '2026-10-15'])->save();
+        Notification::fake();
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', $shift))->assertOk()
+            ->assertSee('The weekly slot doesn\'t run on this date any more. Change the slot to bring it back.')
+            ->assertDontSee('Bring this shift back');
+        $this->actingAs($coordinator)->post(route('calendar.shift.restore', $shift))->assertSessionHasErrors('shift');
+        $this->assertNotNull($shift->fresh()->cancelled_at);
+        Notification::assertNothingSent();
+    }
+
+    public function test_a_later_closure_over_a_hand_cancelled_date_shows_the_closure_instead_of_the_button(): void
+    {
+        $shift = $this->robinOn('2026-10-22');
+        $coordinator = $this->coordinator();
+        app(CancelShift::class)->handle($coordinator, $shift, 'Power outage');
+        AreaClosure::create(['area_id' => $this->frontDesk->id, 'starts_on' => '2026-10-21', 'ends_on' => '2026-10-23', 'reason' => 'Renovation']);
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', $shift))->assertOk()
+            ->assertSee('Front desk is closed that day: Renovation.')->assertDontSee('Bring this shift back');
+    }
+
+    public function test_the_closure_refusal_uses_the_panel_wording(): void
+    {
+        $shift = $this->robinOn('2026-10-22');
+        $coordinator = $this->coordinator();
+        app(CreateClosure::class)->handle($coordinator, [$this->frontDesk->id], '2026-10-22', '2026-10-22', 'Holiday party');
+
+        $this->expectExceptionMessage('Cancelled by the Holiday party closure. Change the closure to bring it back.');
+        app(RestoreShift::class)->handle($coordinator, $shift);
+    }
+
+    public function test_the_confirm_step_counts_only_people_who_stay_and_names_those_who_will_be_removed(): void
+    {
+        $desk = $this->robinOn('2026-10-22');
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        Assignment::create(['shift_id' => $desk->id, 'user_id' => $casey->id, 'type' => AssignmentType::Regular]);
+        $coordinator = $this->coordinator();
+        app(CancelShift::class)->handle($coordinator, $desk, 'Power outage');
+        $events = app(CreateOneTimeShift::class)->handle($coordinator, $this->hostedEvents, '2026-10-22', '19:00', '22:00', 2, 0, null);
+        app(PutOnShift::class)->handle($coordinator, $events, $this->robin, AssignmentType::Regular);
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', [$desk, 'restore' => 1]))->assertOk()
+            ->assertSee('1 person will be emailed that it&#039;s back on.', false)
+            ->assertSee('Robin Example is on another shift at that time and will be removed from this one.');
     }
 }
