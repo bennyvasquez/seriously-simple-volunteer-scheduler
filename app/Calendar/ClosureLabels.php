@@ -13,7 +13,7 @@ final class ClosureLabels
     /**
      * @param  Collection<int, AreaClosure>  $closures  With their area loaded.
      * @param  int  $areasShown  How many areas the view is showing.
-     * @return list<array{label: string, closures: list<array{closure_id: int, area_id: int, name: string}>}> `name` is the area's name, with the closure's days added when the same area has two closures for the reason.
+     * @return list<array{label: string, closures: list<array{closure_id: int, area_id: int, reason: string, name: string}>}> `name` is the area's name, with the closure's days added when the same area has two closures for the reason; `reason` is the closure's reason, for the link's accessible name.
      */
     public static function on(Collection $closures, string $date, int $areasShown): array
     {
@@ -34,6 +34,7 @@ final class ClosureLabels
                 'closures' => $sorted->map(fn (AreaClosure $closure) => [
                     'closure_id' => $closure->id,
                     'area_id' => $closure->area_id,
+                    'reason' => $closure->reason,
                     'name' => $closure->area->name.($repeated->has($closure->area_id) ? ' ('.$closure->starts_on->format('M j').' to '.$closure->ends_on->format('M j').')' : ''),
                 ])->all(),
             ];

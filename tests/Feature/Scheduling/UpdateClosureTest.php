@@ -417,8 +417,8 @@ class UpdateClosureTest extends TestCase
     {
         $shop = Area::factory()->create(['name' => 'Shop']);
         $closures = app(CreateClosure::class)->handle($this->coordinator(), [$this->frontDesk->id, $shop->id], '2026-11-26', '2026-11-26', 'Thanksgiving');
-        $deskLink = '<a href="'.route('calendar.closures.edit', $closures->firstWhere('area_id', $this->frontDesk->id)).'">Front desk</a>';
-        $shopLink = '<a href="'.route('calendar.closures.edit', $closures->firstWhere('area_id', $shop->id)).'">Shop</a>';
+        $deskLink = '<a href="'.route('calendar.closures.edit', $closures->firstWhere('area_id', $this->frontDesk->id)).'" aria-label="Change the Front desk closure for Thanksgiving">Front desk</a>';
+        $shopLink = '<a href="'.route('calendar.closures.edit', $closures->firstWhere('area_id', $shop->id)).'" aria-label="Change the Shop closure for Thanksgiving">Shop</a>';
         $coordinator = $this->coordinator();
         // Only coordinators and admins can change a closure, so a Shop lead sees the label without links.
         $lead = $this->withRole(Role::AreaLead, $shop);
