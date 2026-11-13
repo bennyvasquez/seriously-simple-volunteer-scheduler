@@ -111,6 +111,7 @@ class DescribeTest extends TestCase
         $this->assertSame('Changed the Front desk shift on '.$when, $this->say(ChangeLogEntry::record($this->coordinator, 'shift.updated', $shift)));
         $this->assertSame('Cancelled the Front desk shift on '.$when, $this->say(ChangeLogEntry::record($this->coordinator, 'shift.cancelled', $shift)));
         $this->assertSame('Put Robin Example on the Front desk shift on '.$when, $this->say(ChangeLogEntry::record($this->coordinator, 'assignment.added', $shift, about: $this->robin)));
+        $this->assertSame('Removed Robin Example from the Front desk shift on '.$when, $this->say(ChangeLogEntry::record($this->coordinator, 'assignment.removed', $shift, about: $this->robin)));
     }
 
     public function test_area_closure_and_settings_entries(): void

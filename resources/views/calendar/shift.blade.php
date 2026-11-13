@@ -26,7 +26,7 @@
 @endif
 <div aria-label="People on this shift" role="group">
 @forelse ($people as $person)
-<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span></div>
+<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif</div>
 @empty
 <p class="muted">Nobody is on this shift yet.</p>
 @endforelse

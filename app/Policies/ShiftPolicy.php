@@ -17,6 +17,11 @@ class ShiftPolicy
         return $user->canManageArea($shift->area);
     }
 
+    public function removePerson(User $user, Shift $shift): bool
+    {
+        return $user->canManageArea($shift->area);
+    }
+
     public function cancel(User $user, Shift $shift): bool
     {
         return $user->canManageArea($shift->area);

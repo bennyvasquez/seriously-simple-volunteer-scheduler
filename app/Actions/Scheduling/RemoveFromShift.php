@@ -1,0 +1,151 @@
+<?php
+
+namespace App\Actions\Scheduling;
+
+use App\Models\Area;
+use App\Models\Assignment;
+use App\Models\ChangeLogEntry;
+use App\Models\Organization;
+use App\Models\Shift;
+use App\Models\User;
+use App\Notifications\RemovedFromShiftsNotification;
+use Carbon\CarbonImmutable;
+use DomainException;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+
+/**
+ * A coordinator or area lead removes someone from one shift, or from every shift they're on in a range of dates (in the areas the actor manages). Nothing is removed from a shift that has started. A cancelled future shift is allowed, but nobody is emailed about it. A range sends the person one email listing every shift. The refusals are written to be shown on screen. removeLocked() is the shared step: other actions (ending a regular, turning someone off) call it with the shift already locked and send their own email.
+ */
+class RemoveFromShift
+{
+    /** Deletes the assignment and logs it, with the shift as the subject and about the person. The caller holds the area and shift locks, has authorized the actor and sends any email. `$via` is merged into the entry's details, so a caller can say how the removal came about. */
+    public function removeLocked(?User $actor, Shift $lockedShift, Assignment $assignment, array $via): void
+    {
+        $person = $assignment->user;
+
+        // A copy with the person set to nobody, so the entry holds the old and new values the same way every other entry does.
+        $after = (new Assignment)->setRawAttributes($assignment->getAttributes(), true);
+        $after->user_id = null;
+        $changes = ChangeLogEntry::changesOf($after);
+
+        $assignment->delete();
+
+        ChangeLogEntry::record($actor, 'assignment.removed', $lockedShift, ['assignment_id' => $assignment->id, 'type' => $assignment->type->value] + $via, $changes, about: $person);
+    }
+
+    public function one(User $actor, Shift $shift, Assignment $assignment): void
+    {
+        Gate::forUser($actor)->authorize('removePerson', $shift);
+
+        $person = $assignment->user;
+
+        $locked = DB::transaction(function () use ($actor, $shift, $assignment) {
+            Area::query()->whereKey($shift->area_id)->lockForUpdate()->firstOrFail();
+            $locked = Shift::query()->whereKey($shift->id)->lockForUpdate()->firstOrFail();
+
+            $current = Assignment::query()->with('user')->where('shift_id', $locked->id)->whereKey($assignment->id)->first();
+
+            if ($current === null) {
+                throw new DomainException($assignment->user->firstName().' isn\'t on this shift any more.');
+            }
+
+            if ($locked->starts_at->lessThanOrEqualTo(now())) {
+                throw new DomainException('This shift has already started.');
+            }
+
+            $this->removeLocked($actor, $locked, $current, []);
+
+            return $locked;
+        });
+
+        $shift->setRawAttributes($locked->getAttributes(), true);
+
+        if ($locked->cancelled_at === null) {
+            $shifts = collect([$locked->load('area')]);
+            defer(fn () => $person->notify(new RemovedFromShiftsNotification($shifts)));
+        }
+    }
+
+    /** @return Collection<int, Shift> The shifts the person was removed from. */
+    public function range(User $actor, User $person, string $from, string $to): Collection
+    {
+        $this->checkDates($from, $to);
+
+        $shifts = DB::transaction(function () use ($actor, $person, $from, $to) {
+            $areaIds = $this->candidates($actor, $person, $from, $to)['shifts']->pluck('area_id')->unique()->sort()->values();
+
+            Area::query()->whereKey($areaIds)->orderBy('id')->lockForUpdate()->get();
+
+            $shifts = $this->inRange($person, $from, $to)->whereIn('area_id', $areaIds)->orderBy('starts_at')->orderBy('id')->lockForUpdate()->get();
+            $shifts->load('area');
+            $shifts = $shifts->filter(fn (Shift $shift) => Gate::forUser($actor)->allows('removePerson', $shift))->values();
+
+            if ($shifts->isEmpty()) {
+                throw new DomainException($person->firstName().' isn\'t on any shifts you manage on those dates.');
+            }
+
+            foreach ($shifts as $shift) {
+                $assignment = Assignment::query()->with('user')->where('shift_id', $shift->id)->where('user_id', $person->id)->first();
+
+                if ($assignment !== null) {
+                    $this->removeLocked($actor, $shift, $assignment, ['via' => 'range', 'from' => $from, 'to' => $to]);
+                }
+            }
+
+            return $shifts;
+        });
+
+        $emailed = $shifts->filter(fn (Shift $shift) => $shift->cancelled_at === null)->values();
+
+        if ($emailed->isNotEmpty()) {
+            defer(fn () => $person->notify(new RemovedFromShiftsNotification($emailed)));
+        }
+
+        return $shifts;
+    }
+
+    /** What range() would remove the person from, and how many of their shifts in those dates are in areas the actor can't manage. Changes nothing.
+     * @return array{shifts: Collection<int, Shift>, otherAreas: int} */
+    public function rangePreview(User $actor, User $person, string $from, string $to): array
+    {
+        $this->checkDates($from, $to);
+
+        return $this->candidates($actor, $person, $from, $to);
+    }
+
+    /** @return array{shifts: Collection<int, Shift>, otherAreas: int} */
+    private function candidates(User $actor, User $person, string $from, string $to): array
+    {
+        $all = $this->inRange($person, $from, $to)->with('area')->orderBy('starts_at')->orderBy('id')->get();
+        [$managed, $others] = $all->partition(fn (Shift $shift) => Gate::forUser($actor)->allows('removePerson', $shift));
+
+        return ['shifts' => $managed->values(), 'otherAreas' => $others->count()];
+    }
+
+    private function inRange(User $person, string $from, string $to)
+    {
+        return Shift::query()
+            ->whereBetween('local_date', [$from, $to])
+            ->where('starts_at', '>', now())
+            ->whereHas('assignments', fn ($query) => $query->where('user_id', $person->id));
+    }
+
+    private function checkDates(string $from, string $to): void
+    {
+        $valid = fn (string $date) => CarbonImmutable::createFromFormat('!Y-m-d', $date) !== false && CarbonImmutable::createFromFormat('!Y-m-d', $date)->format('Y-m-d') === $date;
+
+        if (! $valid($from) || ! $valid($to)) {
+            throw new DomainException('Pick two dates.');
+        }
+
+        if ($from < Organization::current()->today()->toDateString()) {
+            throw new DomainException('Pick dates from today on.');
+        }
+
+        if ($to < $from) {
+            throw new DomainException('The last date can\'t be before the first date.');
+        }
+    }
+}

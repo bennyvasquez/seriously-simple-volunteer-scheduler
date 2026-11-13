@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Calendar;
 use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Actions\Scheduling\PutOnShift;
+use App\Actions\Scheduling\RemoveFromShift;
 use App\Actions\Scheduling\UpdateShift;
 use App\Calendar\PersonSearch;
 use App\Enums\AssignmentType;
@@ -124,6 +125,97 @@ class ShiftController extends Controller
             ->with('status', $first.($data['type'] === 'shadow' ? ' is shadowing this shift.' : ' is on this shift.').($person->canSignIn() ? ' They were emailed.' : ''));
     }
 
+    /** The confirmation page for removing one person from this shift, or from their shifts across a range of dates (neither choice picked to start with). "Check which shifts" comes back here with ?check=1 and the dates, so it works without JavaScript. */
+    public function removePerson(Request $request, CalendarController $calendar, RemoveFromShift $removeFromShift, Shift $shift): View|RedirectResponse
+    {
+        $viewer = $request->user();
+        Gate::forUser($viewer)->authorize('removePerson', $shift);
+
+        $assignment = $shift->assignments()->with('user')->whereKey((int) $request->query('assignment'))->first();
+        $areaQuery = $this->areaQuery($request);
+
+        if ($assignment === null || $shift->starts_at->lessThanOrEqualTo(now())) {
+            return redirect()->route('calendar.shift', [$shift] + $areaQuery);
+        }
+
+        $shift->load('area');
+        $person = $assignment->user;
+        $date = $shift->local_date->toDateString();
+        $request->query->set('date', $date);
+
+        $which = in_array($request->query('which'), ['this', 'range'], true) ? (string) $request->query('which') : '';
+        $values = [
+            'from' => (string) $request->query('from', $date),
+            'to' => (string) $request->query('to', $date),
+        ];
+        $preview = null;
+        $error = null;
+
+        if ($which === 'range' && $request->boolean('check')) {
+            try {
+                $preview = $removeFromShift->rangePreview($viewer, $person, $values['from'], $values['to']);
+            } catch (DomainException $e) {
+                $error = $e->getMessage();
+            }
+        }
+
+        return view('calendar.remove-from-shifts', $calendar->week($request)->getData() + [
+            'shift' => $shift,
+            'assignment' => $assignment,
+            'person' => $person,
+            'personName' => PersonSearch::displayName($viewer, $person),
+            'which' => $which,
+            'values' => $values,
+            'preview' => $preview,
+            'dateError' => $error,
+        ]);
+    }
+
+    public function removePersonStore(Request $request, RemoveFromShift $removeFromShift, Shift $shift): RedirectResponse
+    {
+        $viewer = $request->user();
+        Gate::forUser($viewer)->authorize('removePerson', $shift);
+
+        $areaQuery = $this->areaQuery($request);
+        $assignment = $shift->assignments()->with('user')->whereKey((int) $request->input('assignment'))->first();
+
+        if ($assignment === null) {
+            return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => 'That person isn\'t on this shift any more.']);
+        }
+
+        $person = $assignment->user;
+        $which = (string) $request->input('which');
+        $from = trim((string) $request->input('from'));
+        $to = trim((string) $request->input('to'));
+        $back = fn (array $extra = []) => redirect()->route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id, 'which' => $which, 'from' => $from, 'to' => $to] + $extra + $areaQuery);
+
+        if (! in_array($which, ['this', 'range'], true)) {
+            return redirect()->route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id] + $areaQuery)->withErrors(['which' => 'Pick just this date or a range of dates.']);
+        }
+
+        // A range is always checked first, and removed only with the dates that were checked.
+        if ($request->has('check') || ($which === 'range' && (! $request->boolean('confirmed') || $request->input('checked_from') !== $from || $request->input('checked_to') !== $to))) {
+            return $back(['check' => 1]);
+        }
+
+        try {
+            if ($which === 'this') {
+                $removeFromShift->one($viewer, $shift, $assignment);
+                $removed = collect([$shift]);
+            } else {
+                $removed = $removeFromShift->range($viewer, $person, $from, $to);
+            }
+        } catch (DomainException $e) {
+            return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => $e->getMessage()]);
+        }
+
+        $count = $removed->count();
+        $emailed = $person->canSignIn() && $removed->contains(fn (Shift $removedShift) => $removedShift->cancelled_at === null);
+
+        return redirect()->route('calendar.shift', [$shift] + $areaQuery)
+            ->with('status', $person->firstName().' was removed from '.$count.($count === 1 ? ' shift.' : ' shifts.').($emailed ? ' They were emailed.' : ''));
+    }
+
     /** Saves the edit form for one shift. Errors go back to the form with what was typed. */
     public function update(Request $request, UpdateShift $updateShift, Shift $shift): RedirectResponse
     {
@@ -205,29 +297,33 @@ class ShiftController extends Controller
         return 'Repeats '.$every.', since '.$slot->valid_from->format('M j').'. '.($slot->valid_until === null ? 'No end date.' : 'Ends '.$slot->valid_until->format('M j').'.');
     }
 
-    /** @return Collection<int, array{name: string, role: string}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
+    /** @return Collection<int, array{name: string, role: string, remove: ?string}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
     private function people(Shift $shift, User $viewer): Collection
     {
         $date = $shift->local_date->toDateString();
         $slot = $shift->weeklySlot;
 
-        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer) {
+        // The link to the remove page, for people who can remove from a shift that hasn't started.
+        $canRemove = $shift->starts_at->greaterThan(now()) && Gate::forUser($viewer)->allows('removePerson', $shift);
+        $remove = fn (Assignment $assignment) => $canRemove ? route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id] + $this->areaQuery(request())) : null;
+
+        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer, $remove) {
             $name = PersonSearch::displayName($viewer, $assignment->user);
 
             if ($assignment->type === AssignmentType::Shadow) {
-                return ['name' => $name, 'role' => 'Shadowing'];
+                return ['name' => $name, 'role' => 'Shadowing', 'remove' => $remove($assignment)];
             }
 
             $regular = $slot?->regulars->first(fn (SlotRegular $regular) => $regular->user_id === $assignment->user_id && $regular->activeOn($date));
 
             if ($regular === null) {
-                return ['name' => $name, 'role' => 'Regular'];
+                return ['name' => $name, 'role' => 'Regular', 'remove' => $remove($assignment)];
             }
 
             // On a slot that already runs every other week, its regulars work every date it runs.
             $everyOther = $regular->frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek;
 
-            return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week'];
+            return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week', 'remove' => $remove($assignment)];
         })->values();
     }
 }
