@@ -192,18 +192,14 @@ class AddController extends Controller
             return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->withErrors(['slot' => $e->getMessage()])->withInput();
         }
 
-        // Split the kept shifts by why they matter: details that differ, or a date the slot no longer runs on.
-        $groups = ['staffed' => [], 'staffedOff' => [], 'edited' => [], 'editedOff' => []];
-        foreach ($result->keptShifts as $shift) {
-            $off = ! $slot->occursOn($shift->local_date->toDateString());
-            $groups[($shift->assignments_count > 0 ? 'staffed' : 'edited').($off ? 'Off' : '')][] = $shift->id;
-        }
-
         return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->with('slotSaved', [
             'updated' => $result->updatedShifts,
             'cancelled' => $result->cancelledShifts,
             'created' => $result->createdShifts,
-        ] + $groups);
+            'emailed' => $result->emailed,
+            // A list of pairs rather than an id-keyed map, so the order survives the session.
+            'kept' => collect($result->keptReasons)->map(fn (string $reason, int $id) => ['id' => $id, 'reason' => $reason])->values()->all(),
+        ]);
     }
 
     /** Creates a weekly slot from the full form. */
@@ -261,34 +257,34 @@ class AddController extends Controller
             return null;
         }
 
-        $staffed = $shifts->filter(fn (Shift $shift) => $shift->assignments_count > 0)->count();
-        $edited = $shifts->filter(fn (Shift $shift) => $shift->assignments_count === 0 && $shift->edited_at !== null)->count();
-        $changes = $total - $staffed - $edited;
+        $edited = $shifts->filter(fn (Shift $shift) => $shift->edited_at !== null)->count();
+        $staffed = $shifts->filter(fn (Shift $shift) => $shift->edited_at === null && $shift->assignments_count > 0)->count();
+        $changes = $total - $edited;
         $last = $shifts->last()->local_date->format('l, F j');
 
         $sentences = [$total === 1 ? '1 shift from this slot is on the calendar, on '.$last.'.' : $total.' shifts from this slot are on the calendar, through '.$last.'.'];
 
-        if ($staffed === 0 && $edited === 0) {
-            $sentences[] = $total === 1 ? 'Saving changes it, since nobody is on it yet.' : 'Saving changes all of them, since nobody is on them yet.';
+        $including = $staffed === 0 ? '' : ', including the '.($staffed === 1 ? '1 with people on it' : $staffed.' with people on them');
+
+        if ($edited === 0) {
+            $sentences[] = $total === 1 ? 'Saving changes it.' : 'Saving changes all of them'.$including.'.';
         } else {
-            $sentences[] = $changes === 0 ? 'Saving doesn\'t change any of them.' : 'Saving changes the '.$changes.' that nobody is on yet.';
+            $sentences[] = $changes === 0 ? 'Saving doesn\'t change any of them.' : 'Saving changes the '.$changes.' nobody changed on their own'.$including.'.';
+            $sentences[] = $edited === 1 ? 'The 1 edited on its own keeps its own details.' : 'The '.$edited.' edited on their own keep their own details.';
+        }
 
-            if ($staffed > 0) {
-                $sentences[] = $staffed === 1 ? 'The 1 with people on it keeps its old details.' : 'The '.$staffed.' with people on them keep their old details.';
-            }
-
-            if ($edited > 0) {
-                $sentences[] = $edited === 1 ? 'The 1 edited on its own keeps its own details.' : 'The '.$edited.' edited on their own keep their own details.';
-            }
+        if ($staffed > 0) {
+            $sentences[] = 'Anyone on '.($staffed === 1 ? 'that shift' : 'those shifts').' is emailed if the time or what it\'s for changes.';
+            $sentences[] = 'A shift with people on it keeps its old details if the change would double-book someone or leave too few shadow spots.';
         }
 
         return $sentences;
     }
 
     /**
-     * After saving: what changed, then links to the shifts that kept their old details.
+     * After saving: what changed and who was emailed, then links to the shifts that kept their old details, each with why.
      *
-     * @return array{summary: string, groups: list<array{heading: string, shifts: Collection<int, Shift>}>}|null
+     * @return array{summary: string, kept: list<array{shift: Shift, when: string, reason: string}>, offSchedule: bool}|null
      */
     private function savedNotice(Request $request, Organization $organization): ?array
     {
@@ -309,28 +305,28 @@ class AddController extends Controller
             $summary[] = 'Added '.$plural($saved['created'], 'new shift.', 'new shifts.');
         }
 
-        $headings = [
-            'staffed' => fn (int $count) => $plural($count, 'shift with people on it kept its old details:', 'shifts with people on them kept their old details:'),
-            'staffedOff' => fn (int $count) => $plural($count, 'shift with people on it is no longer on this slot\'s schedule. Cancel that date from the calendar if nobody should work it.', 'shifts with people on them are no longer on this slot\'s schedule. Cancel those dates from the calendar if nobody should work them.'),
-            'edited' => fn (int $count) => $plural($count, 'shift edited on its own kept its own details:', 'shifts edited on their own kept their own details:'),
-            'editedOff' => fn (int $count) => $plural($count, 'shift edited on its own is no longer on this slot\'s schedule. Cancel it if it isn\'t needed:', 'shifts edited on their own are no longer on this slot\'s schedule. Cancel them if they aren\'t needed:'),
-        ];
-
-        $groups = [];
-        foreach ($headings as $kind => $heading) {
-            $ids = $saved[$kind] ?? [];
-
-            if ($ids === []) {
-                continue;
-            }
-
-            $groups[] = [
-                'heading' => $heading(count($ids)),
-                'shifts' => Shift::query()->whereKey($ids)->orderBy('local_date')->get()->map(fn (Shift $shift) => ['shift' => $shift, 'when' => $shift->whenText($organization->timezone)]),
-            ];
+        if (($saved['emailed'] ?? 0) > 0) {
+            $summary[] = $plural($saved['emailed'], 'person was', 'people were').' emailed about their changed shifts.';
         }
 
-        return ['summary' => implode(' ', $summary), 'groups' => $groups];
+        $reasons = collect($saved['kept'] ?? [])->pluck('reason', 'id');
+        $kept = Shift::query()->whereKey($reasons->keys()->all())->orderBy('local_date')->get()
+            ->map(fn (Shift $shift) => [
+                'shift' => $shift,
+                'when' => $shift->whenText($organization->timezone),
+                // Each reason as a sentence, whether or not it ends in a period.
+                'reason' => rtrim($reasons[$shift->id], '.').'.',
+            ])->values()->all();
+
+        if ($kept !== []) {
+            $summary[] = $plural(count($kept), 'shift kept its old details:', 'shifts kept their old details:');
+        }
+
+        return [
+            'summary' => implode(' ', $summary),
+            'kept' => $kept,
+            'offSchedule' => $reasons->contains(UpdateWeeklySlot::KEPT_OFF_SCHEDULE),
+        ];
     }
 
     /**
