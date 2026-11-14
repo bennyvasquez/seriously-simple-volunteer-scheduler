@@ -43,7 +43,7 @@ class FortifyServiceProvider extends ServiceProvider
         // Deactivated accounts, people who aren't invited yet and accounts without a password can't log in with a password.
         Fortify::authenticateUsing(function (Request $request) {
             // A new password attempt cancels any pending login started earlier in this session (including an email-link one). If the attempt fails, nothing stays pending, so a failed attempt can't leave a link-started login in a state that allows an emailed code.
-            $request->session()->forget(['login.id', 'login.remember', 'login.via']);
+            $request->session()->forget(['login.id', 'login.remember', 'login.via', 'login.email_code_sent']);
 
             $user = User::query()->where('email', Str::lower($request->input(Fortify::username())))->first();
 
@@ -76,7 +76,7 @@ class FortifyServiceProvider extends ServiceProvider
             // A failed recovery code comes back without the query string, so the error says which form to show.
             $mode = match (true) {
                 $request->boolean('recovery') || $request->session()->get('errors')?->has('recovery_code') => 'recovery',
-                $canEmailCode && ! $request->boolean('app') && Cache::has(TwoFactorEmailCodeController::cacheKey($pendingUser)) => 'email',
+                $canEmailCode && ! $request->boolean('app') && $session->get('login.email_code_sent') && Cache::has(TwoFactorEmailCodeController::cacheKey($pendingUser)) => 'email',
                 default => 'app',
             };
 
