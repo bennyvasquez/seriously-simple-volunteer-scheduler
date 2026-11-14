@@ -11,8 +11,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A normal run takes about 2 minutes; this stops a hung build from running for hours.
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      # Pinned to a full commit hash so a moved tag can't change what runs. Dependabot updates the hash and the comment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build the AlmaLinux 10 app image
         run: docker compose build app

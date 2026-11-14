@@ -29,6 +29,8 @@ class TwoFactorEmailCodeController extends Controller
 
         Cache::put(self::cacheKey($user), ['hash' => hash('sha256', $code), 'tries' => 0, 'expires_at' => $expiresAt->getTimestamp()], $expiresAt);
         $user->notify(new TwoFactorCodeNotification($code));
+        // The waiting code is per person, so this marks the login that asked for it. Only that login opens on the email form.
+        $request->session()->put('login.email_code_sent', true);
 
         return back()->with('status', 'We emailed you a 6-digit code. It works for 10 minutes.');
     }
@@ -62,7 +64,7 @@ class TwoFactorEmailCodeController extends Controller
 
         Cache::forget($key);
         $remember = (bool) $request->session()->pull('login.remember', false);
-        $request->session()->forget(['login.id', 'login.via']);
+        $request->session()->forget(['login.id', 'login.via', 'login.email_code_sent']);
 
         Auth::login($user, $remember);
         $request->session()->regenerate();

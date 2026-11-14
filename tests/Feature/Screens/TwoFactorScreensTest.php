@@ -105,6 +105,30 @@ class TwoFactorScreensTest extends TestCase
             ->assertSee('name="recovery_code"', false)->assertSee('That recovery code didn\'t work. Check it and try again, or use a different one.');
     }
 
+    public function test_logging_in_again_after_asking_for_an_emailed_code_shows_the_app_screen(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+        $this->from(route('two-factor.login'))->post(route('two-factor.email.send'));
+
+        // They abandon that login and start again within the code's 10 minutes. The code is still waiting, but this login didn't ask for it.
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+
+        $this->get(route('two-factor.login'))->assertSee('Enter your code')->assertDontSee('Check your email for a code')->assertSee('Email me a code instead');
+    }
+
+    public function test_a_new_browser_session_doesnt_open_on_the_email_screen(): void
+    {
+        $lead = $this->leadWithTwoFactor();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+        $this->from(route('two-factor.login'))->post(route('two-factor.email.send'));
+
+        $this->flushSession();
+        $this->post('/login', ['email' => $lead->email, 'password' => 'correct horse battery']);
+
+        $this->get(route('two-factor.login'))->assertSee('Enter your code')->assertDontSee('Check your email for a code');
+    }
+
     public function test_the_email_screen_survives_a_refresh_and_confirms_a_new_code(): void
     {
         $lead = $this->leadWithTwoFactor();

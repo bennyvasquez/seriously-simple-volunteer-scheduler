@@ -32,7 +32,7 @@ Tests use a separate `ssvs_test` database, so they never touch your development 
 
 ## Styling
 
-There's no asset build and no Node. All styling is one plain file, `public/css/app.css`, and the Atkinson Hyperlegible font is served from `public/fonts` (with its license, `OFL.txt`), so edit the CSS and reload. Pages share the layout in `resources/views/layouts/app.blade.php`.
+There's no asset build and no Node. All styling is one plain file, `public/css/app.css`, and the Atkinson Hyperlegible font is served from `public/fonts` (with its license, `OFL.txt`), so edit the CSS and reload. The font files are the Latin and Latin Extended subsets from the Google Fonts release (version 12, under the SIL Open Font License 1.1), each with the `unicode-range` Google gives it, so the browser only downloads the Latin Extended file for pages with letters such as Ł or Ş. If you update the font, replace all four files from the same release so the subsets match. Pages share the layout in `resources/views/layouts/app.blade.php`.
 
 ## Useful commands
 

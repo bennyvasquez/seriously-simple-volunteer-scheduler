@@ -19,6 +19,9 @@
 </form>
 <p class="muted">You'll see this until both steps are done. Your shifts and the schedule are waiting for you after that.</p>
 @else
+@if ($status)
+<p role="status">{{ $status }}</p>
+@endif
 <h1>Connect an authenticator app</h1>
 @if ($setupKey === null)
 <p>An authenticator app on your phone shows a new 6-digit code every 30 seconds. You'll type that code after your password when you log in.</p>

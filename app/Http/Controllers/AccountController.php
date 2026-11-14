@@ -34,7 +34,10 @@ class AccountController extends Controller
         }
 
         $setupKey = $user->two_factor_secret ? Fortify::currentEncrypter()->decrypt($user->two_factor_secret) : null;
-        $view = view('account.security', ['step' => 2, 'user' => $user, 'setupKey' => $setupKey]);
+        // Fortify flashes keywords such as "two-factor-authentication-enabled"; only our own messages, which are sentences, are shown.
+        $status = session('status');
+        $status = is_string($status) && str_contains($status, ' ') ? $status : null;
+        $view = view('account.security', ['step' => 2, 'user' => $user, 'setupKey' => $setupKey, 'status' => $status]);
 
         // The setup key and QR code are the secret itself, so the browser mustn't keep a copy.
         return $setupKey === null ? $view : response($view)->header('Cache-Control', 'no-store');

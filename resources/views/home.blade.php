@@ -3,7 +3,7 @@
 @section('title', 'Home')
 
 @section('content')
-<h1>Hi {{ $user->firstName() }}</h1>
+<h1>{{ trim('Hi '.$user->firstName()) }}</h1>
 <p>Your shifts will show here soon.</p>
 @if ($user->canViewCalendar())
 <a class="btn" href="{{ route('calendar.week') }}">Calendar</a>

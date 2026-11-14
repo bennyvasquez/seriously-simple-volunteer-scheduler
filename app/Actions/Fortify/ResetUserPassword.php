@@ -40,6 +40,7 @@ class ResetUserPassword implements ResetsUserPasswords
             ChangeLogEntry::record($user, 'user.password_reset', $user, changes: $changes);
         });
 
-        $user->notify(new PasswordChangedNotification);
+        // After the response: the new password is already saved, so a mail server failure is logged instead of shown to the person.
+        defer(fn () => $user->notify(new PasswordChangedNotification));
     }
 }

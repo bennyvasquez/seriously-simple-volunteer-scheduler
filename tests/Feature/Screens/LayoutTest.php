@@ -22,6 +22,11 @@ class LayoutTest extends TestCase
         $this->actingAs(User::factory()->create(['name' => 'Sam Rivera']))->get('/')->assertOk()->assertSee('Hi Sam');
     }
 
+    public function test_home_says_just_hi_when_there_is_no_name(): void
+    {
+        $this->actingAs(User::factory()->create(['name' => '   ']))->get('/')->assertOk()->assertSee('<h1>Hi</h1>', false);
+    }
+
     public function test_pages_use_the_local_stylesheet_and_font_only(): void
     {
         $html = $this->get('/login')->getContent();
@@ -30,6 +35,18 @@ class LayoutTest extends TestCase
         $this->assertStringNotContainsString('fonts.googleapis.com', $html);
         $this->assertStringNotContainsString('@vite', $html);
         $this->assertFileExists(public_path('fonts/OFL.txt'));
+    }
+
+    public function test_the_font_covers_latin_extended_letters_only_when_needed(): void
+    {
+        // Names like "Łucja" or "Ştefan" stay in one font, and the browser downloads the extra file only for pages that need those letters (issue #16).
+        $css = file_get_contents(public_path('css/app.css'));
+
+        foreach ([400, 700] as $weight) {
+            $this->assertFileExists(public_path("fonts/atkinson-hyperlegible-latin-ext-$weight.woff2"));
+            $this->assertMatchesRegularExpression("#font-weight:$weight;[^}]*atkinson-hyperlegible-latin-ext-$weight\\.woff2[^}]*unicode-range:U\\+0100-02BA#", $css);
+            $this->assertMatchesRegularExpression("#font-weight:$weight;[^}]*atkinson-hyperlegible-$weight\\.woff2[^}]*unicode-range:U\\+0000-00FF#", $css);
+        }
     }
 
     public function test_a_field_ties_its_hint_and_error_to_the_input(): void

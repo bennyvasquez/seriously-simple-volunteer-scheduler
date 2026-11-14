@@ -22,8 +22,12 @@ class InitialPasswordController extends Controller
     {
         $user = $request->user();
 
-        // A second tab or a resubmitted form. Changing a password asks for the current one, on the account page.
+        // A second tab or a resubmitted form. Changing a password asks for the current one, on the account page. Someone still in setup would only be sent on from there, losing the message, so they go straight back to the setup screen.
         if ($user->password !== null) {
+            if ($user->requiresTwoFactor() && ! $user->hasEnabledTwoFactorAuthentication()) {
+                return redirect()->route('account.security')->with('status', 'You already have a password, so the next step is the authenticator app.');
+            }
+
             return redirect()->route('account.show')->with('status', 'You already have a password. You can change it below.');
         }
 

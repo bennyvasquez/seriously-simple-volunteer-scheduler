@@ -28,19 +28,43 @@
 <p role="status">{{ session('status') }}</p>
 @endif
 <p>Enter your email address and we'll send you a link to log in. You don't need a password.</p>
-<form method="POST" action="{{ route('login-link.request') }}">
+<form method="POST" action="{{ route('login-link.request') }}" id="login-form">
 @csrf
 <x-field name="email" type="email" label="Email address" autocomplete="email" :value="old('email')" />
-<button type="submit" class="btn btn-primary">Email me a link</button>
-<p class="muted">or</p>
+<button type="submit" class="btn btn-primary" id="send-link">Email me a link</button>
+<p class="divider">or</p>
 <div class="panel">
 <h2>Log in with a password</h2>
 <p class="muted">Anyone can add a password from their profile. Area leads, coordinators and admins always use one.</p>
 <x-field name="password" type="password" label="Password" autocomplete="current-password" />
 <label class="check"><input type="checkbox" name="remember" value="1"> Keep me logged in on this device</label>
-<button type="submit" class="btn" formaction="{{ route('login') }}">Log in with my password</button>
+<button type="submit" class="btn" id="password-login" formaction="{{ route('login') }}">Log in with my password</button>
 <a href="{{ route('password.request') }}">Forgot your password?</a>
 </div>
 </form>
 @endsection
+
+@push('scripts')
+<script>
+(() => {
+    // Both buttons submit this one form, so the browser sends every field. When it's "Email me a link", leave a typed password out of the request. Without JavaScript the link request ignores it anyway.
+    const form = document.getElementById('login-form');
+    form.addEventListener('submit', (event) => {
+        if (event.submitter && event.submitter.id === 'send-link') {
+            form.elements.password.value = '';
+            form.elements.remember.checked = false;
+        }
+    });
+
+    // Pressing Enter submits with the form's first button, "Email me a link". In the password box, Enter means "Log in with my password".
+    form.elements.password.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && ! event.isComposing) {
+            event.preventDefault();
+            const passwordLogin = document.getElementById('password-login');
+            form.requestSubmit ? form.requestSubmit(passwordLogin) : passwordLogin.click();
+        }
+    });
+})();
+</script>
+@endpush
 @endif

@@ -145,7 +145,10 @@ class EmailChangeController extends Controller
             return view('account.email', ['step' => 'expired']);
         }
 
-        return view('account.email', ['step' => 'changed', 'newEmail' => $link->email]);
+        // On a shared device where someone else is logged in, the page mustn't link to that person's account.
+        $someoneElse = $request->user() !== null && $sessionId === null;
+
+        return view('account.email', ['step' => 'changed', 'newEmail' => $link->email, 'someoneElse' => $someoneElse]);
     }
 
     /** Same rule as Laravel's password.confirm middleware: confirmed within the password timeout. A confirmation by identity link counts only for people without a password. */

@@ -404,4 +404,28 @@ class EmailChangeTest extends TestCase
         $this->assertSame(0, DB::table('sessions')->where('user_id', $sam->id)->count());
         $this->assertFalse(ChangeLogEntry::query()->ofAction('user.signed_out_everywhere')->sole()->details['kept_current_session']);
     }
+
+    public function test_confirming_while_someone_else_is_logged_in_doesnt_link_to_their_account(): void
+    {
+        Notification::fake();
+        $sam = User::factory()->create(['email' => 'sam@example.org']);
+        $robin = User::factory()->create(['email' => 'robin@example.org']);
+        $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
+
+        // Sam opens the link on a shared computer where Robin is logged in. The page mustn't send Sam to Robin's login and security page (issue #14).
+        $this->actingAs($robin)->post(route('account.email.confirm', $token))->assertOk()
+            ->assertSee('Your email address is now sam.new@example.org')
+            ->assertDontSee('href="'.route('account.show').'"', false)
+            ->assertSee('Someone else is logged in on this device. Use the new address next time you log in on yours.');
+    }
+
+    public function test_confirming_on_your_own_device_links_back_to_login_and_security(): void
+    {
+        Notification::fake();
+        $sam = User::factory()->create(['email' => 'sam@example.org']);
+        $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
+
+        $this->actingAs($sam)->post(route('account.email.confirm', $token))->assertOk()
+            ->assertSee('href="'.route('account.show').'"', false)->assertSee('Back to login and security');
+    }
 }
