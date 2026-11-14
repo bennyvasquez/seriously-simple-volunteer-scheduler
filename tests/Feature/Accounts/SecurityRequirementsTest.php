@@ -174,6 +174,21 @@ class SecurityRequirementsTest extends TestCase
         $this->from(route('account.security'))->post(route('two-factor.enable'))->assertRedirect(route('password.confirm'));
     }
 
+    public function test_a_link_login_after_someone_elses_abandoned_password_login_still_asks_for_the_password(): void
+    {
+        // Someone with two-factor typed their password in this browser and walked away at the code screen, leaving the pending password login in the session.
+        $other = User::factory()->create();
+        $coordinator = $this->coordinator(['password' => Hash::make('correct horse battery')]);
+        $token = basename(parse_url(app(IssueLoginLink::class)->handle($coordinator, LoginLinkPurpose::SignIn), PHP_URL_PATH));
+
+        $this->withSession(['login.id' => $other->id, 'login.via' => 'password'])->post(route('login-link.consume', $token))->assertRedirect();
+        $this->assertAuthenticatedAs($coordinator);
+
+        // The coordinator never typed a password, so setting up the app still asks for it.
+        $this->from(route('account.security'))->post(route('two-factor.enable'))->assertRedirect(route('password.confirm'));
+        $this->assertNull(session('login.id'));
+    }
+
     public function test_a_password_login_by_someone_who_doesnt_need_setup_doesnt_count_as_confirming(): void
     {
         User::factory()->create(['email' => 'volunteer@example.org', 'password' => Hash::make('correct horse battery')]);

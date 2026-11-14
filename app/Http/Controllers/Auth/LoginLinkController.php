@@ -79,6 +79,9 @@ class LoginLinkController extends Controller
             });
         }
 
+        // A link login replaces any login left pending in this browser, such as someone else's password login abandoned at the code screen, so none of its markers carry over.
+        $request->session()->forget(['login.id', 'login.remember', 'login.via', 'login.email_code_sent']);
+
         if ($user->hasEnabledTwoFactorAuthentication()) {
             // Hand off to Fortify's two-factor challenge. Remember this was a link login: an emailed code won't count as a second factor.
             $request->session()->put(['login.id' => $user->id, 'login.remember' => $request->boolean('remember'), 'login.via' => 'link']);

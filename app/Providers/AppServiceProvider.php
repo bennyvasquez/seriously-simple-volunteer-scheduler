@@ -68,7 +68,7 @@ class AppServiceProvider extends ServiceProvider
             $session = $request->session();
 
             // Someone who still has to set up two-factor (after an admin reset it, say) just typed their password, so "Set up the app" doesn't ask for it again. Only them: for everyone else a login doesn't count as confirming the password.
-            if ($session->get('login.via') === 'password' && $event->user->requiresTwoFactor() && ! $event->user->hasEnabledTwoFactorAuthentication()) {
+            if ($request->routeIs('login.store') && $session->get('login.via') === 'password' && $event->user->requiresTwoFactor() && ! $event->user->hasEnabledTwoFactorAuthentication()) {
                 $session->passwordConfirmed();
             }
 
