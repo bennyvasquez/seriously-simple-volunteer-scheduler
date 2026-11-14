@@ -7,9 +7,12 @@ use App\Models\User;
 use App\Notifications\PasswordChangedNotification;
 use App\Notifications\TwoFactorCodeNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Testing\Fakes\NotificationFake;
+use Symfony\Component\Mailer\Exception\TransportException;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
@@ -120,6 +123,30 @@ class PasswordResetTwoFactorTest extends TestCase
             ->where('subject_id', $this->user->id)
             ->exists());
         Notification::assertSentTo($this->user, PasswordChangedNotification::class);
+    }
+
+    public function test_a_mail_failure_after_a_reset_still_finishes_the_reset(): void
+    {
+        // The password is already saved when the email goes out, so a mail server failure mustn't show the person an error.
+        Notification::swap(new class extends NotificationFake
+        {
+            public function send($notifiables, $notification): void
+            {
+                throw new TransportException('The mail server is down.');
+            }
+        });
+        Exceptions::fake();
+        $token = Password::broker()->createToken($this->user);
+
+        $this->post(route('password.update'), [
+            'token' => $token,
+            'email' => 'coordinator@example.org',
+            'password' => self::NEW_PASSWORD,
+            'password_confirmation' => self::NEW_PASSWORD,
+        ])->assertRedirect(route('login'))->assertSessionHasNoErrors();
+
+        $this->assertTrue(Hash::check(self::NEW_PASSWORD, $this->user->fresh()->password));
+        Exceptions::assertReported(TransportException::class);
     }
 
     public function test_using_a_recovery_code_is_logged(): void
