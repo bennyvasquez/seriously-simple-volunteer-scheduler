@@ -3,6 +3,9 @@
 namespace Tests\Feature\Accounts;
 
 use App\Actions\Accounts\GrantRole;
+use App\Actions\Accounts\IssueLoginLink;
+use App\Actions\Accounts\ResetTwoFactor;
+use App\Enums\LoginLinkPurpose;
 use App\Enums\Role;
 use App\Http\Middleware\EnsureAccountIsSecure;
 use App\Models\Area;
@@ -124,6 +127,42 @@ class SecurityRequirementsTest extends TestCase
 
         $this->get('/')->assertOk();
         $this->assertTrue(ChangeLogEntry::query()->where('action', 'two_factor.enabled')->exists());
+    }
+
+    public function test_after_a_two_factor_reset_a_password_login_goes_straight_to_the_app_setup(): void
+    {
+        $admin = User::factory()->create();
+        app(GrantRole::class)->handle(null, $admin, Role::Admin);
+        $coordinator = $this->coordinator(['email' => 'coordinator@example.org', 'password' => Hash::make('correct horse battery')]);
+        $this->enableTwoFactor($coordinator);
+        app(ResetTwoFactor::class)->handle($admin, $coordinator->fresh());
+
+        $this->post('/login', ['email' => 'coordinator@example.org', 'password' => 'correct horse battery'])->assertRedirect();
+
+        // They just typed their password, so "Set up the app" doesn't ask for it again (issue #7).
+        $this->from(route('account.security'))->post(route('two-factor.enable'))->assertRedirect(route('account.security'));
+        $this->assertNotNull($coordinator->fresh()->two_factor_secret);
+    }
+
+    public function test_after_a_link_login_setting_up_the_app_still_asks_for_the_password(): void
+    {
+        $coordinator = $this->coordinator(['password' => Hash::make('correct horse battery')]);
+        $token = basename(parse_url(app(IssueLoginLink::class)->handle($coordinator, LoginLinkPurpose::SignIn), PHP_URL_PATH));
+
+        $this->post(route('login-link.consume', $token))->assertRedirect();
+        $this->assertAuthenticatedAs($coordinator);
+
+        $this->from(route('account.security'))->post(route('two-factor.enable'))->assertRedirect(route('password.confirm'));
+    }
+
+    public function test_a_password_login_by_someone_who_doesnt_need_setup_doesnt_count_as_confirming(): void
+    {
+        User::factory()->create(['email' => 'volunteer@example.org', 'password' => Hash::make('correct horse battery')]);
+
+        $this->post('/login', ['email' => 'volunteer@example.org', 'password' => 'correct horse battery'])->assertRedirect();
+
+        $this->get(route('account.email.edit'))->assertRedirect(route('password.confirm'));
+        $this->assertNull(session('login.via'));
     }
 
     public function test_turning_two_factor_off_is_logged_and_locks_the_app_again(): void
