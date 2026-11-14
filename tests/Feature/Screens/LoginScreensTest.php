@@ -83,6 +83,12 @@ class LoginScreensTest extends TestCase
             ->assertSee('href="'.route('account.show').'"', false);
     }
 
+    public function test_the_confirm_screen_says_forgot_your_password_logs_you_out(): void
+    {
+        $this->actingAs(User::factory()->create())->get(route('password.confirm'))
+            ->assertSeeInOrder(['Forgot your password?', 'This logs you out so you can reset it by email.']);
+    }
+
     public function test_forgot_your_password_from_the_confirm_screen_logs_out_and_opens_the_reset_screen(): void
     {
         $this->actingAs(User::factory()->create())->post(route('account.forgot-password'))->assertRedirect(route('password.request'));

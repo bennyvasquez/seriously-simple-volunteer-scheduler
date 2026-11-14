@@ -13,7 +13,8 @@
 {{-- The reset screens are for logged-out people, so this logs out first instead of linking straight there. --}}
 <form method="POST" action="{{ route('account.forgot-password') }}">
 @csrf
-<button type="submit" class="link">Forgot your password?</button>
+<button type="submit" class="link" aria-describedby="forgot-logs-out">Forgot your password?</button>
+<p class="muted" id="forgot-logs-out">This logs you out so you can reset it by email.</p>
 </form>
 <p><a href="{{ route('account.show') }}">Back to login and security</a></p>
 @endsection
