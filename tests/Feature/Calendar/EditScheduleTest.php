@@ -8,6 +8,7 @@ use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
 use App\Actions\Scheduling\PutOnShift;
+use App\Actions\Scheduling\RemoveFromShift;
 use App\Actions\Scheduling\UpdateShift;
 use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\Enums\AssignmentType;
@@ -498,6 +499,22 @@ class EditScheduleTest extends TestCase
             $this->assertSame(0, $shift->assignments()->count());
             $this->assertSame([], ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.updated')->sole()->details['added_regular_ids']);
         }
+    }
+
+    public function test_dates_brought_back_leave_out_a_regular_who_was_taken_off_that_date(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $sam = $this->regular($slot, 'Sam Example');
+        $nov19 = $slot->shifts()->where('local_date', '2026-11-19')->sole();
+        app(RemoveFromShift::class)->one($this->coordinator(), $nov19, $nov19->assignments()->sole());
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['valid_until' => '2026-11-12'] + $this->slotAttributes($slot->fresh()));
+        $this->assertNotNull($nov19->fresh()->cancelled_at);
+
+        app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot->fresh(), ['valid_until' => null] + $this->slotAttributes($slot->fresh()));
+
+        $this->assertNull($nov19->fresh()->cancelled_at);
+        $this->assertSame(0, $nov19->assignments()->count());
+        $this->assertSame([], ChangeLogEntry::query()->forSubject($nov19)->ofAction('shift.updated')->latest('id')->first()->details['added_regular_ids']);
     }
 
     public function test_bringing_dates_back_reads_regulars_and_people_under_the_lock(): void

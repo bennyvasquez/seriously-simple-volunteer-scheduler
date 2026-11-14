@@ -159,7 +159,9 @@ class RestoreShift
     }
 
     /**
-     * The slot's regulars who work the shift's date, aren't on it already and aren't turned off, the earliest added first.
+     * The slot's regulars who work the shift's date, aren't on it already, weren't taken off it and aren't turned off, the earliest added first.
+     *
+     * Anyone with an assignment.removed entry for this shift was taken off it on purpose (by a coordinator, or for an overlap), so bringing the shift back leaves them off. The entries are read without a lock: every removal from this shift holds the shift lock the caller holds, and a locking read here would take gap locks on the change log that block other actions' entries.
      *
      * @param  Collection<int, SlotRegular>  $regulars
      * @param  Collection<int, Assignment>  $on
@@ -170,9 +172,10 @@ class RestoreShift
     {
         $date = $shift->local_date->toDateString();
         $joining = new EloquentCollection;
+        $takenOff = $regulars->isEmpty() ? collect() : ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.removed')->whereNotNull('affected_user_id')->pluck('affected_user_id');
 
         foreach ($regulars as $regular) {
-            if (! $regular->activeOn($date) || $on->contains('user_id', $regular->user_id) || $joining->contains('id', $regular->user_id)) {
+            if (! $regular->activeOn($date) || $on->contains('user_id', $regular->user_id) || $joining->contains('id', $regular->user_id) || $takenOff->contains($regular->user_id)) {
                 continue;
             }
 

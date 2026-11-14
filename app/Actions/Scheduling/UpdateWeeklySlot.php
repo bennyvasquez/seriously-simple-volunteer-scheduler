@@ -240,9 +240,11 @@ class UpdateWeeklySlot
             $shift->save();
 
             $added = [];
+            // People taken off this date on purpose stay off it, the same as RestoreShift::regularsJoining(). Read without a lock: removals from this shift hold the shift lock this transaction holds.
+            $takenOff = ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.removed')->whereNotNull('affected_user_id')->pluck('affected_user_id');
             // Each person is read with a shared lock (the only lock a user row may take after a shift row), so a turn-off that committed after this transaction's first read is seen, and one still in progress waits for this save, whose release then finds the shift.
             $working = $regulars
-                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date))
+                ->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && ! $takenOff->contains($regular->user_id))
                 ->filter(fn (SlotRegular $regular) => User::query()->whereKey($regular->user_id)->sharedLock()->first()?->isActive() ?? false);
 
             foreach ($working as $regular) {

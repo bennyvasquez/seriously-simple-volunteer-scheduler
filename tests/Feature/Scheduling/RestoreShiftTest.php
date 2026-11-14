@@ -9,6 +9,7 @@ use App\Actions\Scheduling\CreateClosure;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
 use App\Actions\Scheduling\PutOnShift;
+use App\Actions\Scheduling\RemoveFromShift;
 use App\Actions\Scheduling\RestoreShift;
 use App\Actions\Scheduling\UpdateShift;
 use App\Actions\Scheduling\UpdateWeeklySlot;
@@ -378,6 +379,28 @@ class RestoreShiftTest extends TestCase
         $this->assertSame([$casey->id], $entry->details['added_regular_ids']);
         Notification::assertSentTo($casey, ShiftRestoredNotification::class);
         Notification::assertNotSentTo($alex, ShiftRestoredNotification::class);
+    }
+
+    public function test_bringing_back_a_shift_leaves_off_a_regular_who_was_taken_off_that_date(): void
+    {
+        $slot = $this->robinsSlot();
+        $shift = $slot->shifts()->where('local_date', '2026-10-29')->sole();
+        $coordinator = $this->coordinator();
+        // Robin can't make October 29, so they're taken off it, and later the day is cancelled.
+        app(RemoveFromShift::class)->one($coordinator, $shift, Assignment::query()->where('shift_id', $shift->id)->sole());
+        app(CancelShift::class)->handle($coordinator, $shift->fresh(), 'Power outage');
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', [$shift, 'restore' => 1]))->assertOk()
+            ->assertDontSee('will be emailed that it&#039;s back on', false);
+        Notification::fake();
+
+        $result = app(RestoreShift::class)->handle($coordinator, $shift);
+
+        $this->assertNull($shift->fresh()->cancelled_at);
+        $this->assertSame(0, $result['emailed']);
+        $this->assertSame(0, Assignment::query()->where('shift_id', $shift->id)->count());
+        $this->assertArrayNotHasKey('added_regular_ids', ChangeLogEntry::query()->forSubject($shift)->ofAction('shift.restored')->sole()->details);
+        Notification::assertNotSentTo($this->robin, ShiftRestoredNotification::class);
     }
 
     public function test_a_hand_edited_shift_comes_back_with_its_own_details(): void
