@@ -22,7 +22,7 @@ class WeeklySlot extends Model
     use HasFactory;
 
     protected $fillable = [
-        'area_id', 'weekday', 'start_time', 'end_time', 'headcount', 'shadow_spots',
+        'area_id', 'weekday', 'start_time', 'end_time', 'people_needed', 'shadow_spots',
         'frequency', 'anchor_date', 'valid_from', 'valid_until', 'title', 'is_rotation',
     ];
 
@@ -30,7 +30,7 @@ class WeeklySlot extends Model
     {
         return [
             'weekday' => 'integer',
-            'headcount' => 'integer',
+            'people_needed' => 'integer',
             'shadow_spots' => 'integer',
             'is_rotation' => 'boolean',
             'frequency' => SlotFrequency::class,
@@ -51,7 +51,7 @@ class WeeklySlot extends Model
                 throw new InvalidArgumentException('A slot has to end at a different time than it starts.');
             }
 
-            if ($slot->headcount < 1) {
+            if ($slot->people_needed < 1) {
                 throw new InvalidArgumentException('A slot needs at least one person.');
             }
 

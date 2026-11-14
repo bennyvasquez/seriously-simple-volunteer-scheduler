@@ -13,7 +13,9 @@ use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class GenerateShiftsTest extends TestCase
@@ -46,7 +48,7 @@ class GenerateShiftsTest extends TestCase
 
     public function test_it_creates_shifts_for_the_coming_weeks(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 2, 'shadow_spots' => 1]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2, 'shadow_spots' => 1]);
 
         $this->assertSame(2, $this->generate());
         $this->assertSame(['2026-10-15', '2026-10-22'], $this->localDates());
@@ -55,7 +57,7 @@ class GenerateShiftsTest extends TestCase
         $this->assertSame('2026-10-15 19:30:00', $first->starts_at->format('Y-m-d H:i:s'));
         $this->assertSame('2026-10-15 22:30:00', $first->ends_at->format('Y-m-d H:i:s'));
         $this->assertSame($slot->area_id, $first->area_id);
-        $this->assertSame(2, $first->headcount);
+        $this->assertSame(2, $first->people_needed);
         $this->assertSame(1, $first->shadow_spots);
     }
 
@@ -85,7 +87,7 @@ class GenerateShiftsTest extends TestCase
     public function test_it_fills_in_regulars_who_are_active_on_each_date(): void
     {
         $this->organization->update(['weeks_ahead' => 3]);
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 2]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2]);
         $always = User::factory()->create();
         $leaving = User::factory()->create();
         $joining = User::factory()->create();
@@ -102,6 +104,37 @@ class GenerateShiftsTest extends TestCase
         $this->assertSame([$always->id], $peopleOn('2026-10-22'));
         $this->assertSame([$always->id, $joining->id], $peopleOn('2026-10-29'));
         $this->assertSame(AssignmentType::Regular, Assignment::query()->first()->type);
+    }
+
+    public function test_a_turn_off_or_end_that_lands_mid_run_is_seen_under_the_lock(): void
+    {
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 3]);
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $staying = User::factory()->create();
+        $slot->regulars()->create(['user_id' => $robin->id, 'starts_on' => '2026-01-01']);
+        $endingRegular = $slot->regulars()->create(['user_id' => $casey->id, 'starts_on' => '2026-01-01']);
+        $slot->regulars()->create(['user_id' => $staying->id, 'starts_on' => '2026-01-01']);
+
+        // The run has already loaded the slot's regulars and their people. Right after it takes the first area lock, Robin is turned off and Casey's regular ends, the way a turn-off and its release would commit while the run waited for the lock.
+        $landed = false;
+        DB::listen(function (QueryExecuted $query) use (&$landed, $robin, $endingRegular) {
+            if ($landed || ! str_contains($query->sql, 'from `areas`') || ! str_contains($query->sql, 'for update')) {
+                return;
+            }
+
+            $landed = true;
+            DB::table('users')->where('id', $robin->id)->update(['deactivated_at' => now()]);
+            DB::table('slot_regulars')->where('id', $endingRegular->id)->update(['ends_on' => '2026-10-14']);
+        });
+
+        $this->generate();
+
+        $this->assertTrue($landed);
+        $this->assertGreaterThan(0, Shift::query()->count());
+        $this->assertSame(0, Assignment::query()->where('user_id', $robin->id)->count());
+        $this->assertSame(0, Assignment::query()->where('user_id', $casey->id)->count());
+        $this->assertSame(Shift::query()->count(), Assignment::query()->where('user_id', $staying->id)->count());
     }
 
     public function test_it_skips_dates_when_the_area_is_closed(): void
@@ -207,7 +240,7 @@ class GenerateShiftsTest extends TestCase
 
     public function test_it_leaves_out_regulars_who_have_been_turned_off(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 2]);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2]);
         $active = User::factory()->create();
         $turnedOff = User::factory()->create(['deactivated_at' => now()]);
         $slot->regulars()->create(['user_id' => $active->id, 'starts_on' => '2026-01-01']);
@@ -219,18 +252,22 @@ class GenerateShiftsTest extends TestCase
         $this->assertFalse(Assignment::query()->where('user_id', $turnedOff->id)->exists());
     }
 
-    public function test_it_adds_no_more_regulars_than_the_shift_needs(): void
+    public function test_generation_puts_every_regular_on(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1]);
-        $first = User::factory()->create();
-        $second = User::factory()->create();
-        $slot->regulars()->create(['user_id' => $first->id, 'starts_on' => '2026-01-01']);
-        $slot->regulars()->create(['user_id' => $second->id, 'starts_on' => '2026-01-01']);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 2]);
+        $ids = [];
+
+        foreach (range(1, 3) as $ignored) {
+            $user = User::factory()->create();
+            $ids[] = $user->id;
+            $slot->regulars()->create(['user_id' => $user->id, 'starts_on' => '2026-01-01']);
+        }
 
         $this->generate();
 
+        $this->assertGreaterThan(0, Shift::query()->count());
         foreach (Shift::query()->get() as $shift) {
-            $this->assertSame([$first->id], $shift->assignments()->pluck('user_id')->all());
+            $this->assertEqualsCanonicalizing($ids, $shift->assignments()->pluck('user_id')->all());
         }
     }
 }

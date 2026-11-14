@@ -4,11 +4,12 @@ namespace Database\Factories;
 
 use App\Enums\SlotFrequency;
 use App\Models\Area;
+use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<\App\Models\WeeklySlot>
+ * @extends Factory<WeeklySlot>
  */
 class WeeklySlotFactory extends Factory
 {
@@ -19,7 +20,7 @@ class WeeklySlotFactory extends Factory
             'weekday' => 4, // Thursday
             'start_time' => '15:30',
             'end_time' => '18:30',
-            'headcount' => 1,
+            'people_needed' => 1,
             'shadow_spots' => 0,
             'frequency' => SlotFrequency::Weekly,
             'anchor_date' => null,

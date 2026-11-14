@@ -20,7 +20,7 @@ class ShiftTest extends TestCase
             'local_date' => '2026-10-15',
             'starts_at' => '2026-10-15 19:30:00',
             'ends_at' => '2026-10-15 22:30:00',
-            'headcount' => 1,
+            'people_needed' => 1,
             'shadow_spots' => 0,
         ];
     }

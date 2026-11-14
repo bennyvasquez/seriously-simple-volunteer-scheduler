@@ -45,16 +45,7 @@ class CreateClosure
             Gate::forUser($actor)->authorize('close', $area);
         }
 
-        $first = self::date($startsOn);
-        $last = self::date($endsOn);
-
-        if ($first === null || $last === null) {
-            throw new DomainException('Pick the first and last day closed.');
-        }
-
-        if ($last->lessThan($first)) {
-            throw new DomainException('The last day closed has to be on or after the first day.');
-        }
+        [$first, $last, $reason] = self::checkedValues($startsOn, $endsOn, $reason);
 
         $today = CarbonImmutable::parse(Organization::current()->today()->toDateString(), 'UTC');
 
@@ -64,16 +55,6 @@ class CreateClosure
 
         // Days already past can't be closed, so a closure that started earlier is stored from today.
         $first = $first->max($today);
-
-        $reason = trim($reason);
-
-        if ($reason === '') {
-            throw new DomainException('Say why it\'s closed, so volunteers know.');
-        }
-
-        if (mb_strlen($reason) > 200) {
-            throw new DomainException('Keep it to 200 characters or fewer.');
-        }
 
         [$closures, $cancelledByPerson] = DB::transaction(function () use ($actor, $areas, $first, $last, $reason) {
             $closures = new EloquentCollection;
@@ -92,50 +73,20 @@ class CreateClosure
                 ]);
                 $closureChanges = ChangeLogEntry::changesOf($closure);
                 $closure->save();
+                $closure->setRelation('area', $area);
 
-                // Locked so nobody is put on a shift between reading its people and cancelling it.
-                $shifts = Shift::query()
-                    ->where('area_id', $area->id)
-                    ->whereBetween('local_date', [$first->toDateString(), $last->toDateString()])
-                    ->whereNull('cancelled_at')
-                    ->where('starts_at', '>', now())
-                    ->orderBy('starts_at')
-                    ->orderBy('id')
-                    ->lockForUpdate()
-                    ->get();
-
-                $cancelled = [];
-
-                foreach ($shifts as $shift) {
-                    $shift->cancelled_at = now();
-                    $shift->cancel_reason = $reason;
-                    $shift->area_closure_id = $closure->id;
-                    $changes = ChangeLogEntry::changesOf($shift);
-                    $shift->save();
-
-                    $people = $shift->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->canSignIn())->values();
-
-                    ChangeLogEntry::record($actor, 'shift.cancelled', $shift, [
-                        'area_id' => $shift->area_id,
-                        'people' => $people->pluck('id')->all(),
-                        'via' => 'closure.created',
-                        'area_closure_id' => $closure->id,
-                    ], $changes);
-
-                    $shift->setRelation('area', $area);
-                    foreach ($people as $person) {
-                        $cancelledByPerson[$person->id] ??= ['person' => $person, 'shifts' => []];
-                        $cancelledByPerson[$person->id]['shifts'][] = $shift;
-                    }
-                    $cancelled[] = $shift->id;
+                foreach ($this->cancelCovered($actor, $closure, $first->toDateString(), $last->toDateString()) as $personId => $entry) {
+                    $cancelledByPerson[$personId] ??= ['person' => $entry['person'], 'shifts' => []];
+                    array_push($cancelledByPerson[$personId]['shifts'], ...$entry['shifts']);
                 }
+
+                $cancelled = Shift::query()->where('area_closure_id', $closure->id)->orderBy('starts_at')->orderBy('id')->pluck('id')->all();
 
                 ChangeLogEntry::record($actor, 'closure.created', $closure, [
                     'area_id' => $area->id,
                     'cancelled_shifts' => $cancelled,
                 ], $closureChanges);
 
-                $closure->setRelation('area', $area);
                 $closures->push($closure);
             }
 
@@ -150,6 +101,85 @@ class CreateClosure
         });
 
         return $closures;
+    }
+
+    /**
+     * Cancels every shift in the closure's area from $from to $to (both included) that hasn't started and isn't already cancelled, setting the closure's reason and id, and records a shift.cancelled entry for each (via `$via`, with the closure's id). The caller has locked the area row and saved the closure, and sends the email.
+     *
+     * @return array<int, array{person: User, shifts: list<Shift>}> The people on the cancelled shifts who can sign in, keyed by id, with their shifts.
+     */
+    public function cancelCovered(User $actor, AreaClosure $closure, string $from, string $to, string $via = 'closure.created'): array
+    {
+        /** @var array<int, array{person: User, shifts: list<Shift>}> $cancelledByPerson */
+        $cancelledByPerson = [];
+        $area = $closure->area;
+
+        // Locked so nobody is put on a shift between reading its people and cancelling it.
+        $shifts = Shift::query()
+            ->where('area_id', $closure->area_id)
+            ->whereBetween('local_date', [$from, $to])
+            ->whereNull('cancelled_at')
+            ->where('starts_at', '>', now())
+            ->orderBy('starts_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($shifts as $shift) {
+            $shift->cancelled_at = now();
+            $shift->cancel_reason = $closure->reason;
+            $shift->area_closure_id = $closure->id;
+            $changes = ChangeLogEntry::changesOf($shift);
+            $shift->save();
+
+            $people = $shift->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->canSignIn())->values();
+
+            ChangeLogEntry::record($actor, 'shift.cancelled', $shift, [
+                'area_id' => $shift->area_id,
+                'people' => $people->pluck('id')->all(),
+                'via' => $via,
+                'area_closure_id' => $closure->id,
+            ], $changes);
+
+            $shift->setRelation('area', $area);
+            foreach ($people as $person) {
+                $cancelledByPerson[$person->id] ??= ['person' => $person, 'shifts' => []];
+                $cancelledByPerson[$person->id]['shifts'][] = $shift;
+            }
+        }
+
+        return $cancelledByPerson;
+    }
+
+    /**
+     * The checks every closure form shares, with messages written to be shown on screen: both days given as real dates, the last on or after the first, and a reason of 200 characters or fewer. UpdateClosure uses them too.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable, 2: string} The first and last days, and the trimmed reason.
+     */
+    public static function checkedValues(string $startsOn, string $endsOn, string $reason): array
+    {
+        $first = self::date($startsOn);
+        $last = self::date($endsOn);
+
+        if ($first === null || $last === null) {
+            throw new DomainException('Pick the first and last day closed.');
+        }
+
+        if ($last->lessThan($first)) {
+            throw new DomainException('The last day closed has to be on or after the first day.');
+        }
+
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new DomainException('Say why it\'s closed, so volunteers know.');
+        }
+
+        if (mb_strlen($reason) > 200) {
+            throw new DomainException('Keep it to 200 characters or fewer.');
+        }
+
+        return [$first, $last, $reason];
     }
 
     private static function date(string $value): ?CarbonImmutable

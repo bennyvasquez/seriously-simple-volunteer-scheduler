@@ -9,6 +9,7 @@ use App\Actions\Accounts\SignOutEverywhere;
 use App\Enums\LoginLinkPurpose;
 use App\Enums\Role;
 use App\Models\ChangeLogEntry;
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,6 +23,14 @@ class SessionsAndDeactivationTest extends TestCase
 {
     use InteractsWithTwoFactor;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Turning someone off clears their future schedule, which reads the organization's date.
+        Organization::factory()->create();
+    }
 
     private function addSession(User $user, string $id): void
     {

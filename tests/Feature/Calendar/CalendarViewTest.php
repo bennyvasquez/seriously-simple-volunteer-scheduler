@@ -50,7 +50,7 @@ class CalendarViewTest extends TestCase
         return $user;
     }
 
-    private function shiftOn(string $date, string $start, string $end, ?Area $area = null, int $headcount = 1, int $shadowSpots = 0, ?string $title = null, ?WeeklySlot $slot = null): Shift
+    private function shiftOn(string $date, string $start, string $end, ?Area $area = null, int $peopleNeeded = 1, int $shadowSpots = 0, ?string $title = null, ?WeeklySlot $slot = null): Shift
     {
         $startsAt = CarbonImmutable::parse("{$date} {$start}", self::TIMEZONE);
         $endsAt = CarbonImmutable::parse("{$date} {$end}", self::TIMEZONE);
@@ -61,7 +61,7 @@ class CalendarViewTest extends TestCase
             'local_date' => $date,
             'starts_at' => $startsAt->utc(),
             'ends_at' => ($endsAt->lessThan($startsAt) ? $endsAt->addDay() : $endsAt)->utc(),
-            'headcount' => $headcount,
+            'people_needed' => $peopleNeeded,
             'shadow_spots' => $shadowSpots,
             'title' => $title,
         ]);
@@ -86,7 +86,7 @@ class CalendarViewTest extends TestCase
     public function test_open_and_urgent_shifts_are_marked(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-17 12:00', 'America/Detroit'));
-        $this->shiftOn('2026-10-18', '11:30', '14:30', headcount: 1);
+        $this->shiftOn('2026-10-18', '11:30', '14:30', peopleNeeded: 1);
         $coordinator = $this->coordinator();
 
         $html = $this->actingAs($coordinator)->get(route('calendar.week'))->getContent();
@@ -249,7 +249,7 @@ class CalendarViewTest extends TestCase
         $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id]);
 
         // One shift that uses every eager load (slot, people, open place), so adding more can only change the count if something queries per shift.
-        $first = $this->shiftOn('2026-10-19', '15:30', '18:30', headcount: 2, slot: $slot);
+        $first = $this->shiftOn('2026-10-19', '15:30', '18:30', peopleNeeded: 2, slot: $slot);
         $this->fill($first, 'Sam Example');
         $this->fill($first, 'Robin Example', AssignmentType::Shadow);
 
@@ -268,7 +268,7 @@ class CalendarViewTest extends TestCase
         $few = $count();
 
         foreach (['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24'] as $date) {
-            $shift = $this->shiftOn($date, '15:30', '18:30', headcount: 2, area: $this->hostedEvents, slot: $slot);
+            $shift = $this->shiftOn($date, '15:30', '18:30', peopleNeeded: 2, area: $this->hostedEvents, slot: $slot);
             $this->fill($shift, 'Sam Example');
             $this->fill($shift, 'Robin Example', AssignmentType::Shadow);
         }

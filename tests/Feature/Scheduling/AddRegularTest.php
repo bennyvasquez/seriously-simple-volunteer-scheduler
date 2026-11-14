@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Actions\Accounts\DeactivateUser;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\EndRegular;
 use App\Actions\Scheduling\GenerateShifts;
+use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Enums\SlotFrequency;
@@ -13,6 +16,7 @@ use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
+use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
@@ -35,7 +39,7 @@ class AddRegularTest extends TestCase
         // Thursday 15 October 2026, 10:00 in New York. Generates shifts on 15, 22 and 29 October.
         $this->travelTo(CarbonImmutable::parse('2026-10-15 10:00', 'America/New_York'));
         $organization = Organization::factory()->create(['timezone' => 'America/New_York', 'weeks_ahead' => 3]);
-        $this->slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1]);
+        $this->slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 1]);
         app(GenerateShifts::class)->handle($organization);
     }
 
@@ -100,7 +104,7 @@ class AddRegularTest extends TestCase
         $this->assertSame(['2026-10-15', '2026-10-22'], $this->datesFor($user));
     }
 
-    public function test_it_skips_shifts_someone_else_already_filled(): void
+    public function test_it_adds_the_regular_to_shifts_someone_else_already_filled(): void
     {
         $other = User::factory()->create();
         Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail()
@@ -109,7 +113,8 @@ class AddRegularTest extends TestCase
 
         $this->addRegular($user, '2026-10-01');
 
-        $this->assertSame(['2026-10-15', '2026-10-29'], $this->datesFor($user));
+        // Someone who took one date doesn't count as a regular, and a shift that has the people it needs still gets the new regular.
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($user));
         $this->assertSame(['2026-10-22'], $this->datesFor($other));
     }
 
@@ -144,8 +149,8 @@ class AddRegularTest extends TestCase
 
     public function test_someone_who_took_one_date_can_become_the_regular(): void
     {
-        $this->slot->update(['headcount' => 2]);
-        Shift::query()->update(['headcount' => 2]);
+        $this->slot->update(['people_needed' => 2]);
+        Shift::query()->update(['people_needed' => 2]);
         $user = User::factory()->create();
         $shift = Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail();
         $shift->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Regular]);
@@ -158,7 +163,7 @@ class AddRegularTest extends TestCase
 
     public function test_the_same_person_cannot_be_added_twice_for_overlapping_dates(): void
     {
-        $this->slot->update(['headcount' => 2]);
+        $this->slot->update(['people_needed' => 2]);
         $user = User::factory()->create();
         $this->addRegular($user, '2026-10-01');
 
@@ -167,14 +172,56 @@ class AddRegularTest extends TestCase
         $this->addRegular($user, '2026-10-20');
     }
 
-    public function test_a_full_slot_refuses_another_regular(): void
+    public function test_a_slot_that_has_the_people_it_needs_asks_before_taking_another_regular(): void
     {
-        $this->addRegular(User::factory()->create(), '2026-10-01');
+        $casey = User::factory()->create();
+        $robin = User::factory()->create();
+        $this->addRegular($casey, '2026-10-01');
 
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Thursday, October 22');
+        try {
+            $this->addRegular($robin, '2026-10-20');
+            $this->fail('Going over people needed was allowed without a confirmation.');
+        } catch (NeedsOverConfirmation $e) {
+            $this->assertSame([
+                ['date' => '2026-10-22', 'people' => 2, 'needed' => 1],
+                ['date' => '2026-10-29', 'people' => 2, 'needed' => 1],
+            ], array_slice($e->dates, 0, 2));
+        }
 
-        $this->addRegular(User::factory()->create(), '2026-10-20');
+        $this->assertSame(0, Assignment::query()->where('user_id', $robin->id)->count());
+        $this->assertSame(1, $this->slot->regulars()->count());
+        $this->assertFalse(ChangeLogEntry::query()->about($robin)->exists());
+    }
+
+    public function test_adding_a_regular_over_people_needed_lists_the_dates_and_asks_first(): void
+    {
+        $casey = User::factory()->create();
+        $robin = User::factory()->create();
+        $this->addRegular($casey, '2026-10-01');
+        $regular = new SlotRegular(['user_id' => $robin->id, 'frequency' => SlotFrequency::Weekly, 'starts_on' => '2026-10-22']);
+        $regular->weeklySlot()->associate($this->slot);
+
+        $dates = app(AddRegular::class)->overDates($this->slot, $regular);
+
+        $this->assertSame(['2026-10-22', '2026-10-29'], array_slice(array_column($dates, 'date'), 0, 2));
+        $this->assertSame([2, 1], [$dates[0]['people'], $dates[0]['needed']]);
+
+        app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-10-22', overConfirmed: true);
+
+        $this->assertSame(['2026-10-22', '2026-10-29'], $this->datesFor($robin));
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($casey));
+        $this->assertSame(2, Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail()->assignments()->count());
+        $this->assertSame(2, ChangeLogEntry::query()->about($robin)->ofAction('assignment.added')->count());
+        $this->assertSame(1, ChangeLogEntry::query()->about($robin)->ofAction('regular.added')->count());
+    }
+
+    public function test_alternating_regulars_do_not_count_as_over(): void
+    {
+        $this->addAlternatingRegular(User::factory()->create(), '2026-10-15');
+        $robin = new SlotRegular(['user_id' => User::factory()->create()->id, 'frequency' => SlotFrequency::EveryOtherWeek, 'anchor_date' => '2026-10-22', 'starts_on' => '2026-10-01']);
+        $robin->weeklySlot()->associate($this->slot);
+
+        $this->assertSame([], app(AddRegular::class)->overDates($this->slot, $robin));
     }
 
     public function test_a_new_regular_can_follow_one_who_is_leaving(): void
@@ -208,31 +255,31 @@ class AddRegularTest extends TestCase
         $this->assertSame(['2026-10-22'], $this->datesFor($second));
     }
 
-    public function test_a_weekly_regular_is_refused_when_alternating_weeks_are_full(): void
+    public function test_a_weekly_regular_asks_first_when_alternating_weeks_have_the_people_needed(): void
     {
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-15');
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-22');
 
-        $this->expectException(DomainException::class);
+        $this->expectException(NeedsOverConfirmation::class);
 
         $this->addRegular(User::factory()->create(), '2026-10-01');
     }
 
-    public function test_an_alternating_regular_is_refused_on_weeks_already_taken(): void
+    public function test_an_alternating_regular_asks_first_on_weeks_already_taken(): void
     {
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-15');
 
-        $this->expectException(DomainException::class);
+        $this->expectException(NeedsOverConfirmation::class);
 
         // 29 October is two weeks after 15 October, so it's the same set of weeks.
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-29');
     }
 
-    public function test_headcount_is_checked_date_by_date(): void
+    public function test_people_needed_is_checked_date_by_date(): void
     {
-        // Shifts copy headcount when generated, so give the existing ones room too.
-        $this->slot->update(['headcount' => 2]);
-        Shift::query()->update(['headcount' => 2]);
+        // Shifts copy people needed when generated, so give the existing ones room too.
+        $this->slot->update(['people_needed' => 2]);
+        Shift::query()->update(['people_needed' => 2]);
         $this->addRegular(User::factory()->create(), '2026-10-01', '2026-10-15');
         $this->addRegular(User::factory()->create(), '2026-10-20');
         $user = User::factory()->create();
@@ -267,12 +314,12 @@ class AddRegularTest extends TestCase
         $this->addAlternatingRegular(User::factory()->create(), '2026-10-15', $slot);
     }
 
-    public function test_headcount_is_checked_for_a_slot_that_starts_later(): void
+    public function test_people_needed_is_checked_for_a_slot_that_starts_later(): void
     {
-        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'headcount' => 1, 'valid_from' => '2027-01-07']);
+        $slot = WeeklySlot::factory()->create(['weekday' => 4, 'people_needed' => 1, 'valid_from' => '2027-01-07']);
         app(AddRegular::class)->handle(null, $slot, User::factory()->create(), '2026-10-15');
 
-        $this->expectException(DomainException::class);
+        $this->expectException(NeedsOverConfirmation::class);
 
         app(AddRegular::class)->handle(null, $slot, User::factory()->create(), '2026-10-15');
     }
@@ -312,7 +359,7 @@ class AddRegularTest extends TestCase
         $this->assertSame(1, ChangeLogEntry::query()->ofAction('regular.added')->count());
     }
 
-    public function test_it_locks_the_shifts_it_fills_and_skips_cancelled_and_full_ones(): void
+    public function test_it_locks_the_shifts_it_fills_and_skips_cancelled_ones(): void
     {
         Shift::query()->where('local_date', '2026-10-22')->update(['cancelled_at' => now(), 'cancel_reason' => 'Power outage']);
         Shift::query()->whereDate('local_date', '2026-10-29')->firstOrFail()
@@ -323,8 +370,8 @@ class AddRegularTest extends TestCase
         $regular = app(AddRegular::class)->handle(null, $this->slot, $user, '2026-10-01');
         $queries = collect(DB::getQueryLog())->pluck('query');
 
-        $this->assertSame(['2026-10-15'], $this->datesFor($user));
-        $this->assertSame(1, $regular->added_to_shifts);
+        $this->assertSame(['2026-10-15', '2026-10-29'], $this->datesFor($user));
+        $this->assertSame(2, $regular->added_to_shifts);
         $this->assertTrue($queries->contains(fn (string $sql) => str_starts_with($sql, 'select * from `shifts`') && str_contains($sql, 'order by `local_date` asc') && str_ends_with($sql, 'for update')));
     }
 
@@ -336,7 +383,7 @@ class AddRegularTest extends TestCase
             'local_date' => $date,
             'starts_at' => CarbonImmutable::parse("{$date} {$start}", 'America/New_York')->utc(),
             'ends_at' => CarbonImmutable::parse("{$date} {$end}", 'America/New_York')->utc(),
-            'headcount' => 1,
+            'people_needed' => 1,
             'shadow_spots' => 0,
             'cancelled_at' => $cancelled ? now() : null,
         ]);
@@ -381,5 +428,41 @@ class AddRegularTest extends TestCase
             $this->assertSame($shift->id, $entry->changes['shift_id']['new']);
         }
         $this->assertSame(3, ChangeLogEntry::query()->about($robin)->ofAction('assignment.added')->count());
+    }
+
+    public function test_adding_a_regular_after_their_end_does_not_put_them_back(): void
+    {
+        Organization::current()->update(['weeks_ahead' => 6]);
+        app(GenerateShifts::class)->handle(Organization::current());
+        $coordinator = User::factory()->create(['name' => 'Alex']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+        $robin = User::factory()->create();
+        $first = app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-10-01');
+
+        // The area and slot locks AddRegular takes match EndRegular's order (area, slot, regular, shifts), checked in review because a race can't be tested reliably.
+        app(EndRegular::class)->handle($coordinator, $first, '2026-10-29');
+        app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-11-12');
+
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29', '2026-11-12', '2026-11-19'], $this->datesFor($robin));
+        $this->assertNotContains('2026-11-05', $this->datesFor($robin));
+    }
+
+    public function test_someone_whose_future_regular_never_started_can_be_added_again_from_an_earlier_date(): void
+    {
+        $coordinator = User::factory()->create(['name' => 'Alex']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+        $robin = User::factory()->create();
+        $future = app(AddRegular::class)->handle(null, $this->slot, $robin, '2026-11-05');
+
+        // Turning Robin off releases the regular before it starts, storing an end the day before its start.
+        app(DeactivateUser::class)->handle($coordinator, $robin);
+        $this->assertSame('2026-11-04', $future->fresh()->ends_on->toDateString());
+        // Robin comes back.
+        $robin->forceFill(['deactivated_at' => null])->save();
+
+        $again = app(AddRegular::class)->handle(null, $this->slot, $robin->fresh(), '2026-10-22');
+
+        $this->assertTrue($again->exists);
+        $this->assertSame(['2026-10-22', '2026-10-29'], $this->datesFor($robin));
     }
 }

@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\EndRegular;
+use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Calendar\PersonSearch;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
+use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
@@ -41,6 +44,13 @@ class RegularController extends Controller
         $person = $this->person($request, $viewer);
         $search = PersonSearch::find($viewer, (string) $request->query('q', ''), $byEmail, $current->pluck('user_id'));
         $firstDate = $this->nextSlotDate($slot, $today);
+        $values = [
+            'frequency' => (string) $request->old('frequency', $request->query('frequency', 'weekly')),
+            'weeks' => (string) $request->old('weeks', $request->query('weeks', '')),
+            'starts_on' => (string) $request->old('starts_on', $request->query('starts_on', $firstDate)),
+            'ends_on' => (string) $request->old('ends_on', $request->query('ends_on', '')),
+        ];
+        $overDates = $request->boolean('over') && $person !== null ? $this->overDates($slot, $person, $values) : [];
 
         return view('calendar.add-regular', $calendar->week($request)->getData() + [
             'slot' => $slot->load('area'),
@@ -51,12 +61,8 @@ class RegularController extends Controller
             'byEmail' => $byEmail,
             'canChooseFrequency' => $slot->frequency === SlotFrequency::Weekly,
             'weekOptions' => $slot->frequency === SlotFrequency::Weekly ? $this->weekOptions($current, $today, $viewer) : [],
-            'values' => [
-                'frequency' => (string) $request->old('frequency', $request->query('frequency', 'weekly')),
-                'weeks' => (string) $request->old('weeks', $request->query('weeks', '')),
-                'starts_on' => (string) $request->old('starts_on', $request->query('starts_on', $firstDate)),
-                'ends_on' => (string) $request->old('ends_on', $request->query('ends_on', '')),
-            ],
+            'values' => $values,
+            'overDates' => $overDates,
         ]);
     }
 
@@ -77,6 +83,7 @@ class RegularController extends Controller
             'weeks' => ['nullable', 'string', 'max:10'],
             'starts_on' => ['required', 'date_format:Y-m-d'],
             'ends_on' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:starts_on'],
+            'over_confirmed' => ['nullable', 'boolean'],
         ], [
             'user.*' => 'Pick a person.',
             'frequency.in' => 'Pick every week or every other week.',
@@ -113,7 +120,12 @@ class RegularController extends Controller
         $regularUser = User::query()->findOrFail($data['user']);
 
         try {
-            $regular = $addRegular->handle($request->user(), $slot, $regularUser, $data['starts_on'], $data['ends_on'] ?? null, $frequency, $anchor);
+            $regular = $addRegular->handle($request->user(), $slot, $regularUser, $data['starts_on'], $data['ends_on'] ?? null, $frequency, $anchor, $request->boolean('over_confirmed'));
+        } catch (NeedsOverConfirmation) {
+            // Back to the same page with what was picked and the flag that shows the confirm step; the dates are worked out again there.
+            $typed = array_filter(['frequency' => $data['frequency'] ?? null, 'weeks' => $data['weeks'] ?? null, 'starts_on' => $data['starts_on'], 'ends_on' => $data['ends_on'] ?? null], fn ($value) => $value !== null && $value !== '');
+
+            return redirect()->route('calendar.slots.regulars.create', array_filter(['slot' => $slot, 'person' => $regularUser->id, 'date' => $request->input('date')]) + $typed + ['over' => 1] + $areaQuery);
         } catch (DomainException|InvalidArgumentException $e) {
             return $back($person)->withErrors(['slot' => $e->getMessage()]);
         }
@@ -130,6 +142,121 @@ class RegularController extends Controller
                 1 => 'We added them to 1 shift already on the schedule.',
                 default => 'We added them to '.$added.' shifts already on the schedule.',
             }.$this->overlapsSentence($regular->skipped_overlaps).($regularUser->canSignIn() ? ' We\'ll email '.$first.' to let them know.' : ''));
+    }
+
+    /** Ending a regular's time on the slot, beside the week, opened from a shift (`?date=`) the regular is on. */
+    public function end(Request $request, CalendarController $calendar, WeeklySlot $slot, SlotRegular $regular): View
+    {
+        $this->checkEnd($request, $slot, $regular);
+        $date = $this->dateParam($request);
+        $lastDate = (string) $request->old('last_date', $request->query('last_date', CarbonImmutable::parse($date, 'UTC')->subDay()->toDateString()));
+
+        return $this->endView($request, $calendar, $slot, $regular, $date, $lastDate);
+    }
+
+    /** Ends the regular's time. A last date that has already passed with past shifts after it comes back to the same page, listing them, until the coordinator confirms. */
+    public function endStore(Request $request, CalendarController $calendar, EndRegular $endRegular, WeeklySlot $slot, SlotRegular $regular): View|RedirectResponse
+    {
+        $this->checkEnd($request, $slot, $regular);
+        $viewer = $request->user();
+        $date = $this->dateParam($request);
+        $areaQuery = $this->areaQuery($request);
+        $back = fn (array $extra = []) => redirect()->route('calendar.slots.regulars.end', [$slot, $regular, 'date' => $date] + $extra + $areaQuery)->withInput();
+
+        $validator = Validator::make($request->all(), ['last_date' => ['required', 'date_format:Y-m-d']], ['last_date.*' => 'Pick the last date they work.']);
+
+        if ($validator->fails()) {
+            return $back()->withErrors($validator);
+        }
+
+        $lastDate = (string) $validator->validated()['last_date'];
+        $past = $endRegular->pastShifts($regular, $lastDate);
+
+        if ($past->isNotEmpty() && ! $request->boolean('past_confirmed')) {
+            return $this->endView($request, $calendar, $slot, $regular, $date, $lastDate, $past);
+        }
+
+        try {
+            $ended = $endRegular->handle($viewer, $regular, $lastDate, $request->boolean('past_confirmed'));
+        } catch (DomainException $e) {
+            return $back()->withErrors(['last_date' => $e->getMessage()]);
+        }
+
+        $first = $regular->user->firstName();
+        $count = $ended->removed_from_shifts;
+        $shift = $slot->shifts()->where('local_date', $date)->first();
+        // A last date before the regular's start means they never worked a date, so the date isn't named. A sentence about shifts only when they were removed from some.
+        $status = $first.' is no longer a regular'.($ended->before_start ? '.' : ' after '.CarbonImmutable::parse($lastDate, 'UTC')->format('l, F j').'.')
+            .($count === 0 ? '' : ' They were removed from '.$count.($count === 1 ? ' shift.' : ' shifts.'));
+
+        return ($shift !== null
+            ? redirect()->route('calendar.shift', [$shift] + $areaQuery)
+            : redirect()->route('calendar.week', ['date' => $date] + $areaQuery))->with('status', $status);
+    }
+
+    private function checkEnd(Request $request, WeeklySlot $slot, SlotRegular $regular): void
+    {
+        abort_unless($regular->weekly_slot_id === $slot->id, 404);
+        Gate::forUser($request->user())->authorize('manageSchedule', $slot->area);
+    }
+
+    /** The date of the shift the page was opened from, today when it's missing or isn't a date. */
+    private function dateParam(Request $request): string
+    {
+        $date = (string) $request->input('date', $request->query('date', ''));
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Organization::current()->today()->toDateString();
+    }
+
+    /** @param  Collection<int, Shift>  $past */
+    private function endView(Request $request, CalendarController $calendar, WeeklySlot $slot, SlotRegular $regular, string $date, string $lastDate, ?Collection $past = null): View
+    {
+        $request->query->set('date', $date);
+        $viewer = $request->user();
+        $regular->loadMissing('user');
+
+        return view('calendar.end-regular', $calendar->week($request)->getData() + [
+            'slot' => $slot->load('area'),
+            'slotText' => $slot->describe(),
+            'regular' => $regular,
+            'person' => $regular->user,
+            'personName' => PersonSearch::displayName($viewer, $regular->user),
+            'lastDate' => $lastDate,
+            'pastShifts' => $past,
+        ]);
+    }
+
+    /**
+     * The dates the picked person would put over the people needed, for the confirm step, from the values in the page's address. Empty when the values don't make a valid regular.
+     *
+     * @param  array{frequency: string, weeks: string, starts_on: string, ends_on: string}  $values
+     * @return list<array{date: string, people: int, needed: int}>
+     */
+    private function overDates(WeeklySlot $slot, User $person, array $values): array
+    {
+        $dateFormat = fn (string $value) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1;
+
+        if (! $dateFormat($values['starts_on']) || ($values['ends_on'] !== '' && (! $dateFormat($values['ends_on']) || $values['ends_on'] < $values['starts_on']))) {
+            return [];
+        }
+
+        $everyOther = $slot->frequency === SlotFrequency::Weekly && $values['frequency'] === 'every_other_week';
+        $anchor = $values['weeks'] === 'pick' ? $values['starts_on'] : $values['weeks'];
+
+        if ($everyOther && (! $dateFormat($anchor) || CarbonImmutable::parse($anchor, 'UTC')->dayOfWeek !== $slot->weekday)) {
+            return [];
+        }
+
+        $regular = new SlotRegular([
+            'user_id' => $person->id,
+            'frequency' => $everyOther ? SlotFrequency::EveryOtherWeek : SlotFrequency::Weekly,
+            'anchor_date' => $everyOther ? $anchor : null,
+            'starts_on' => $values['starts_on'],
+            'ends_on' => $values['ends_on'] === '' ? null : $values['ends_on'],
+        ]);
+        $regular->weeklySlot()->associate($slot);
+
+        return app(AddRegular::class)->overDates($slot, $regular);
     }
 
     /**
@@ -152,14 +279,14 @@ class RegularController extends Controller
     private function currentRegulars(WeeklySlot $slot, CarbonImmutable $today): Collection
     {
         return $slot->regulars()->with('user')
-            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $today->toDateString()))
+            ->currentOrFuture($today->toDateString())
             ->orderBy('id')->get();
     }
 
     /** "Needs 2 people every week. Now: Jordan every week, and Carol every other week from Oct 9." */
     private function needs(WeeklySlot $slot, Collection $current, User $viewer): string
     {
-        $needs = 'Needs '.$slot->headcount.($slot->headcount === 1 ? ' person' : ' people').($slot->frequency === SlotFrequency::EveryOtherWeek ? ' every other week.' : ' every week.');
+        $needs = 'Needs '.$slot->people_needed.($slot->people_needed === 1 ? ' person' : ' people').($slot->frequency === SlotFrequency::EveryOtherWeek ? ' every other week.' : ' every week.');
 
         if ($current->isEmpty()) {
             return $needs.' No regulars yet.';

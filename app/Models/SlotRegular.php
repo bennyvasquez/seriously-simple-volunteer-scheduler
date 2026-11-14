@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\SlotFrequency;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use InvalidArgumentException;
@@ -67,6 +68,13 @@ class SlotRegular extends Model
         }
     }
 
+    /** Regulars who are current or still to start on the given date: not ended before it. A regular whose end is before its start (what ending a regular before it starts, or turning someone off, stores) has never been current and never will be, so it's left out. */
+    public function scopeCurrentOrFuture(Builder $query, string $today): void
+    {
+        $query->where(fn ($ends) => $ends->whereNull('ends_on')->orWhere(fn ($dated) => $dated->where('ends_on', '>=', $today)->whereColumn('ends_on', '>=', 'starts_on')));
+    }
+
+    /** False on every date for a regular whose end is before its start. */
     public function activeOn(string $localDate): bool
     {
         return $this->starts_on->toDateString() <= $localDate

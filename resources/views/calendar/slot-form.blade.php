@@ -1,4 +1,4 @@
-{{-- Screen 35: the full weekly slot form. $slot is set when editing: the area stays, a box says what saving does to the shifts already on the calendar, and after a save the page says what it did and links the shifts that kept their old details. --}}
+{{-- Screen 35: the full weekly slot form. $slot is set when editing: the area stays, a box says what saving does to the shifts already on the calendar, and after a save the page says what it did, how many people were emailed, and links the shifts that kept their old details with why. --}}
 @extends('layouts.app')
 
 @php
@@ -15,15 +15,17 @@
 <h1>{{ $heading }}</h1>
 @if ($saved)
 <div role="status" class="panel slot-saved">
-<p>{{ $saved['summary'] }}@if ($saved['groups'] !== []) {{ $saved['groups'][0]['heading'] }}@endif</p>
-@foreach ($saved['groups'] as $group)
-@if (! $loop->first)<p>{{ $group['heading'] }}</p>@endif
+<p>{{ $saved['summary'] }}</p>
+@if ($saved['kept'] !== [])
 <ul>
-@foreach ($group['shifts'] as $kept)
-<li><a href="{{ route('calendar.shift', [$kept['shift']] + $areaQuery) }}">{{ $kept['when'] }}</a></li>
+@foreach ($saved['kept'] as $kept)
+<li><a href="{{ route('calendar.shift', [$kept['shift']] + $areaQuery) }}">{{ $kept['when'] }}</a><br><span class="muted">{{ $kept['reason'] }}</span></li>
 @endforeach
 </ul>
-@endforeach
+@endif
+@if ($saved['offSchedule'])
+<p>If a date the slot doesn't run on any more isn't needed, cancel it from the calendar.</p>
+@endif
 </div>
 @endif
 
@@ -68,7 +70,7 @@
 <x-field name="end_time" type="time" label="Ends at" :value="$values['end_time']" required />
 </div>
 <div class="slot-grid">
-<x-field name="headcount" type="number" label="People needed" :value="$values['headcount']" min="1" max="200" required />
+<x-field name="people_needed" type="number" label="People needed" :value="$values['people_needed']" min="1" max="200" required />
 <x-field name="shadow_spots" type="number" label="Shadow spots" :value="$values['shadow_spots']" min="0" max="200" required />
 </div>
 <p class="muted">Shadow spots are extra places for people in training. They never count toward people needed and never send cover requests.</p>
@@ -112,7 +114,7 @@
 </div>
 @if ($existing)
 <section class="panel slot-existing" aria-labelledby="existing-heading">
-<h2 id="existing-heading">Changes apply to shifts nobody is on yet</h2>
+<h2 id="existing-heading">Changes apply to future shifts nobody changed on their own</h2>
 <p class="muted">{{ implode(' ', $existing) }}</p>
 <p class="muted">If you change the day, how often, or the first or last date, shifts nobody is on that no longer fit are cancelled. They stay on the calendar, marked cancelled. The day and how often can't change while people work this slot.</p>
 </section>

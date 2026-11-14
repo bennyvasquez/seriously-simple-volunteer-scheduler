@@ -146,7 +146,7 @@ class AreasAndSettingsTest extends TestCase
         $coordinator = $this->coordinator();
         $area = app(CreateArea::class)->handle($coordinator, 'Front desk');
         $other = app(CreateArea::class)->handle($coordinator, 'Wood shop');
-        $slotAttributes = ['weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'headcount' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'valid_from' => '2027-01-07', 'valid_until' => null, 'title' => null, 'is_rotation' => false];
+        $slotAttributes = ['weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'people_needed' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'valid_from' => '2027-01-07', 'valid_until' => null, 'title' => null, 'is_rotation' => false];
         // Starts beyond the window, so it has no shifts on the calendar yet.
         $later = app(CreateWeeklySlot::class)->handle($coordinator, $area, $slotAttributes);
         $rotation = app(CreateWeeklySlot::class)->handle($coordinator, $area, ['weekday' => 6, 'start_time' => '10:00', 'end_time' => '12:00', 'valid_from' => '2026-10-17', 'is_rotation' => true] + $slotAttributes);
@@ -231,7 +231,7 @@ class AreasAndSettingsTest extends TestCase
     {
         $area = Area::factory()->create(['name' => 'Front desk']);
         $slot = app(CreateWeeklySlot::class)->handle($this->coordinator(), $area, [
-            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
         ]);
         $before = Shift::query()->where('weekly_slot_id', $slot->id)->count();
@@ -252,7 +252,7 @@ class AreasAndSettingsTest extends TestCase
     {
         $area = Area::factory()->create(['name' => 'Front desk']);
         app(CreateWeeklySlot::class)->handle($this->coordinator(), $area, [
-            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
         ]);
         $before = Shift::query()->orderBy('id')->get()->map(fn (Shift $s) => [$s->id, $s->starts_at->toDateTimeString(), $s->local_date->toDateString()])->all();
@@ -268,7 +268,7 @@ class AreasAndSettingsTest extends TestCase
     {
         $area = Area::factory()->create(['name' => 'Front desk']);
         app(CreateWeeklySlot::class)->handle($this->coordinator(), $area, [
-            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => 1, 'shadow_spots' => 0,
+            'weekday' => 4, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => 1, 'shadow_spots' => 0,
             'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
         ]);
 

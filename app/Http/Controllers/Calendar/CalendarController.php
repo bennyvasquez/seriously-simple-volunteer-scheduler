@@ -71,6 +71,7 @@ class CalendarController extends Controller
             'next' => $month->addMonth()->format('Y-m'),
             'nothingShown' => $shown === [],
             'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
+            'closableAreaIds' => $this->closableAreaIds($request, $areas),
         ]);
     }
 
@@ -90,7 +91,19 @@ class CalendarController extends Controller
             'today' => $organization->today()->toDateString(),
             'nothingShown' => $shown === [],
             'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
+            'closableAreaIds' => $this->closableAreaIds($request, $areas),
         ];
+    }
+
+    /**
+     * The areas whose closures this person can change, so a closure label is a link to its edit page for them and plain text for everyone else.
+     *
+     * @param  Collection<int, Area>  $areas
+     * @return list<int>
+     */
+    private function closableAreaIds(Request $request, Collection $areas): array
+    {
+        return $areas->filter(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area))->values()->modelKeys();
     }
 
     /** The date asked for, as a plain date, or today in the organization's time zone when it's missing or not a real date. */

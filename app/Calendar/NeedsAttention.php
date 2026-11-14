@@ -79,7 +79,7 @@ final class NeedsAttention
             // A regular counts only if they cover a date in the window.
             ->whereDoesntHave('regulars', fn ($query) => $query
                 ->where('starts_on', '<=', $days[self::DAYS - 1])
-                ->where(fn ($ends) => $ends->whereNull('ends_on')->orWhere('ends_on', '>=', $today)))
+                ->currentOrFuture($today))
             ->with('area')
             ->orderBy('weekday')
             ->orderBy('start_time')

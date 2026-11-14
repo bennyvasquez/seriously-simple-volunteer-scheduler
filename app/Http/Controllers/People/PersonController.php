@@ -7,6 +7,7 @@ use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\InvitePerson;
 use App\Actions\Accounts\RemovePerson;
 use App\Actions\Accounts\RevokeRole;
+use App\Actions\Scheduling\ReleaseFutureSchedule;
 use App\ChangeLog\Describe;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
@@ -51,6 +52,7 @@ class PersonController extends Controller
             'roleRows' => $this->roleRows($person),
             'addable' => $canManage ? $this->addableRoles($viewer, $person) : [],
             'canManage' => $canManage,
+            'releases' => $canManage && $person->isActive() ? ReleaseFutureSchedule::counts($person) : null,
             'isAdminViewer' => $viewer->isActive() && $viewer->hasRole(Role::Admin),
             'status' => $status,
             'joined' => $person->email_verified_at?->setTimezone($timezone)->format('M j'),
@@ -110,17 +112,25 @@ class PersonController extends Controller
     public function turnOff(Request $request, string $user, DeactivateUser $deactivateUser): RedirectResponse
     {
         $person = $this->manageable($request, $user);
+        $wasActive = $person->isActive();
 
-        if (! $person->isActive()) {
+        // Someone already turned off still has their future schedule cleared, so people turned off before that happened can be tidied.
+        $released = $deactivateUser->handle($request->user(), $person);
+
+        if (! $wasActive && $released['shifts'] === 0 && $released['regulars'] === 0) {
             return redirect()->route('people.show', $person)->with('status', 'Nothing changed.');
         }
 
-        $deactivateUser->handle($request->user(), $person);
+        $status = $person->firstName().'\'s account is turned off.';
 
-        return redirect()->route('people.show', $person)->with('status', $person->firstName().'\'s account is turned off.');
+        if ($released['shifts'] > 0) {
+            $status .= ' They were removed from '.$released['shifts'].' future '.($released['shifts'] === 1 ? 'shift' : 'shifts').'.';
+        }
+
+        return redirect()->route('people.show', $person)->with('status', $status);
     }
 
-    /** The confirmation page for removing someone, with the reason it can't happen yet, if there is one. */
+    /** The confirmation page for removing someone, saying when it removes them from future shifts and ends their regular slots first. */
     public function confirmRemove(Request $request, string $user): View
     {
         $person = $this->manageable($request, $user);
@@ -128,7 +138,7 @@ class PersonController extends Controller
         return view('people.remove', [
             'person' => $person,
             'firstName' => $person->firstName(),
-            'refusal' => RemovePerson::refusal($person),
+            'releases' => ReleaseFutureSchedule::counts($person),
         ]);
     }
 

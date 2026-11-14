@@ -2,10 +2,13 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Calendar\TimeFormat;
+use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Notifications\ShiftChangedNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -13,14 +16,12 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Changes one shift's times, headcount, shadow spots or title. The date stays. Times are local wall-clock times, and an end before the start means the next day. Keys left out keep their current value.
+ * Changes one shift's times, people needed, shadow spots or title. The date stays. Times are local wall-clock times, and an end before the start means the next day. Keys left out keep their current value.
  *
- * Only a shift nobody is on can be edited for now, since changing a shift someone is on needs the change notices from the editing plan. Sets edited_at, so later changes to its weekly slot leave it alone. Refuses a shift that has started or is cancelled. Saving without a change does nothing.
+ * A shift with people on it can be edited too. StaffedShiftChecks refuses lowering the shadow spots below the shadows on it and a new time that double-books someone on it (shown beside the field), and lowering the people needed below the people on it is allowed. When the time or title changed, everyone on it who can sign in is emailed after the response with ShiftChangedNotification; changing only the people needed or shadow spots emails nobody. Locks the area, then the shift, then reads the people and their other shifts. Sets edited_at, so later changes to its weekly slot leave it alone. Refuses a shift that has started or is cancelled. Saving without a change does nothing.
  */
 class UpdateShift
 {
-    public const STAFFED = 'Someone is on this shift. Editing shifts with people on them comes soon; for now, cancel this date and add a one-time shift.';
-
     public function handle(User $actor, Shift $shift, array $attributes): Shift
     {
         $shift->loadMissing('area');
@@ -28,7 +29,11 @@ class UpdateShift
 
         $timezone = Organization::current()->timezone;
 
-        return DB::transaction(function () use ($actor, $shift, $attributes, $timezone) {
+        $emailed = collect();
+        $changes = null;
+
+        $result = DB::transaction(function () use ($actor, $shift, $attributes, $timezone, &$emailed, &$changes) {
+            Area::query()->whereKey($shift->area_id)->lockForUpdate()->firstOrFail();
             $fresh = Shift::query()->whereKey($shift->id)->lockForUpdate()->firstOrFail();
 
             if ($fresh->cancelled_at !== null) {
@@ -39,13 +44,9 @@ class UpdateShift
                 throw new DomainException('This shift has already started.');
             }
 
-            if ($fresh->assignments()->exists()) {
-                throw new DomainException(self::STAFFED);
-            }
-
             $start = CarbonImmutable::parse($attributes['start_time'] ?? $fresh->starts_at->setTimezone($timezone)->format('H:i'))->format('H:i');
             $end = CarbonImmutable::parse($attributes['end_time'] ?? $fresh->ends_at->setTimezone($timezone)->format('H:i'))->format('H:i');
-            $headcount = (int) ($attributes['headcount'] ?? $fresh->headcount);
+            $peopleNeeded = (int) ($attributes['people_needed'] ?? $fresh->people_needed);
             $shadowSpots = (int) ($attributes['shadow_spots'] ?? $fresh->shadow_spots);
             $title = array_key_exists('title', $attributes) ? trim((string) $attributes['title']) : (string) $fresh->title;
 
@@ -53,8 +54,8 @@ class UpdateShift
                 throw ValidationException::withMessages(['end_time' => 'A shift has to end at a different time than it starts.']);
             }
 
-            if ($headcount < 1) {
-                throw ValidationException::withMessages(['headcount' => 'At least 1 person is needed.']);
+            if ($peopleNeeded < 1) {
+                throw ValidationException::withMessages(['people_needed' => 'At least 1 person is needed.']);
             }
 
             if ($shadowSpots < 0) {
@@ -69,25 +70,46 @@ class UpdateShift
                 throw ValidationException::withMessages(['start_time' => 'Pick a start time that hasn\'t passed yet.']);
             }
 
+            $wasRange = TimeFormat::range($fresh->starts_at->setTimezone($timezone), $fresh->ends_at->setTimezone($timezone));
+            $wasTitle = $fresh->title;
+
             $fresh->fill([
                 'starts_at' => $startsAt,
                 'ends_at' => CarbonImmutable::parse("{$endDate} {$end}", $timezone)->utc(),
-                'headcount' => $headcount,
+                'people_needed' => $peopleNeeded,
                 'shadow_spots' => $shadowSpots,
                 'title' => $title === '' ? null : $title,
             ]);
 
             if ($fresh->isDirty()) {
+                $problem = StaffedShiftChecks::problem($actor, $fresh);
+
+                if ($problem !== null) {
+                    throw ValidationException::withMessages([$problem['field'] => $problem['message']]);
+                }
+
+                $notify = $fresh->isDirty(['starts_at', 'ends_at', 'title']);
                 $fresh->edited_at = now();
-                $changes = ChangeLogEntry::changesOf($fresh);
+                $logged = ChangeLogEntry::changesOf($fresh);
                 $fresh->save();
 
-                ChangeLogEntry::record($actor, 'shift.updated', $fresh, ['area_id' => $fresh->area_id], $changes);
+                ChangeLogEntry::record($actor, 'shift.updated', $fresh, ['area_id' => $fresh->area_id], $logged);
+
+                if ($notify) {
+                    $emailed = $fresh->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->canSignIn())->values();
+                    $changes = collect([['shift' => $fresh->load('area'), 'was' => $wasRange, 'wasTitle' => $wasTitle]]);
+                }
             }
 
             $shift->setRawAttributes($fresh->getAttributes(), true);
 
             return $shift;
         });
+
+        if ($changes !== null && $emailed->isNotEmpty()) {
+            defer(fn () => $emailed->each(fn (User $person) => $person->notify(new ShiftChangedNotification($changes))));
+        }
+
+        return $result;
     }
 }

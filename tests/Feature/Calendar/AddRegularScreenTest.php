@@ -58,9 +58,9 @@ class AddRegularScreenTest extends TestCase
     }
 
     /** Fridays, 3:30 to 6:30pm, with its shifts generated for the next four weeks (October 16, 23, 30 and November 6). */
-    private function fridaySlot(int $headcount = 1, bool $rotation = false, ?Area $area = null, int $weekday = 5): WeeklySlot
+    private function fridaySlot(int $peopleNeeded = 1, bool $rotation = false, ?Area $area = null, int $weekday = 5): WeeklySlot
     {
-        $slot = WeeklySlot::factory()->create(['area_id' => ($area ?? $this->frontDesk)->id, 'weekday' => $weekday, 'start_time' => '15:30', 'end_time' => '18:30', 'headcount' => $headcount, 'is_rotation' => $rotation]);
+        $slot = WeeklySlot::factory()->create(['area_id' => ($area ?? $this->frontDesk)->id, 'weekday' => $weekday, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => $peopleNeeded, 'is_rotation' => $rotation]);
         app(GenerateShifts::class)->handle(Organization::current());
 
         return $slot;
@@ -86,7 +86,7 @@ class AddRegularScreenTest extends TestCase
 
     public function test_the_screen_offers_the_alternate_weeks_of_an_existing_regular(): void
     {
-        $slot = $this->fridaySlot(headcount: 2);
+        $slot = $this->fridaySlot(peopleNeeded: 2);
         $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
 
         $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', $slot))
@@ -161,7 +161,7 @@ class AddRegularScreenTest extends TestCase
 
     public function test_an_every_other_week_choice_becomes_the_anchor_date(): void
     {
-        $slot = $this->fridaySlot(headcount: 2);
+        $slot = $this->fridaySlot(peopleNeeded: 2);
         $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
         $avery = User::factory()->create(['name' => 'Avery Stone']);
 
@@ -197,20 +197,51 @@ class AddRegularScreenTest extends TestCase
         $this->assertSame(0, SlotRegular::query()->count());
     }
 
-    public function test_the_full_slot_message_uses_us_date_order(): void
+    public function test_adding_a_regular_over_people_needed_lists_the_dates_and_asks_first(): void
     {
-        $slot = $this->fridaySlot(headcount: 1);
-        $this->addRegular($slot, 'Jordan', from: '2026-10-09');
-        $avery = User::factory()->create();
+        Notification::fake();
+        Organization::current()->update(['weeks_ahead' => 12]);
+        $slot = $this->fridaySlot(peopleNeeded: 1);
+        app(GenerateShifts::class)->handle(Organization::current());
+        $casey = $this->addRegular($slot, 'Casey', from: '2026-10-09');
+        $robin = User::factory()->create(['name' => 'Robin Example']);
         $coordinator = $this->coordinator();
+        $data = ['user' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'];
+        $confirmUrl = route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23', 'over' => 1]);
 
-        $this->postRegular($slot, $coordinator, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
-            ->assertRedirect(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $avery->id]))
-            ->assertSessionHasErrors(['slot' => 'This slot already has as many regulars as it needs on Friday, October 23.']);
-
-        $this->followingRedirects()->actingAs($coordinator)->post(route('calendar.slots.regulars.store', $slot), ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
-            ->assertSee('This slot already has as many regulars as it needs on Friday, October 23.');
+        $this->postRegular($slot, $coordinator, $data)
+            ->assertRedirect($confirmUrl)
+            ->assertSessionHasNoErrors();
         $this->assertSame(1, SlotRegular::query()->count());
+        $this->assertSame(0, ChangeLogEntry::query()->about($robin)->count());
+
+        $page = $this->actingAs($coordinator)->get($confirmUrl)->assertOk()
+            ->assertSee('Friday, October 23 at 2 people. It needs 1.')
+            ->assertSee('Friday, October 30 at 2 people. It needs 1.')
+            ->assertSee('Friday, November 20 at 2 people. It needs 1.')
+            ->assertDontSee('Friday, November 27 at 2 people')
+            ->assertSee('Add Robin anyway')->assertSee('Change the dates')
+            ->assertSee('name="over_confirmed" value="1"', false);
+        $this->assertMatchesRegularExpression('/and \d+ more dates/', $page->getContent());
+
+        $this->postRegular($slot, $coordinator, $data + ['over_confirmed' => 1])->assertRedirect(route('calendar.week', ['date' => '2026-10-23']));
+
+        $this->assertSame(2, SlotRegular::query()->count());
+        $this->assertSame(
+            Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $casey->id))->where('local_date', '>=', '2026-10-23')->count(),
+            Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $robin->id))->count(),
+        );
+        $this->assertSame(1, ChangeLogEntry::query()->about($robin)->ofAction('regular.added')->count());
+    }
+
+    public function test_the_confirm_step_goes_back_without_saving_and_ignores_a_slot_with_room(): void
+    {
+        $slot = $this->fridaySlot(peopleNeeded: 2);
+        $this->addRegular($slot, 'Casey', from: '2026-10-09');
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23', 'over' => 1]))
+            ->assertOk()->assertDontSee('anyway')->assertSee('Add Robin');
     }
 
     public function test_rotation_slots_take_no_regulars(): void
@@ -315,7 +346,7 @@ class AddRegularScreenTest extends TestCase
     public function test_the_status_the_week_and_the_email_use_the_first_date_they_work(): void
     {
         Notification::fake();
-        $slot = $this->fridaySlot(headcount: 2);
+        $slot = $this->fridaySlot(peopleNeeded: 2);
         $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
         $avery = User::factory()->create(['name' => 'Avery Stone']);
 
@@ -343,13 +374,13 @@ class AddRegularScreenTest extends TestCase
         $coordinator = $this->coordinator();
 
         // Far in the past: Jan 2 is a Friday; Oct 16 is 41 weeks later.
-        $far = $this->fridaySlot(headcount: 2);
+        $far = $this->fridaySlot(peopleNeeded: 2);
         $this->addRegular($far, 'Carol', every: 'other', from: '2026-01-02');
         $this->actingAs($coordinator)->get(route('calendar.slots.regulars.create', $far))
             ->assertSee('value="2026-10-16"', false)->assertSee('value="2026-10-23"', false);
 
         // In the future: Nov 13 is in the same weeks as Oct 30 and Oct 16, so Oct 16 is the earliest.
-        $future = $this->fridaySlot(headcount: 2);
+        $future = $this->fridaySlot(peopleNeeded: 2);
         $this->addRegular($future, 'Dana', every: 'other', from: '2026-11-13');
         $response = $this->actingAs($coordinator)->get(route('calendar.slots.regulars.create', $future));
         $response->assertSee('Starting Fri Oct 16, then Oct 30, Nov 13')->assertSee('Starting Fri Oct 23, then Nov 6, Nov 20');
@@ -359,7 +390,7 @@ class AddRegularScreenTest extends TestCase
     public function test_a_week_option_can_start_today(): void
     {
         // Wednesday slot, and today is Wednesday, October 14.
-        $slot = $this->fridaySlot(headcount: 2, weekday: 3);
+        $slot = $this->fridaySlot(peopleNeeded: 2, weekday: 3);
         $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-14');
 
         $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', $slot))
@@ -368,7 +399,7 @@ class AddRegularScreenTest extends TestCase
 
     public function test_regulars_on_the_same_weeks_share_one_choice(): void
     {
-        $slot = $this->fridaySlot(headcount: 3);
+        $slot = $this->fridaySlot(peopleNeeded: 3);
         $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
         $this->addRegular($slot, 'Dana', every: 'other', from: '2026-10-23');
 

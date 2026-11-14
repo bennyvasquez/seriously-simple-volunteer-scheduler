@@ -4,7 +4,7 @@
 @php
     $backUrl = route('calendar.week', ['date' => $shift->local_date->toDateString()] + $areaQuery);
     $panelUrl = fn (array $extra = []) => route('calendar.shift', [$shift] + $extra + $areaQuery);
-    $places = $shift->headcount;
+    $places = $shift->people_needed;
     $filled = $shift->filledCount();
 @endphp
 
@@ -23,17 +23,39 @@
 </div>
 @if ($shift->cancelled_at)
 <p><b>Cancelled: {{ $shift->cancel_reason }}</b></p>
+@if ($cancelledBy === 'closure')
+<p class="muted">Cancelled by the {{ $closure?->reason ?? $shift->cancel_reason }} closure. {!! $canChangeClosure ? '<a href="'.e(route('calendar.closures.edit', [$closure] + $areaQuery)).'">Change the closure</a>' : 'Change the closure' !!} to bring it back.</p>
+@elseif ($cancelledBy === 'slot')
+<p class="muted">The weekly slot doesn't run on this date any more. Change the slot to bring it back.</p>
+@elseif ($restoreBlocked)
+<p class="muted">{{ $restoreBlocked }}</p>
+@endif
 @endif
 <div aria-label="People on this shift" role="group">
 @forelse ($people as $person)
-<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span></div>
+<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif</div>
 @empty
 <p class="muted">Nobody is on this shift yet.</p>
 @endforelse
 </div>
-<p class="muted">{{ $filled }} of {{ $places }} {{ $places === 1 ? 'place' : 'places' }} filled.@if ($shift->shadow_spots > 0) {{ $shadowsTaken }} of {{ $shift->shadow_spots }} shadow {{ $shift->shadow_spots === 1 ? 'spot' : 'spots' }} taken.@endif</p>
+<p class="muted">@if ($filled > $places){{ $filled }} people on it. It needs {{ $places }}.@else{{ $filled }} of {{ $places }} {{ $places === 1 ? 'place' : 'places' }} filled.@endif @if ($shift->shadow_spots > 0) {{ $shadowsTaken }} of {{ $shift->shadow_spots }} shadow {{ $shift->shadow_spots === 1 ? 'spot' : 'spots' }} taken.@endif</p>
 
-@if ($picking)
+@if ($over)
+<form method="POST" action="{{ route('calendar.shift.assign', $shift) }}">
+@csrf
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<input type="hidden" name="person" value="{{ $over->id }}">
+<input type="hidden" name="type" value="regular">
+<input type="hidden" name="over_confirmed" value="1">
+<p role="alert"><b>This puts {{ $shift->local_date->format('l, F j') }} at {{ $filled + 1 }} people. It needs {{ $places }}.</b></p>
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Put {{ $over->firstName() }} on anyway</button>
+<a href="{{ $panelUrl() }}" class="btn">Keep it as it is</a>
+</div>
+</form>
+@elseif ($picking)
 <form method="GET" action="{{ route('calendar.shift', $shift) }}" role="search">
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
@@ -58,7 +80,7 @@
 <input type="hidden" name="person" value="{{ $match->id }}">
 <div class="row"><span>{{ $match->display_name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
 <div class="add-actions">
-@if ($shift->openPlaces() > 0)<button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->display_name }} on this shift">Put on shift</button>@endif
+<button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->display_name }} on this shift">Put on shift</button>
 @if ($shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->display_name }} on this shift as a shadow">Shadow</button>@endif
 </div>
 </form>
@@ -75,8 +97,8 @@
 @endforeach
 <fieldset class="choices">
 <legend>Edit which shifts?</legend>
-<label class="check"><input type="radio" name="edit" value="shift" @checked($staffedMessage === null) @disabled($staffedMessage !== null)><span>This shift<br><span class="muted">{{ $staffedMessage ?? 'Only '.$shift->local_date->format('l, F j').'. Later changes to the weekly slot won\'t overwrite it.' }}</span></span></label>
-<label class="check"><input type="radio" name="edit" value="slot" @checked($staffedMessage !== null)><span>The weekly slot (shifts nobody is on yet)<br><span class="muted">{{ $shift->weeklySlot->describe() }}. Shifts with people on them keep their old details.</span></span></label>
+<label class="check"><input type="radio" name="edit" value="shift" checked><span>This shift<br><span class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.@if ($emailCount > 0) {{ $emailCount === 1 ? 'The 1 person on it is' : 'The '.$emailCount.' people on it are' }} emailed if the time or what it's for changes.@endif</span></span></label>
+<label class="check"><input type="radio" name="edit" value="slot"><span>The weekly slot (future shifts nobody changed on their own)<br><span class="muted">{{ $shift->weeklySlot->describe() }}. Shifts with people on them change too, unless that would double-book someone or leave too few shadow spots. The people on them are emailed if the time or what it's for changes.</span></span></label>
 </fieldset>
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Continue</button>
@@ -84,12 +106,6 @@
 </div>
 </form>
 @elseif ($editing === 'shift')
-@if ($staffedMessage !== null)
-<p>{{ $staffedMessage }}</p>
-<div class="add-actions">
-<a href="{{ $panelUrl() }}" class="btn">Back</a>
-</div>
-@else
 <form method="POST" action="{{ route('calendar.shift.update', $shift) }}">
 @csrf
 @foreach ($areaQuery['areas'] ?? [] as $areaId)
@@ -101,16 +117,16 @@
 <x-field name="end_time" type="time" label="Ends at" :value="$editValues['end_time']" required />
 </div>
 <div class="slot-grid">
-<x-field name="headcount" type="number" label="People needed" :value="$editValues['headcount']" min="1" max="200" required />
+<x-field name="people_needed" type="number" label="People needed" :value="$editValues['people_needed']" min="1" max="200" required />
 <x-field name="shadow_spots" type="number" label="Shadow spots" :value="$editValues['shadow_spots']" min="0" max="200" required />
 </div>
 @if ($shift->weeklySlot)<p class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.</p>@endif
+@if ($emailCount > 0)<p class="muted">{{ $emailCount === 1 ? 'The 1 person on it is' : 'The '.$emailCount.' people on it are' }} emailed if the time or what it's for changes.</p>@endif
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Save this shift</button>
 <a href="{{ $panelUrl() }}" class="btn">Back</a>
 </div>
 </form>
-@endif
 @elseif ($cancelling)
 <form method="POST" action="{{ route('calendar.shift.cancel', $shift) }}">
 @csrf
@@ -123,6 +139,25 @@
 <a href="{{ $panelUrl() }}" class="btn">Keep it</a>
 </div>
 </form>
+@elseif ($restoring)
+<form method="POST" action="{{ route('calendar.shift.restore', $shift) }}">
+@csrf
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<p>{{ $restoreCounts['emailed'] === 0 ? 'Nobody is emailed.' : ($restoreCounts['emailed'] === 1 ? '1 person' : $restoreCounts['emailed'].' people').' will be emailed that it\'s back on.' }}</p>
+@if ($restoreCounts['removedCount'] > 0)
+<p>{{ $restoreCounts['removed'] }} {{ $restoreCounts['removedCount'] === 1 ? 'is' : 'are' }} on another shift at that time and will be removed from this one.</p>
+@endif
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Bring it back</button>
+<a href="{{ $panelUrl() }}" class="btn">Keep it cancelled</a>
+</div>
+</form>
+@elseif ($canRestore)
+<div class="add-actions">
+<a href="{{ $panelUrl(['restore' => 1]) }}" class="btn btn-primary">Bring this shift back</a>
+</div>
 @elseif ($canEdit || $canPut || $canCancel || $canAddRegular)
 <div class="add-actions">
 @if ($canEdit)<a href="{{ $panelUrl(['edit' => 1]) }}" class="btn{{ $canPut ? '' : ' btn-primary' }}">Edit</a>@endif

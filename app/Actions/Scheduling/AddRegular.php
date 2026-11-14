@@ -4,6 +4,7 @@ namespace App\Actions\Scheduling;
 
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
+use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Shift;
@@ -23,13 +24,15 @@ use InvalidArgumentException;
  *
  * The actor is who made the change, or null when the system did. Adding a regular is logged about the person, with the ids of the shifts they were added to.
  *
- * A regular can work every week or, on a weekly slot, every other week from an anchor date. Headcount is checked date by date, so two people alternating weeks don't count against each other.
+ * A regular can work every week or, on a weekly slot, every other week from an anchor date. People needed is checked date by date, so two people alternating weeks don't count against each other. Going over it is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the dates (see overDates()).
  *
- * Shifts that have started, are cancelled, that someone else already filled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
+ * The transaction locks the area, then the slot, then reads the regulars and locks the shifts, the same order EndRegular uses, so the two can't interleave.
+ *
+ * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
  *
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, and a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on.
  *
- * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one. The refusals are written to be shown on screen. The new regular is emailed after the response.
+ * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
  */
 class AddRegular
 {
@@ -41,6 +44,7 @@ class AddRegular
         ?string $endsOn = null,
         SlotFrequency $frequency = SlotFrequency::Weekly,
         ?string $anchorDate = null,
+        bool $overConfirmed = false,
     ): SlotRegular {
         if ($actor !== null) {
             Gate::forUser($actor)->authorize('manageSchedule', $slot->area);
@@ -73,10 +77,22 @@ class AddRegular
         $regular->weeklySlot()->associate($slot);
         $regular->ensureValid();
 
-        $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn) {
+        $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn, $overConfirmed) {
+            // The area then the slot, before reading the regulars: the order EndRegular and the other scheduling actions lock in.
+            Area::query()->whereKey($slot->area_id)->lockForUpdate()->firstOrFail();
+            WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
+
+            // Read again under the locks, so a turn-off that committed since the check above is seen. A shared lock: it holds a turn-off back until this commits, and the release that follows it then finds this regular.
+            $current = User::query()->whereKey($user->id)->sharedLock()->first();
+
+            if ($current === null || ! $current->isActive()) {
+                throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
+            }
+
+            // A regular whose end is before its start (ended before it started, or released by a turn-off) never works a date, so it's left out.
             $overlapping = $slot->regulars()
                 ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))
-                ->where(fn ($query) => $query->whereNull('ends_on')->orWhere('ends_on', '>=', $startsOn))
+                ->where(fn ($query) => $query->whereNull('ends_on')->orWhere(fn ($dated) => $dated->where('ends_on', '>=', $startsOn)->whereColumn('ends_on', '>=', 'starts_on')))
                 ->lockForUpdate()
                 ->get();
 
@@ -84,10 +100,10 @@ class AddRegular
                 throw new DomainException('This person is already a regular on this slot for some of those dates.');
             }
 
-            $fullOn = $this->firstFullDate($slot, $regular, $overlapping);
+            $overDates = $overConfirmed ? [] : $this->overDates($slot, $regular, $overlapping);
 
-            if ($fullOn !== null) {
-                throw new DomainException('This slot already has as many regulars as it needs on '.CarbonImmutable::parse($fullOn)->format('l, F j').'.');
+            if ($overDates !== []) {
+                throw new NeedsOverConfirmation($overDates);
             }
 
             $changes = ChangeLogEntry::changesOf($regular);
@@ -110,8 +126,7 @@ class AddRegular
                 $on = $assignments->get($shift->id, new Collection);
                 $date = $shift->local_date->toDateString();
 
-                if ($shift->cancelled_at !== null || ! $regular->activeOn($date) || $on->contains('user_id', $user->id)
-                    || $on->where('type', AssignmentType::Regular)->count() >= $shift->headcount) {
+                if ($shift->cancelled_at !== null || ! $regular->activeOn($date) || $on->contains('user_id', $user->id)) {
                     continue;
                 }
 
@@ -149,12 +164,21 @@ class AddRegular
     }
 
     /**
-     * Returns the first date (Y-m-d) the new regular would work on which the slot already has its full headcount of regulars, or null. After the last start or end date among the slot and these regulars, who works when repeats every two weeks, so checking two weeks past it covers every later date.
+     * The dates the new regular would work on where the slot's regulars that day would then be more than the people needed, in date order, each with that count and the number needed. Read-only; the screens use it to ask for a confirmation, and handle() refuses with it until the add is confirmed. After the last start or end date among the slot and these regulars, who works when repeats every two weeks, so checking two weeks past it covers every later date; the dates of the slot's shifts that are already generated are checked too, so the list covers every shift the regular would be put on.
      *
-     * @param  Collection<int, SlotRegular>  $overlapping
+     * @param  Collection<int, SlotRegular>|null  $overlapping  The slot's regulars whose dates overlap the new one, when the caller already has them locked.
+     * @return list<array{date: string, people: int, needed: int}>
      */
-    private function firstFullDate(WeeklySlot $slot, SlotRegular $regular, Collection $overlapping): ?string
+    public function overDates(WeeklySlot $slot, SlotRegular $regular, ?Collection $overlapping = null): array
     {
+        $startsOn = $regular->starts_on->toDateString();
+        $endsOn = $regular->ends_on?->toDateString();
+
+        $overlapping ??= $slot->regulars()
+            ->when($endsOn !== null, fn ($query) => $query->where('starts_on', '<=', $endsOn))
+            ->where(fn ($query) => $query->whereNull('ends_on')->orWhere(fn ($dated) => $dated->where('ends_on', '>=', $startsOn)->whereColumn('ends_on', '>=', 'starts_on')))
+            ->get();
+
         $lastChange = $overlapping
             ->flatMap(fn (SlotRegular $other) => [$other->starts_on, $other->ends_on])
             ->push($regular->starts_on, $slot->valid_from, $slot->valid_until)
@@ -163,23 +187,32 @@ class AddRegular
             ->max();
 
         $lastDate = CarbonImmutable::parse($lastChange, 'UTC')->addDays(14)->toDateString();
+        $lastShift = $slot->shifts()->max('local_date');
 
-        if ($regular->ends_on !== null && $regular->ends_on->toDateString() < $lastDate) {
-            $lastDate = $regular->ends_on->toDateString();
+        if ($lastShift !== null && substr((string) $lastShift, 0, 10) > $lastDate) {
+            $lastDate = substr((string) $lastShift, 0, 10);
         }
 
-        for ($day = CarbonImmutable::parse($regular->starts_on->toDateString(), 'UTC'); $day->toDateString() <= $lastDate; $day = $day->addDay()) {
+        if ($endsOn !== null && $endsOn < $lastDate) {
+            $lastDate = $endsOn;
+        }
+
+        $over = [];
+
+        for ($day = CarbonImmutable::parse($startsOn, 'UTC'); $day->toDateString() <= $lastDate; $day = $day->addDay()) {
             $date = $day->toDateString();
 
             if (! $slot->occursOn($date) || ! $regular->activeOn($date)) {
                 continue;
             }
 
-            if ($overlapping->filter(fn (SlotRegular $other) => $other->activeOn($date))->count() >= $slot->headcount) {
-                return $date;
+            $people = $overlapping->filter(fn (SlotRegular $other) => $other->activeOn($date))->count() + 1;
+
+            if ($people > $slot->people_needed) {
+                $over[] = ['date' => $date, 'people' => $people, 'needed' => $slot->people_needed];
             }
         }
 
-        return null;
+        return $over;
     }
 }

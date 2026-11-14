@@ -34,7 +34,7 @@ class VisiblePeopleTest extends TestCase
             'local_date' => $start->toDateString(),
             'starts_at' => $start,
             'ends_at' => $start->copy()->addHours(3),
-            'headcount' => 1,
+            'people_needed' => 1,
         ]);
         $shift->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Regular]);
 
