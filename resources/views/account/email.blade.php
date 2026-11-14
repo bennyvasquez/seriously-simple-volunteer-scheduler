@@ -63,7 +63,11 @@
 @section('content')
 <h1>Your email address is changed</h1>
 <p role="status">Your email address is now {{ $newEmail }}. Use it next time you log in.</p>
+@if ($someoneElse)
+<p class="muted">Someone else is logged in on this device. Use the new address next time you log in on yours.</p>
+@else
 <a class="btn btn-primary" href="{{ auth()->check() ? route('account.show') : route('login') }}">{{ auth()->check() ? 'Back to login and security' : 'Log in' }}</a>
+@endif
 @endsection
 @else
 @section('title', 'This link doesn\'t work anymore')

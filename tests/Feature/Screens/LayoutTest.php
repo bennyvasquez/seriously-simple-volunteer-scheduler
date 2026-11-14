@@ -22,6 +22,11 @@ class LayoutTest extends TestCase
         $this->actingAs(User::factory()->create(['name' => 'Sam Rivera']))->get('/')->assertOk()->assertSee('Hi Sam');
     }
 
+    public function test_home_says_just_hi_when_there_is_no_name(): void
+    {
+        $this->actingAs(User::factory()->create(['name' => '   ']))->get('/')->assertOk()->assertSee('<h1>Hi</h1>', false);
+    }
+
     public function test_pages_use_the_local_stylesheet_and_font_only(): void
     {
         $html = $this->get('/login')->getContent();

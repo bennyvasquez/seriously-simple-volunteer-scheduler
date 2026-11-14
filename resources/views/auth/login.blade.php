@@ -28,11 +28,11 @@
 <p role="status">{{ session('status') }}</p>
 @endif
 <p>Enter your email address and we'll send you a link to log in. You don't need a password.</p>
-<form method="POST" action="{{ route('login-link.request') }}">
+<form method="POST" action="{{ route('login-link.request') }}" id="login-form">
 @csrf
 <x-field name="email" type="email" label="Email address" autocomplete="email" :value="old('email')" />
-<button type="submit" class="btn btn-primary">Email me a link</button>
-<p class="muted">or</p>
+<button type="submit" class="btn btn-primary" id="send-link">Email me a link</button>
+<p class="divider">or</p>
 <div class="panel">
 <h2>Log in with a password</h2>
 <p class="muted">Anyone can add a password from their profile. Area leads, coordinators and admins always use one.</p>
@@ -43,4 +43,19 @@
 </div>
 </form>
 @endsection
+
+@push('scripts')
+<script>
+(() => {
+    // Both buttons submit this one form, so the browser sends every field. When it's "Email me a link", leave a typed password out of the request. Without JavaScript the link request ignores it anyway.
+    const form = document.getElementById('login-form');
+    form.addEventListener('submit', (event) => {
+        if (event.submitter && event.submitter.id === 'send-link') {
+            form.elements.password.value = '';
+            form.elements.remember.checked = false;
+        }
+    });
+})();
+</script>
+@endpush
 @endif

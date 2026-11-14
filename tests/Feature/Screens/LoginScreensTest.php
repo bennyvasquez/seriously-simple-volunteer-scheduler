@@ -18,6 +18,22 @@ class LoginScreensTest extends TestCase
         $this->assertStringContainsString('Anyone can add a password from their profile.', $html);
     }
 
+    public function test_the_or_between_the_two_ways_to_log_in_is_a_divider(): void
+    {
+        $this->get('/login')->assertSee('<p class="divider">or</p>', false);
+    }
+
+    public function test_the_login_page_works_without_javascript_and_clears_the_password_for_a_link(): void
+    {
+        $html = $this->get('/login')->getContent();
+
+        // Without JavaScript both buttons still submit the one form, the password button to the password login.
+        $this->assertStringContainsString('<button type="submit" class="btn btn-primary" id="send-link">Email me a link</button>', $html);
+        $this->assertStringContainsString('formaction="'.route('login').'"', $html);
+        // With it, "Email me a link" doesn't send a typed password along (issue #14).
+        $this->assertMatchesRegularExpression("/<script>.*submitter.*'send-link'.*password.*<\/script>/s", $html);
+    }
+
     public function test_asking_for_a_link_shows_check_your_email_with_the_address(): void
     {
         $this->from('/login')->post(route('login-link.request'), ['email' => 'nobody@example.org'])

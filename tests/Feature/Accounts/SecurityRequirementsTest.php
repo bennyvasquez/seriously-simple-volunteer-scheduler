@@ -109,11 +109,30 @@ class SecurityRequirementsTest extends TestCase
         $coordinator = $this->coordinator();
         $hash = $coordinator->password;
 
+        // A coordinator still in setup goes straight back to the setup screen, so the message isn't lost on a second redirect (issue #14).
         $this->actingAs($coordinator)
+            ->post(route('account.password.set'), ['password' => 'a long enough password', 'password_confirmation' => 'a long enough password'])
+            ->assertRedirect(route('account.security'));
+
+        $this->assertSame($hash, $coordinator->fresh()->password);
+        $this->get(route('account.security'))->assertSee('You already have a password, so the next step is the authenticator app.');
+    }
+
+    public function test_a_volunteer_who_already_has_a_password_goes_to_login_and_security(): void
+    {
+        $volunteer = User::factory()->create();
+
+        $this->actingAs($volunteer)
             ->post(route('account.password.set'), ['password' => 'a long enough password', 'password_confirmation' => 'a long enough password'])
             ->assertRedirect(route('account.show'));
 
-        $this->assertSame($hash, $coordinator->fresh()->password);
+        $this->get(route('account.show'))->assertSee('You already have a password. You can change it below.');
+    }
+
+    public function test_the_setup_screen_doesnt_show_fortify_keywords(): void
+    {
+        $this->actingAs($this->coordinator())->withSession(['status' => 'two-factor-authentication-enabled'])
+            ->get(route('account.security'))->assertDontSee('two-factor-authentication-enabled');
     }
 
     public function test_a_coordinator_can_turn_on_two_factor_and_then_get_in(): void
