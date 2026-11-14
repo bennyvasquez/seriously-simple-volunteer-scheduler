@@ -38,7 +38,7 @@
 <p class="muted">Anyone can add a password from their profile. Area leads, coordinators and admins always use one.</p>
 <x-field name="password" type="password" label="Password" autocomplete="current-password" />
 <label class="check"><input type="checkbox" name="remember" value="1"> Keep me logged in on this device</label>
-<button type="submit" class="btn" formaction="{{ route('login') }}">Log in with my password</button>
+<button type="submit" class="btn" id="password-login" formaction="{{ route('login') }}">Log in with my password</button>
 <a href="{{ route('password.request') }}">Forgot your password?</a>
 </div>
 </form>
@@ -53,6 +53,15 @@
         if (event.submitter && event.submitter.id === 'send-link') {
             form.elements.password.value = '';
             form.elements.remember.checked = false;
+        }
+    });
+
+    // Pressing Enter submits with the form's first button, "Email me a link". In the password box, Enter means "Log in with my password".
+    form.elements.password.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && ! event.isComposing) {
+            event.preventDefault();
+            const passwordLogin = document.getElementById('password-login');
+            form.requestSubmit ? form.requestSubmit(passwordLogin) : passwordLogin.click();
         }
     });
 })();
