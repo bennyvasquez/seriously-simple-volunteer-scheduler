@@ -4,6 +4,7 @@ namespace Tests;
 
 use Database\Seeders\ExampleOrganizationSeeder;
 use Facebook\WebDriver\Chrome\ChromeOptions;
+use Facebook\WebDriver\Exception\PhpWebDriverExceptionInterface;
 use Facebook\WebDriver\Remote\DesiredCapabilities;
 use Facebook\WebDriver\Remote\RemoteWebDriver;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -43,15 +44,21 @@ abstract class DuskTestCase extends BaseTestCase
     }
 
     /**
-     * Dusk reuses its browsers from one test to the next, so a login left behind by a test, even one that failed partway, would leak into the next. Deleting the cookies ends every session.
+     * Dusk reuses its browsers from one test to the next, so a login left behind by a test, even one that failed partway, would leak into the next. Deleting the cookies ends every session. A browser whose driver has died is skipped, so its error can't hide the test's real failure, and the parent teardown always runs.
      */
     protected function tearDown(): void
     {
-        foreach (static::$browsers as $browser) {
-            $browser->driver->manage()->deleteAllCookies();
+        try {
+            foreach (static::$browsers as $browser) {
+                try {
+                    $browser->driver->manage()->deleteAllCookies();
+                } catch (PhpWebDriverExceptionInterface) {
+                    // Covers both WebDriver errors and an unreachable driver. The test that broke the browser has already failed, and that failure is the one worth reading.
+                }
+            }
+        } finally {
+            parent::tearDown();
         }
-
-        parent::tearDown();
     }
 
     /**

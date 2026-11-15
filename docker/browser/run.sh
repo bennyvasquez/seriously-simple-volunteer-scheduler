@@ -5,7 +5,17 @@ set -u
 log=storage/logs/dusk-server.log
 
 # Chromium in the browser container reaches the app at this container's own address. `docker compose run` doesn't register the service name (dusk) on the network unless it's given --use-aliases, so the address is used instead of the name.
-APP_URL="http://$(hostname -i | cut -d' ' -f1):8001"
+address="$(hostname -i 2>/dev/null | cut -d' ' -f1)"
+
+# Without an address, or with an IPv6 one (which would need brackets in a URL), the URL would be broken and every test would fail in a confusing way, so stop here instead.
+case "$address" in
+    "" | *:*)
+        echo "Couldn't find this container's IPv4 address (hostname -i printed \"$address\"), so the browser can't be told where the app is." >&2
+        exit 1
+        ;;
+esac
+
+APP_URL="http://$address:8001"
 export APP_URL
 
 # --no-reload keeps the container's environment variables in the server's PHP processes; without it, artisan serve hands them only a short list.

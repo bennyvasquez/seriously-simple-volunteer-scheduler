@@ -11,8 +11,9 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 current="$(tr -d '[:space:]' < "$root/tests/Browser/axe/VERSION")"
 latest="$(curl -fsS https://registry.npmjs.org/axe-core/latest | jq -r .version)"
 
-if [ -z "$latest" ] || [ "$latest" = "null" ]; then
-  echo "Couldn't read the latest axe-core version from the npm registry." >&2
+# Only a plain version number goes on: anything else (empty, "null", a prerelease or an error page) would end up in the issue title and in gh's search.
+if ! [[ "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Couldn't read the latest axe-core version from the npm registry (it gave \"$latest\")." >&2
   exit 1
 fi
 

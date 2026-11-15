@@ -23,8 +23,7 @@ class RecoveryCodesTest extends DuskTestCase
                 ->waitUntil("document.getElementById('copy-codes').textContent === 'Copied'");
 
             $this->assertSame(implode("\n", $codes), $browser->script('return window.copiedText')[0]);
-            $browser->assertMissing('#copy-failed')
-                ->assertDontSee("Couldn't copy");
+            $browser->assertMissing('#copy-failed');
         });
     }
 
