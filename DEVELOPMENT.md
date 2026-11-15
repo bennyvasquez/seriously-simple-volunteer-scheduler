@@ -12,6 +12,8 @@ docker compose exec app php artisan migrate
 
 The app is at http://localhost:8000. The database isn't published to your machine, on purpose: on a real server it's reachable only from the app.
 
+`docker compose up` builds the app image only when it doesn't exist yet, so after pulling a change to `docker/app/Dockerfile`, rebuild it with `docker compose up -d --build` (or `docker compose build app`). Otherwise you keep the old image, and `composer install` can fail because a PHP extension a package needs is missing. The `app` and `dusk` services share one image, `ssvs-app`, so one build serves both.
+
 ## Setting up an organization
 
 Run `docker compose exec app php artisan ssvs:setup`. It asks for the organization's name and time zone and the first admin's name and email, then prints a one-time link (and emails it). That link is how the first admin logs in. Opening it asks them to choose a password and connect an authenticator app before anything else. Once you're logged in, go to http://localhost:8000/calendar to reach the coordinator calendar. Anyone with a role can open it; admins and coordinators can change anything on the calendar, area leads can change their own areas, and only admins change settings. Invite more people from the people list at http://localhost:8000/people (the invite form is there too). The invitation email lands in Mailpit.
@@ -48,9 +50,9 @@ docker compose exec -T db mariadb -uroot -pssvs-local-root-only < docker/mariadb
 
 Dusk adds routes under `/_dusk` that log anyone in as any user with no password, which is how `loginAs()` works. They exist only when APP_ENV=testing, which the `dusk` container sets: composer.json keeps package discovery from loading Dusk, and `AppServiceProvider` registers it only for testing, so the development server on port 8000 (APP_ENV=local) answers 404 there. Dusk's artisan commands, such as `dusk:make`, are only there under testing too, so run them in the `dusk` container: `docker compose --profile browser run --rm --no-deps --entrypoint php dusk artisan dusk:make ExampleTest`. A real server must install with `composer install --no-dev` and APP_ENV=production, so Dusk isn't installed at all; the install guide will cover this.
 
-When a browser test fails, Dusk saves a screenshot to `tests/Browser/screenshots` and, when there were any, the browser console messages to `tests/Browser/console`; both are ignored by git. The app's own output from the test run is in `storage/logs/dusk-server.log`.
+When a browser test fails, Dusk saves a screenshot to `tests/Browser/screenshots` and the page's HTML to `tests/Browser/source`. It also saves the browser console messages to `tests/Browser/console` for every test that logged any, passing or failing. All three are ignored by git. The app's own output from the test run is in `storage/logs/dusk-server.log`.
 
-On GitHub, the browser tests run as their own `browser` job in `.github/workflows/tests.yml`, in parallel with the PHPUnit `test` job. The job pulls the Selenium image (retrying up to three times, because Docker Hub sometimes times out), runs the same command as above, and on failure uploads the screenshots, console messages and `dusk-server.log` as a `browser-test-failures` artifact on the workflow run. Dependabot reads `compose.yaml` and opens weekly pull requests for the Selenium, MariaDB and Mailpit image tags; when the Selenium tag changes, check that the Dusk tests still pass before merging.
+On GitHub, the browser tests run as their own `browser` job in `.github/workflows/tests.yml`, in parallel with the PHPUnit `test` job. The job pulls the Selenium image (retrying up to three times, because Docker Hub sometimes times out), runs the same command as above, and on failure uploads the screenshots, page HTML, console messages and `dusk-server.log` as a `browser-test-failures` artifact on the workflow run. Dependabot reads `compose.yaml` and opens weekly pull requests for the Selenium and Mailpit image tags, and for MariaDB only for patch versions, so it stays on the version AlmaLinux 10 ships. When the Selenium tag changes, check that the Dusk tests still pass before merging.
 
 ### Accessibility checks
 

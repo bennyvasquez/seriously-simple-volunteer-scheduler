@@ -65,14 +65,15 @@ jobs:
       - name: Run the browser tests
         run: docker compose --profile browser run --rm -T dusk
 
-      # Screenshots and browser console messages are only saved for failed tests.
-      - name: Upload screenshots and console logs
+      # Dusk saves screenshots and page HTML only for failed tests, and console messages for every test that logged any.
+      - name: Upload screenshots, page HTML and console logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: browser-test-failures
           path: |
             tests/Browser/screenshots
+            tests/Browser/source
             tests/Browser/console
             storage/logs/dusk-server.log
           if-no-files-found: ignore

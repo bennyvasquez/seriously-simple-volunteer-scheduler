@@ -1,6 +1,8 @@
 # Development only. Passwords here are local placeholders, never used on a real server.
 services:
   app:
+    # The dusk service uses the same image, so one build serves both. After pulling a change to docker/app/Dockerfile, rebuild it with: docker compose build app
+    image: ssvs-app
     build:
       context: .
       dockerfile: docker/app/Dockerfile
@@ -51,6 +53,8 @@ services:
 
   dusk:
     profiles: [browser]
+    # The app service's image, built from docker/app/Dockerfile.
+    image: ssvs-app
     build:
       context: .
       dockerfile: docker/app/Dockerfile
