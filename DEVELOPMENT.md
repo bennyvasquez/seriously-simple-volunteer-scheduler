@@ -48,6 +48,8 @@ docker compose exec -T db mariadb -uroot -pssvs-local-root-only < docker/mariadb
 
 When a browser test fails, Dusk saves a screenshot to `tests/Browser/screenshots` and, when there were any, the browser console messages to `tests/Browser/console`; both are ignored by git. The app's own output from the test run is in `storage/logs/dusk-server.log`.
 
+On GitHub, the browser tests run as their own `browser` job in `.github/workflows/tests.yml`, in parallel with the PHPUnit `test` job. The job pulls the Selenium image (retrying up to three times, because Docker Hub sometimes times out), runs the same command as above, and on failure uploads the screenshots, console messages and `dusk-server.log` as a `browser-test-failures` artifact on the workflow run. Dependabot reads `compose.yaml` and opens weekly pull requests for the Selenium, MariaDB and Mailpit image tags; when the Selenium tag changes, check that the Dusk tests still pass before merging.
+
 ### Example data
 
 `docker compose exec app php artisan migrate:fresh --seed` replaces your development data with the same example organization the browser tests use: three areas, weekly and one-time shifts four weeks ahead, a closure, a cancelled shift and about 20 people with made-up names. Everyone who accepted their invitation has the password `example-password-1`, and the admin (admin@example.org), coordinator (coordinator@example.org) and area lead (area-lead@example.org) have two-factor on with the authenticator secret in `ExampleOrganizationSeeder::TWO_FACTOR_SECRET`, which you can add to an authenticator app by hand. Some steps email people, so a few example emails land in Mailpit.

@@ -8,3 +8,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # Reads compose.yaml, so the Selenium and MariaDB image tags get update pull requests.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly

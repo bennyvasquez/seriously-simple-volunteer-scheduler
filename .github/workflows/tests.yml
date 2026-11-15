@@ -30,3 +30,49 @@ jobs:
           && composer install --no-interaction --prefer-dist
           && php artisan key:generate --no-interaction
           && php artisan test'
+
+  browser:
+    runs-on: ubuntu-latest
+    # A normal run takes a few minutes once the Selenium image is downloaded; this stops a hung build from running for hours.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the AlmaLinux 10 app image
+        run: docker compose --profile browser build dusk
+
+      # The Selenium image is about 1 GB and Docker Hub sometimes times out, so try up to three times before failing.
+      - name: Pull the browser image
+        run: |
+          for attempt in 1 2 3; do
+            docker compose --profile browser pull browser && exit 0
+            echo "Pull attempt $attempt failed."
+            sleep 10
+          done
+          exit 1
+
+      - name: Start MariaDB
+        run: docker compose up -d --wait db
+
+      # The dusk service's entrypoint runs the tests, so setup uses a different entrypoint. The repository is bind mounted, so the .env file and vendor directory carry over to the test run.
+      - name: Set up the app
+        run: >-
+          docker compose --profile browser run --rm -T --no-deps --entrypoint sh dusk -c
+          'cp .env.example .env
+          && composer install --no-interaction --prefer-dist
+          && php artisan key:generate --no-interaction'
+
+      - name: Run the browser tests
+        run: docker compose --profile browser run --rm -T dusk
+
+      # Screenshots and browser console messages are only saved for failed tests.
+      - name: Upload screenshots and console logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-test-failures
+          path: |
+            tests/Browser/screenshots
+            tests/Browser/console
+            storage/logs/dusk-server.log
+          if-no-files-found: ignore
