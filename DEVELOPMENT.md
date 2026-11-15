@@ -30,6 +30,28 @@ docker compose exec app php artisan test
 
 Tests use a separate `ssvs_test` database, so they never touch your development data. If tests fail because the `ssvs_test` database doesn't exist, your database volume predates it: run `docker compose down -v` and start again (this deletes local development data).
 
+### Browser tests
+
+A few screens use JavaScript (for example the login page and the recovery codes Copy button), and PHPUnit can't run it, so those are also tested in a real browser with Laravel Dusk. Every screen still works with JavaScript off, and the feature tests prove that; browser tests add coverage on top. Run them with:
+
+```bash
+docker compose --profile browser run --rm dusk
+```
+
+Arguments after `dusk` go to `php artisan dusk`, for example `docker compose --profile browser run --rm dusk --filter=LoginPageTest`. This starts two containers that `docker compose up` leaves alone: `browser`, which runs Chromium (the Selenium standalone image), and `dusk`, which serves the app on port 8001 at its own address on the container network and runs the tests. The first run downloads the Selenium image, about 1 GB to download and 2.2 GB on disk, so it takes a few minutes.
+
+The browser tests use their own `ssvs_browser` database, and every test starts from the populated example organization in `database/seeders/ExampleOrganizationSeeder.php`. If your database volume predates `ssvs_browser`, create it without losing your data:
+
+```bash
+docker compose exec -T db mariadb -uroot -pssvs-local-root-only < docker/mariadb/init/02-browser-database.sql
+```
+
+When a browser test fails, Dusk saves a screenshot to `tests/Browser/screenshots` and, when there were any, the browser console messages to `tests/Browser/console`; both are ignored by git. The app's own output from the test run is in `storage/logs/dusk-server.log`.
+
+### Example data
+
+`docker compose exec app php artisan migrate:fresh --seed` replaces your development data with the same example organization the browser tests use: three areas, weekly and one-time shifts four weeks ahead, a closure, a cancelled shift and about 20 people with made-up names. Everyone who accepted their invitation has the password `example-password-1`, and the admin (admin@example.org), coordinator (coordinator@example.org) and area lead (area-lead@example.org) have two-factor on with the authenticator secret in `ExampleOrganizationSeeder::TWO_FACTOR_SECRET`, which you can add to an authenticator app by hand. Some steps email people, so a few example emails land in Mailpit.
+
 ## Styling
 
 There's no asset build and no Node. All styling is one plain file, `public/css/app.css`, and the Atkinson Hyperlegible font is served from `public/fonts` (with its license, `OFL.txt`), so edit the CSS and reload. The font files are the Latin and Latin Extended subsets from the Google Fonts release (version 12, under the SIL Open Font License 1.1), each with the `unicode-range` Google gives it, so the browser only downloads the Latin Extended file for pages with letters such as Ł or Ş. If you update the font, replace all four files from the same release so the subsets match. Pages share the layout in `resources/views/layouts/app.blade.php`.
