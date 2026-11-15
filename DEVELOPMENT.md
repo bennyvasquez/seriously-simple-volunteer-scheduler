@@ -50,6 +50,20 @@ When a browser test fails, Dusk saves a screenshot to `tests/Browser/screenshots
 
 On GitHub, the browser tests run as their own `browser` job in `.github/workflows/tests.yml`, in parallel with the PHPUnit `test` job. The job pulls the Selenium image (retrying up to three times, because Docker Hub sometimes times out), runs the same command as above, and on failure uploads the screenshots, console messages and `dusk-server.log` as a `browser-test-failures` artifact on the workflow run. Dependabot reads `compose.yaml` and opens weekly pull requests for the Selenium, MariaDB and Mailpit image tags; when the Selenium tag changes, check that the Dusk tests still pass before merging.
 
+### Accessibility checks
+
+`tests/Browser/SignInAccessibilityTest.php` runs axe-core, an open source accessibility checker, against each sign-in screen (log in, check your email, a password login error, forgot password, the code screen, account security setup, recovery codes, and login and security) and fails on any violation of the WCAG (Web Content Accessibility Guidelines) 2.0 and 2.1 level A and AA rules. A failure lists each rule, what it means and the elements it hit. To check another screen, call `$this->assertAccessible($browser)` from `Tests\Browser\Concerns\ChecksAccessibility` once the browser is on it. An automated check finds what a tool can find, such as missing labels and low contrast, so it doesn't replace trying the screens with a keyboard and a screen reader.
+
+The copy of axe is committed in `tests/Browser/axe/` (`axe.min.js`, its `LICENSE` and a `VERSION` file) so the tests need no Node and no network. A monthly GitHub Actions workflow (`.github/workflows/axe-update.yml`, which runs `.github/scripts/axe-update-check.sh`) compares `VERSION` with the latest axe-core on npm and opens an issue titled "Update axe-core to X" when there's a newer one. You can try it without opening an issue with `.github/scripts/axe-update-check.sh --dry-run`.
+
+#### Updating axe-core
+
+1. Download the tarball for the new version, here `X`, into an empty directory, and get its published hash: `curl -fsSLO https://registry.npmjs.org/axe-core/-/axe-core-X.tgz` and `curl -fsS https://registry.npmjs.org/axe-core/X | jq -r .dist.integrity`.
+2. Check that the file matches the hash: `echo "sha512-$(openssl dgst -sha512 -binary axe-core-X.tgz | base64 | tr -d '\n')"` must print the same value.
+3. Extract `package/axe.min.js` and `package/LICENSE` (`tar -xzf axe-core-X.tgz package/axe.min.js package/LICENSE`) and copy them over the files in `tests/Browser/axe/`.
+4. Put the new version in `tests/Browser/axe/VERSION`.
+5. Run the whole browser suite. A new axe version can add rules, so a screen that passed before may now fail; fix the screen rather than turning the rule off.
+
 ### Example data
 
 `docker compose exec app php artisan migrate:fresh --seed` replaces your development data with the same example organization the browser tests use: three areas, weekly and one-time shifts four weeks ahead, a closure, a cancelled shift and about 20 people with made-up names. Everyone who accepted their invitation has the password `example-password-1`, and the admin (admin@example.org), coordinator (coordinator@example.org) and area lead (area-lead@example.org) have two-factor on with the authenticator secret in `ExampleOrganizationSeeder::TWO_FACTOR_SECRET`, which you can add to an authenticator app by hand. Some steps email people, so a few example emails land in Mailpit.
