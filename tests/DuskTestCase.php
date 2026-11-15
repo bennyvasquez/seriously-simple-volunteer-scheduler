@@ -8,6 +8,7 @@ use Facebook\WebDriver\Remote\DesiredCapabilities;
 use Facebook\WebDriver\Remote\RemoteWebDriver;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Dusk\TestCase as BaseTestCase;
 use PHPUnit\Framework\Attributes\BeforeClass;
 
@@ -31,6 +32,26 @@ abstract class DuskTestCase extends BaseTestCase
         if (! static::runningInSail() && ! static::driverUrl()) {
             static::startChromeDriver(['--port=9515']);
         }
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // The login and link request limits live in the file cache, which outlives a test run, so runs close together would be refused.
+        Cache::flush();
+    }
+
+    /**
+     * Dusk reuses its browsers from one test to the next, so a login left behind by a test, even one that failed partway, would leak into the next. Deleting the cookies ends every session.
+     */
+    protected function tearDown(): void
+    {
+        foreach (static::$browsers as $browser) {
+            $browser->driver->manage()->deleteAllCookies();
+        }
+
+        parent::tearDown();
     }
 
     /**

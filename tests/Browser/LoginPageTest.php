@@ -4,20 +4,11 @@ namespace Tests\Browser;
 
 use App\Models\User;
 use Database\Seeders\ExampleOrganizationSeeder;
-use Illuminate\Support\Facades\Cache;
 use Laravel\Dusk\Browser;
 use Tests\DuskTestCase;
 
 class LoginPageTest extends DuskTestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        // The login and link request limits live in the file cache, which outlives a test run, so runs close together would be refused.
-        Cache::flush();
-    }
-
     public function test_the_login_page_opens(): void
     {
         $this->browse(function (Browser $browser) {
@@ -72,9 +63,7 @@ class LoginPageTest extends DuskTestCase
                 ->type('password', ExampleOrganizationSeeder::PASSWORD)
                 ->keys('input[name=password]', '{enter}')
                 ->waitForLocation('/')
-                ->assertAuthenticatedAs($volunteer)
-                // The browser is reused by the next test, and a logged in browser can't open the login page.
-                ->logout();
+                ->assertAuthenticatedAs($volunteer);
         });
     }
 
