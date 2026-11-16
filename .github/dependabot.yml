@@ -8,3 +8,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # Reads compose.yaml, so the Selenium and Mailpit image tags get update pull requests. MariaDB gets patch updates only, because it stays on the version AlmaLinux 10 ships (see compose.yaml).
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: mariadb
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

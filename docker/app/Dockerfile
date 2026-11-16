@@ -7,6 +7,10 @@ RUN dnf -y install \
         unzip git \
     && dnf clean all
 
+# Development and testing only: Laravel Dusk (the browser tests) needs the zip extension. The production server doesn't install Dusk, so it doesn't need this.
+RUN dnf -y install php-pecl-zip \
+    && dnf clean all
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app

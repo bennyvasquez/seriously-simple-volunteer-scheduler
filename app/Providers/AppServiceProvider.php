@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Dusk\DuskServiceProvider;
 use Laravel\Fortify\Events\RecoveryCodeReplaced;
 use Laravel\Fortify\Events\RecoveryCodesGenerated;
 use Laravel\Fortify\Events\TwoFactorAuthenticationConfirmed;
@@ -27,7 +28,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Dusk adds routes such as /_dusk/login/{userId}, which log anyone in as anyone with no password, in every environment but production. composer.json keeps package discovery from loading it, so it's registered here only for the browser tests, which run with APP_ENV=testing. A real server installs without dev packages, so the class isn't there at all.
+        if ($this->app->environment('testing') && class_exists(DuskServiceProvider::class)) {
+            $this->app->register(DuskServiceProvider::class);
+        }
     }
 
     /**

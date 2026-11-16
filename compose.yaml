@@ -1,6 +1,8 @@
 # Development only. Passwords here are local placeholders, never used on a real server.
 services:
   app:
+    # The dusk service uses the same image, so one build serves both. After pulling a change to docker/app/Dockerfile, rebuild it with: docker compose build app
+    image: ssvs-app
     build:
       context: .
       dockerfile: docker/app/Dockerfile
@@ -36,6 +38,45 @@ services:
     image: axllent/mailpit:v1.27
     ports:
       - "8025:8025"
+
+  # Browser tests only, under the browser profile so `docker compose up` doesn't start them. Run them with: docker compose --profile browser run --rm dusk
+  browser:
+    profiles: [browser]
+    # Pinned by dated tag, so a new Chromium arrives only when this line changes.
+    image: selenium/standalone-chromium:156.0-20261101
+    shm_size: 2gb
+    healthcheck:
+      test: ["CMD", "/opt/bin/check-grid.sh", "--host", "0.0.0.0", "--port", "4444"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  dusk:
+    profiles: [browser]
+    # The app service's image, built from docker/app/Dockerfile.
+    image: ssvs-app
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      browser:
+        condition: service_healthy
+    # These override .env, so the browser tests use their own database and never touch development data. APP_URL is set by docker/browser/run.sh to this container's own address, because `docker compose run` doesn't give the container its service name on the network, so Chromium in the browser container couldn't find http://dusk:8001.
+    environment:
+      DUSK_DRIVER_URL: http://browser:4444
+      DB_DATABASE: ssvs_browser
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: log
+      APP_ENV: testing
+    # An entrypoint rather than a command, so arguments to `docker compose run` reach php artisan dusk, for example --filter=LoginPageTest.
+    entrypoint: ["sh", "docker/browser/run.sh"]
+    command: []
 
 volumes:
   db-data:

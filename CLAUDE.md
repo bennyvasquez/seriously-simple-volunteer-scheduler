@@ -16,6 +16,7 @@ The Seriously Simple Volunteer Scheduler (SSVS) helps a small organization run i
 - Plan before building anything bigger than a small fix, and check the plan with the maintainer before writing code.
 - Run everything through Docker from the repository root, for example `docker compose exec app php artisan test`. Run the whole test suite before every commit, and don't commit a failing state.
 - Run `docker compose exec app ./vendor/bin/pint --dirty` before committing.
+- Run the browser tests (`docker compose --profile browser run --rm dusk`) before committing changes to screens or their scripts.
 - Work on a branch and open a pull request. Never push to `main` directly, and never force-push a shared branch.
 - Match the existing commit message style: one plain sentence saying what changed.
 
