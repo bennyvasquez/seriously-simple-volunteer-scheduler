@@ -15,9 +15,13 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\ExampleOrganizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Fortify\Fortify;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -93,7 +97,7 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertFalse($needsSetup->hasEnabledTwoFactorAuthentication());
 
         foreach ([ExampleOrganizationSeeder::ADMIN, ExampleOrganizationSeeder::COORDINATOR, ExampleOrganizationSeeder::AREA_LEAD, ExampleOrganizationSeeder::NEEDS_SETUP, ExampleOrganizationSeeder::VOLUNTEER] as $email) {
-            $this->assertTrue(Hash::check(ExampleOrganizationSeeder::PASSWORD, User::query()->where('email', $email)->sole()->password), $email);
+            $this->assertTrue(Hash::check(ExampleOrganizationSeeder::password(), User::query()->where('email', $email)->sole()->password), $email);
         }
 
         $volunteer = User::query()->where('email', ExampleOrganizationSeeder::VOLUNTEER)->sole();
@@ -115,5 +119,57 @@ class ExampleOrganizationSeederTest extends TestCase
 
         $this->assertSame(22, User::query()->count());
         $this->assertSame(1, Shift::query()->whereNotNull('cancelled_at')->whereNull('area_closure_id')->count());
+    }
+
+    public function test_it_prints_the_password_it_gives_everyone(): void
+    {
+        $this->withoutMockingConsoleOutput();
+
+        Artisan::call('db:seed', ['--class' => ExampleOrganizationSeeder::class]);
+
+        $password = ExampleOrganizationSeeder::password();
+        $this->assertStringContainsString("The example accounts' password for this seed is: {$password}", Artisan::output());
+        $this->assertTrue(Hash::check($password, User::query()->where('email', ExampleOrganizationSeeder::ADMIN)->sole()->password));
+    }
+
+    public function test_each_run_makes_a_new_password(): void
+    {
+        // A savepoint inside the test's own transaction, so the second run starts from an empty database.
+        DB::beginTransaction();
+        $this->seed(ExampleOrganizationSeeder::class);
+        $first = ExampleOrganizationSeeder::password();
+        DB::rollBack();
+
+        $this->assertSame(0, User::query()->count());
+
+        $this->seed(ExampleOrganizationSeeder::class);
+
+        $this->assertNotSame($first, ExampleOrganizationSeeder::password());
+        $this->assertTrue(Hash::check(ExampleOrganizationSeeder::password(), User::query()->where('email', ExampleOrganizationSeeder::VOLUNTEER)->sole()->password));
+    }
+
+    public static function refusedEnvironments(): array
+    {
+        return [
+            'production' => ['production'],
+            'staging' => ['staging'],
+        ];
+    }
+
+    #[DataProvider('refusedEnvironments')]
+    public function test_it_refuses_outside_development_and_tests_even_when_forced(string $environment): void
+    {
+        $this->app->detectEnvironment(fn () => $environment);
+
+        try {
+            $this->artisan('db:seed', ['--class' => ExampleOrganizationSeeder::class, '--force' => true])->run();
+            $this->fail("The seeder ran with APP_ENV={$environment}.");
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString("APP_ENV is \"{$environment}\", so nothing was seeded", $exception->getMessage());
+            $this->assertStringContainsString('php artisan ssvs:setup', $exception->getMessage());
+        }
+
+        $this->assertSame(0, User::query()->count());
+        $this->assertSame(0, Organization::query()->count());
     }
 }

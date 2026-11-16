@@ -28,13 +28,18 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
 use Laravel\Fortify\RecoveryCode;
+use LogicException;
+use RuntimeException;
 
 /**
  * A populated example install, the one the browser tests start from and the one `php artisan db:seed` gives developers. Everything is built through the app's own actions, so the change log has entries for it too. Accepting an invitation, choosing a password and connecting an authenticator app happen in controllers and Fortify, not actions, so those steps are written here the same way the app writes them, with the same change log entries, and without sending invitation emails.
  *
- * Every name is made up and every address is at example.org. Everyone who has accepted their invitation has the password PASSWORD; ADMIN, COORDINATOR and AREA_LEAD have two-factor on with TWO_FACTOR_SECRET. NEEDS_SETUP is an area lead with a password who hasn't connected an authenticator app yet. Some actions email people after the response, so seeding a development install puts a few example emails in Mailpit.
+ * Every name is made up and every address is at example.org. Everyone who has accepted their invitation shares one password, made at random on each run, printed at the end of the run and returned by password(); ADMIN, COORDINATOR and AREA_LEAD have two-factor on with TWO_FACTOR_SECRET. NEEDS_SETUP is an area lead with a password who hasn't connected an authenticator app yet. Some actions email people after the response, so seeding a development install puts a few example emails in Mailpit.
+ *
+ * It runs only when APP_ENV is local or testing, even with --force, because these accounts are described in the public code. Anything else, including a real server set to production or staging, is refused before anything is written.
  */
 class ExampleOrganizationSeeder extends Seeder
 {
@@ -52,9 +57,10 @@ class ExampleOrganizationSeeder extends Seeder
 
     public const TURNED_OFF = 'turned-off@example.org';
 
-    public const PASSWORD = 'example-password-1';
+    /** The environments the example organization may be seeded in. */
+    public const ALLOWED_ENVIRONMENTS = ['local', 'testing'];
 
-    /** The authenticator app secret for ADMIN, COORDINATOR and AREA_LEAD (base32, so any authenticator library can make codes from it). */
+    /** The authenticator app secret for ADMIN, COORDINATOR and AREA_LEAD (base32, so any authenticator library can make codes from it). It stays fixed so developers add it to their authenticator app once rather than after every seed; with a random password and every address at example.org, where login links, password resets and emailed codes go unread, it opens nothing by itself. */
     public const TWO_FACTOR_SECRET = 'EXAMPLESECRETFORBROWSERTESTS2345';
 
     /** The active volunteers besides VOLUNTEER, by email. Names include letters like Ł and Ş, a long name and a one-word name. */
@@ -75,14 +81,30 @@ class ExampleOrganizationSeeder extends Seeder
         'sam@example.org' => 'Sam Whitfield',
     ];
 
+    /** The password from the latest run in this PHP process. The browser tests seed in their own process (Dusk's DatabaseTruncation runs db:seed there), so they read it here; the server they drive only checks the hash. */
+    private static ?string $password = null;
+
     private string $passwordHash;
 
     private CarbonImmutable $today;
 
+    /** The password everyone who accepted their invitation has, from the latest run in this PHP process. */
+    public static function password(): string
+    {
+        return self::$password ?? throw new LogicException('The example organization hasn\'t been seeded in this process, so there is no example password yet.');
+    }
+
     public function run(): void
     {
+        if (! app()->environment(self::ALLOWED_ENVIRONMENTS)) {
+            throw new RuntimeException('The example organization is only for development and tests, because its accounts are described in the public code. This install\'s APP_ENV is "'.app()->environment().'", so nothing was seeded. To set up a real organization, run php artisan ssvs:setup.');
+        }
+
+        // Letters and numbers only, so it's easy to copy or type when signing in by hand.
+        self::$password = Str::password(20, symbols: false);
+
         // Hashed once: hashing it for every person would make each browser test noticeably slower to start.
-        $this->passwordHash = Hash::make(self::PASSWORD);
+        $this->passwordHash = Hash::make(self::$password);
 
         [$organization, $admin] = $this->organizationAndAdmin();
         $this->today = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC');
@@ -168,6 +190,13 @@ class ExampleOrganizationSeeder extends Seeder
 
         app(DeactivateUser::class)->handle($admin, $turnedOff);
         app(RemovePerson::class)->handle($admin, $leaving);
+
+        $this->command?->getOutput()->writeln([
+            '',
+            '  The example accounts\' password for this seed is: '.self::$password,
+            '  Admin: '.self::ADMIN.', coordinator: '.self::COORDINATOR.', area lead: '.self::AREA_LEAD.', volunteer: '.self::VOLUNTEER,
+            '',
+        ]);
     }
 
     /** The organization and its first admin, made the way `ssvs:setup` makes them, by the system. */

@@ -24,7 +24,7 @@ class LoginPageTest extends DuskTestCase
             $this->recordSubmit($browser);
 
             $browser->type('email', ExampleOrganizationSeeder::VOLUNTEER)
-                ->type('password', ExampleOrganizationSeeder::PASSWORD)
+                ->type('password', ExampleOrganizationSeeder::password())
                 ->check('remember')
                 ->press('Email me a link');
 
@@ -42,13 +42,13 @@ class LoginPageTest extends DuskTestCase
             $this->recordSubmit($browser);
 
             $browser->type('email', ExampleOrganizationSeeder::VOLUNTEER)
-                ->type('password', ExampleOrganizationSeeder::PASSWORD)
+                ->type('password', ExampleOrganizationSeeder::password())
                 ->check('remember')
                 ->press('Log in with my password');
 
             $recorded = $this->recordedSubmit($browser);
 
-            $this->assertSame(ExampleOrganizationSeeder::PASSWORD, $recorded['password']);
+            $this->assertSame(ExampleOrganizationSeeder::password(), $recorded['password']);
             $this->assertTrue($recorded['remember']);
         });
     }
@@ -60,7 +60,7 @@ class LoginPageTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($volunteer) {
             $browser->visit('/login')
                 ->type('email', ExampleOrganizationSeeder::VOLUNTEER)
-                ->type('password', ExampleOrganizationSeeder::PASSWORD)
+                ->type('password', ExampleOrganizationSeeder::password())
                 ->keys('input[name=password]', '{enter}')
                 ->waitForLocation('/')
                 ->assertAuthenticatedAs($volunteer);

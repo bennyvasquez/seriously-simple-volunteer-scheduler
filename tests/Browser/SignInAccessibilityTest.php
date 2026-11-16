@@ -66,7 +66,7 @@ class SignInAccessibilityTest extends DuskTestCase
         $this->browse(function (Browser $browser) {
             $browser->visit('/login')
                 ->type('email', ExampleOrganizationSeeder::ADMIN)
-                ->type('password', ExampleOrganizationSeeder::PASSWORD)
+                ->type('password', ExampleOrganizationSeeder::password())
                 ->press('Log in with my password')
                 ->waitForLocation('/two-factor-challenge');
 

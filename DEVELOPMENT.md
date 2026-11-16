@@ -70,7 +70,9 @@ The copy of axe is committed in `tests/Browser/axe/` (`axe.min.js`, its `LICENSE
 
 ### Example data
 
-`docker compose exec app php artisan migrate:fresh --seed` replaces your development data with the same example organization the browser tests use: three areas, weekly and one-time shifts four weeks ahead, a closure, a cancelled shift and about 20 people with made-up names. Everyone who accepted their invitation has the password `example-password-1`, and the admin (admin@example.org), coordinator (coordinator@example.org) and area lead (area-lead@example.org) have two-factor on with the authenticator secret in `ExampleOrganizationSeeder::TWO_FACTOR_SECRET`, which you can add to an authenticator app by hand. Some steps email people, so a few example emails land in Mailpit.
+`docker compose exec app php artisan migrate:fresh --seed` replaces your development data with the same example organization the browser tests use: three areas, weekly and one-time shifts four weeks ahead, a closure, a cancelled shift and about 20 people with made-up names. Everyone who accepted their invitation shares one password, made at random on each seed and printed at the end of the command, so copy it from there (seeding again makes a new one). The admin (admin@example.org), coordinator (coordinator@example.org) and area lead (area-lead@example.org) have two-factor on with the authenticator secret in `ExampleOrganizationSeeder::TWO_FACTOR_SECRET`, which you can add to an authenticator app by hand. The secret stays the same from one seed to the next, so you only add it once. Some steps email people, so a few example emails land in Mailpit.
+
+The seeder runs only when APP_ENV is `local` or `testing`. Anywhere else, including with `--force`, it stops before writing anything and points to `php artisan ssvs:setup`, because the example accounts are described in this public code.
 
 ## Styling
 
