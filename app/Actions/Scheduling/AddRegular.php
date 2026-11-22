@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\MadeRegularNotification;
 use Carbon\CarbonImmutable;
+use Closure;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,8 @@ use InvalidArgumentException;
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, and a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on.
  *
  * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
+ *
+ * A volunteer taking a slot for themselves (TakeShift, decision 15) passes `$selfClaim`: the actor has to be the person, the manager check is skipped, the slot must have no regular on or after the start date ("You can take this date only."), and a date that would go over people needed is refused ("Thursday, October 29 already has the people it needs.") instead of asking to confirm. That counts everyone already on a generated shift, not only regulars, and when the full date is the start date (the one being taken) ShiftAlreadyTaken is thrown instead. Its assignment.added entries carry `via` "take", and no "now a regular" email is sent, since TakeShift sends the person one email for the whole take. `$onPutOn` is called inside the transaction, after everything is logged, with the locked shifts the person was put on and every locked candidate shift, so TakeShift can check the date taken and fill its cover request in the same transaction.
  */
 class AddRegular
 {
@@ -45,17 +48,25 @@ class AddRegular
         SlotFrequency $frequency = SlotFrequency::Weekly,
         ?string $anchorDate = null,
         bool $overConfirmed = false,
+        bool $selfClaim = false,
+        ?Closure $onPutOn = null,
     ): SlotRegular {
-        if ($actor !== null) {
+        if ($selfClaim) {
+            if ($actor?->id !== $user->id) {
+                throw new InvalidArgumentException('Only the person themselves can take a slot this way.');
+            }
+        } elseif ($actor !== null) {
             Gate::forUser($actor)->authorize('manageSchedule', $slot->area);
         }
 
         if ($slot->is_rotation) {
-            throw new DomainException('A rotation has no regulars. Volunteers sign up for it one date at a time.');
+            throw new DomainException($selfClaim ? 'You can take this date only.' : 'A rotation has no regulars. Volunteers sign up for it one date at a time.');
         }
 
+        $turnedOff = $selfClaim ? 'Your account has been turned off, so you can\'t take shifts.' : $user->firstName().' has been turned off and can\'t be made a regular.';
+
         if (! $user->isActive()) {
-            throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
+            throw new DomainException($turnedOff);
         }
 
         $startsOn = CarbonImmutable::parse($startsOn)->toDateString();
@@ -77,7 +88,7 @@ class AddRegular
         $regular->weeklySlot()->associate($slot);
         $regular->ensureValid();
 
-        $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn, $overConfirmed) {
+        $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn, $overConfirmed, $selfClaim, $onPutOn, $turnedOff) {
             // The area then the slot, before reading the regulars: the order EndRegular and the other scheduling actions lock in.
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->firstOrFail();
             WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
@@ -86,7 +97,7 @@ class AddRegular
             $current = User::query()->whereKey($user->id)->sharedLock()->first();
 
             if ($current === null || ! $current->isActive()) {
-                throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
+                throw new DomainException($turnedOff);
             }
 
             // A regular whose end is before its start (ended before it started, or released by a turn-off) never works a date, so it's left out.
@@ -96,11 +107,20 @@ class AddRegular
                 ->lockForUpdate()
                 ->get();
 
+            // A volunteer can make themselves the regular only on a slot nobody is the regular for from that date on (decision 15).
+            if ($selfClaim && $overlapping->isNotEmpty()) {
+                throw new DomainException('You can take this date only.');
+            }
+
             if ($overlapping->contains('user_id', $user->id)) {
                 throw new DomainException('This person is already a regular on this slot for some of those dates.');
             }
 
             $overDates = $overConfirmed ? [] : $this->overDates($slot, $regular, $overlapping);
+
+            if ($overDates !== [] && $selfClaim) {
+                throw new DomainException(self::dayText($overDates[0]['date']).' already has the people it needs.');
+            }
 
             if ($overDates !== []) {
                 throw new NeedsOverConfirmation($overDates);
@@ -136,11 +156,16 @@ class AddRegular
                     continue;
                 }
 
+                // Someone taking a slot never goes over the people a date needs, counting everyone already on it, one-time places included.
+                if ($selfClaim && $on->where('type', AssignmentType::Regular)->count() >= $shift->people_needed) {
+                    throw $date === $startsOn ? new ShiftAlreadyTaken : new DomainException(self::dayText($date).' already has the people it needs.');
+                }
+
                 $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $user->id, 'type' => AssignmentType::Regular]);
                 $assignmentChanges = ChangeLogEntry::changesOf($assignment);
                 $assignment->save();
                 // The same entry PutOnShift records, so a shift's history shows everyone put on it however they got there.
-                ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value], $assignmentChanges, about: $user);
+                ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value] + ($selfClaim ? ['via' => 'take'] : []), $assignmentChanges, about: $user);
                 $shifts->push($shift);
             }
 
@@ -148,6 +173,10 @@ class AddRegular
                 'weekly_slot_id' => $slot->id,
                 'added_to_shift_ids' => $shifts->pluck('id')->values()->all(),
             ], $changes, about: $user);
+
+            if ($onPutOn !== null) {
+                $onPutOn($shifts, $candidates);
+            }
 
             return [$regular, $shifts->count(), $skippedOverlaps];
         });
@@ -157,10 +186,18 @@ class AddRegular
         $regular->setAttribute('added_to_shifts', $count);
         $regular->setAttribute('skipped_overlaps', $skippedOverlaps);
 
-        // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved.
-        defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));
+        // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved. Someone taking a slot gets TakeShift's email instead.
+        if (! $selfClaim) {
+            defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));
+        }
 
         return $regular;
+    }
+
+    /** "Thursday, October 29" for a Y-m-d date. */
+    private static function dayText(string $date): string
+    {
+        return CarbonImmutable::parse($date, 'UTC')->format('l, F j');
     }
 
     /**

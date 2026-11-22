@@ -37,4 +37,10 @@ class ShiftPolicy
     {
         return $user->isActive() && $shift->assignments()->where('user_id', $user->id)->exists();
     }
+
+    /** A volunteer taking an open shift ("Take this shift"). TakeShift checks everything else (open places, the shift itself, overlaps) under its locks. */
+    public function take(User $user, Shift $shift): bool
+    {
+        return $user->canSignIn();
+    }
 }

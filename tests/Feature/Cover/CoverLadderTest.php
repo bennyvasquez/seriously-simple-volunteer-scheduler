@@ -278,7 +278,11 @@ class CoverLadderTest extends TestCase
 
         Notification::assertNotSentTo($this->coordinator, CoverRequestNotification::class);
         Notification::assertNotSentTo($lead, CoverUrgentNotification::class);
-        $this->assertSame(0, ChangeLogEntry::query()->ofAction('cover_request.*')->count());
+        // Putting Morgan on filled the cover request, and the ladder never touched it.
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('cover_request.resent')->count());
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
+        $this->assertSame(1, ChangeLogEntry::query()->ofAction('cover_request.filled')->count());
+        $this->assertSame($this->morgan->id, CoverRequest::query()->where('shift_id', $shift->id)->sole()->filled_by);
     }
 
     public function test_no_resend_when_released_inside_72_hours(): void
