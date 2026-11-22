@@ -146,21 +146,23 @@ class RemoveFromShift
             ->whereHas('assignments', fn ($query) => $query->where('user_id', $person->id));
     }
 
+    /** Whether the text is a real date written as Y-m-d, the only form the screens send. Shared with checkDates(), EndRegular::endOwn() and ReleaseShifts::slot(). */
+    public static function isDate(string $date): bool
+    {
+        // Carbon throws on text that isn't a date at all, rather than returning false.
+        try {
+            $parsed = CarbonImmutable::createFromFormat('!Y-m-d', $date);
+        } catch (InvalidFormatException) {
+            return false;
+        }
+
+        return $parsed !== false && $parsed->format('Y-m-d') === $date;
+    }
+
     /** Refuses a range that isn't two real dates, starts before today or ends before it starts, with messages written to be shown on screen. Shared with ReleaseShifts. */
     public static function checkDates(string $from, string $to): void
     {
-        $valid = function (string $date): bool {
-            // Carbon throws on text that isn't a date at all, rather than returning false.
-            try {
-                $parsed = CarbonImmutable::createFromFormat('!Y-m-d', $date);
-            } catch (InvalidFormatException) {
-                return false;
-            }
-
-            return $parsed !== false && $parsed->format('Y-m-d') === $date;
-        };
-
-        if (! $valid($from) || ! $valid($to)) {
+        if (! self::isDate($from) || ! self::isDate($to)) {
             throw new DomainException('Pick two dates.');
         }
 

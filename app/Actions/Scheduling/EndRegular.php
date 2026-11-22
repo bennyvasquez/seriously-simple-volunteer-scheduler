@@ -61,7 +61,7 @@ class EndRegular
     }
 
     /**
-     * A volunteer gives up their own weekly slot (decision 13), so there's no manager check. `$lastDate` is the last date they work, and has to be yesterday or later, so the slot is given up from today on. Nothing that has started is touched and no confirmation is needed: if today's shift has started, the person stays on it. For each future, uncancelled shift of the slot they're on as a regular, `$onEachFutureShift(Shift $lockedShift, Assignment $assignment)` is called inside the transaction, with the locks held, instead of removing them here, so the caller (ReleaseShifts::slot()) releases each place and the end and every cover request commit together. A cancelled future shift is cleared the way handle() clears it, since nobody is asked to cover it. The end is logged as `regular.ended` about the person, with the person as the actor. No "regular ended" email is sent; the caller sends the release email instead.
+     * A volunteer gives up their own weekly slot (decision 13), so there's no manager check. `$lastDate` is the last date they work, written as Y-m-d ("Pick a date." otherwise), and has to be yesterday or later, so the slot is given up from today on. Nothing that has started is touched and no confirmation is needed: if today's shift has started, the person stays on it. For each future, uncancelled shift of the slot they're on as a regular, `$onEachFutureShift(Shift $lockedShift, Assignment $assignment)` is called inside the transaction, with the locks held, instead of removing them here, so the caller (ReleaseShifts::slot()) releases each place and the end and every cover request commit together. A cancelled future shift is cleared the way handle() clears it, since nobody is asked to cover it. The end is logged as `regular.ended` about the person, with the person as the actor. No "regular ended" email is sent; the caller sends the release email instead.
      *
      * @param  Closure(Shift, Assignment): void  $onEachFutureShift
      */
@@ -71,7 +71,10 @@ class EndRegular
             throw new DomainException('That isn\'t your weekly slot.');
         }
 
-        $lastDate = CarbonImmutable::parse($lastDate, 'UTC')->toDateString();
+        if (! RemoveFromShift::isDate($lastDate)) {
+            throw new DomainException('Pick a date.');
+        }
+
         $yesterday = CarbonImmutable::parse(Organization::current()->today()->toDateString(), 'UTC')->subDay()->toDateString();
 
         if ($lastDate < $yesterday) {

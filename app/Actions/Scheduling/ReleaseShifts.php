@@ -11,6 +11,7 @@ use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\CoverRequest;
+use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
@@ -111,7 +112,7 @@ class ReleaseShifts
     }
 
     /**
-     * What slot() would release: the future, uncancelled shifts of the regular's weekly slot from `$from` on (inside the regular's own dates) that the person is on as a regular, in time order, with their areas. Changes nothing.
+     * What slot() would release: the future, uncancelled shifts of the regular's weekly slot from `$from` on (inside the regular's own dates) that the person is on as a regular, in time order, with their areas. Changes nothing. The date is checked the same way slot() checks it, so the screen never confirms something that can't succeed.
      *
      * @return Collection<int, Shift>
      */
@@ -121,9 +122,11 @@ class ReleaseShifts
             throw new DomainException('That isn\'t your weekly slot.');
         }
 
+        $from = self::checkFrom($from)->toDateString();
+
         return Shift::query()
             ->where('weekly_slot_id', $regular->weekly_slot_id)
-            ->where('local_date', '>=', CarbonImmutable::parse($from, 'UTC')->toDateString())
+            ->where('local_date', '>=', $from)
             ->when($regular->ends_on !== null, fn (Builder $query) => $query->where('local_date', '<=', $regular->ends_on->toDateString()))
             ->whereNull('cancelled_at')
             ->where('starts_at', '>', now())
@@ -139,16 +142,30 @@ class ReleaseShifts
     public function slot(User $person, SlotRegular $regular, string $from, ?string $note): Collection
     {
         $note = self::cleanNote($note);
-        $from = CarbonImmutable::parse($from, 'UTC')->toDateString();
+        $from = self::checkFrom($from);
         $released = [];
 
-        $this->endRegular->endOwn($person, $regular, CarbonImmutable::parse($from, 'UTC')->subDay()->toDateString(), function (Shift $lockedShift, Assignment $assignment) use ($person, $note, &$released) {
+        $this->endRegular->endOwn($person, $regular, $from->subDay()->toDateString(), function (Shift $lockedShift, Assignment $assignment) use ($person, $note, &$released) {
             $released[] = $this->releaseAndCollectLocked($person, $lockedShift->loadMissing('area'), $assignment, $note, 'slot');
         });
 
-        $this->sendAfterCommit($person, $released, $note, ['weekday' => $regular->weeklySlot->weekdayName(), 'from' => CarbonImmutable::parse($from, 'UTC')->format('l, F j')]);
+        $this->sendAfterCommit($person, $released, $note, ['weekday' => $regular->weeklySlot->weekdayName(), 'from' => $from->format('l, F j')]);
 
         return collect($released)->pluck('shift')->values();
+    }
+
+    /** The first date a slot is given up from, refused unless it's a real Y-m-d date from today on, with messages written to be shown on screen. */
+    private static function checkFrom(string $from): CarbonImmutable
+    {
+        if (! RemoveFromShift::isDate($from)) {
+            throw new DomainException('Pick a date.');
+        }
+
+        if ($from < Organization::current()->today()->toDateString()) {
+            throw new DomainException('Pick a date from today on.');
+        }
+
+        return CarbonImmutable::parse($from, 'UTC');
     }
 
     /**

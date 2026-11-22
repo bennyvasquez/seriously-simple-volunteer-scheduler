@@ -459,6 +459,22 @@ class EndRegularTest extends TestCase
         $this->assertSame('2026-10-13', $regular->fresh()->ends_on->toDateString());
     }
 
+    public function test_end_own_refuses_an_unreadable_date(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-15');
+
+        try {
+            app(EndRegular::class)->endOwn($this->robin, $regular, 'tomorrow', fn () => $this->fail('Nothing should be handed on.'));
+            $this->fail('An unreadable date should be refused.');
+        } catch (DomainException $e) {
+            $this->assertSame('Pick a date.', $e->getMessage());
+        }
+
+        $this->assertNull($regular->fresh()->ends_on);
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('regular.ended')->count());
+    }
+
     public function test_end_own_speaks_to_the_person_when_they_already_stop_earlier(): void
     {
         $slot = $this->slot();

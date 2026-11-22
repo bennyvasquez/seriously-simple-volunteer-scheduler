@@ -474,6 +474,53 @@ class ReleaseShiftsTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_slot_refuses_an_unreadable_date(): void
+    {
+        $regular = $this->samsSlot();
+        $before = $this->samsDates();
+        Notification::fake();
+
+        foreach (['soon', '2026-10-32', '10/29/2026', '2026-10-29 junk', ''] as $from) {
+            try {
+                app(ReleaseShifts::class)->slot($this->sam, $regular, $from, null);
+                $this->fail('Expected a refusal for "'.$from.'"');
+            } catch (DomainException $exception) {
+                $this->assertSame('Pick a date.', $exception->getMessage());
+            }
+        }
+
+        $this->assertNull($regular->fresh()->ends_on);
+        $this->assertSame($before, $this->samsDates());
+        $this->assertSame(0, CoverRequest::query()->count());
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('regular.ended')->count());
+        Notification::assertNothingSent();
+    }
+
+    public function test_slot_preview_refuses_an_unreadable_date(): void
+    {
+        $regular = $this->samsSlot();
+
+        $this->expectExceptionObject(new DomainException('Pick a date.'));
+
+        app(ReleaseShifts::class)->slotPreview($this->sam, $regular, 'next Thursday');
+    }
+
+    public function test_slot_preview_refuses_a_past_date(): void
+    {
+        $regular = $this->samsSlot();
+
+        try {
+            app(ReleaseShifts::class)->slotPreview($this->sam, $regular, '2026-10-13');
+            $this->fail('Expected a refusal.');
+        } catch (DomainException $exception) {
+            $this->assertSame('Pick a date from today on.', $exception->getMessage());
+        }
+
+        // Today is fine.
+        $this->assertCount(8, app(ReleaseShifts::class)->slotPreview($this->sam, $regular, '2026-10-14'));
+        $this->assertNull($regular->fresh()->ends_on);
+    }
+
     public function test_shadows_are_told_only_when_nobody_but_shadows_is_left(): void
     {
         $casey = User::factory()->create(['name' => 'Casey Example']);
