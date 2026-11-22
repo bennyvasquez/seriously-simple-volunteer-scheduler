@@ -100,7 +100,8 @@ class VolunteerScreensTest extends TestCase
         $response->assertSee('href="'.url('/shifts/'.$shadowed->id.'/release').'"', false);
         $response->assertSee("Can't make it");
         $response->assertSee('href="'.route('my-shifts').'"', false);
-        $response->assertDontSee('Tuesday, October 21');
+        // A cancelled shift stays visible, marked, with no "Can't make it" (test_your_cancelled_shifts_stay_on_home_and_all_my_shifts).
+        $response->assertSeeInOrder(['Wednesday, October 21', 'Cancelled', 'Closed']);
         $response->assertDontSee('November 20');
         $response->assertDontSee('7 to 8am');
         $this->assertSame(4, substr_count($response->getContent(), '/release"'));
@@ -203,8 +204,27 @@ class VolunteerScreensTest extends TestCase
         $response = $this->sees($this->sam, '/my-shifts');
         $response->assertSeeInOrder(['October 2026', 'Thursday, October 15', 'November 2026', 'Monday, November 30', 'December 2026', 'Friday, December 4', 'January 2027', 'Friday, January 8']);
         $response->assertSee('href="'.route('home').'"', false);
-        $response->assertDontSee('October 10')->assertDontSee('October 16')->assertDontSee('December 11');
+        $response->assertDontSee('October 10')->assertDontSee('October 16');
+        $response->assertSeeInOrder(['Friday, December 11', 'Cancelled', 'Closed']);
         $this->assertSame(4, substr_count($response->getContent(), '/release"'));
+    }
+
+    public function test_your_cancelled_shifts_stay_on_home_and_all_my_shifts(): void
+    {
+        $cancelled = $this->shift('2026-10-21');
+        $this->on($cancelled, $this->sam);
+        app(CancelShift::class)->handle($this->coordinator, $cancelled, 'Power outage');
+        $other = $this->shift('2026-10-23');
+        app(CancelShift::class)->handle($this->coordinator, $other, 'Holiday');
+
+        foreach (['/', '/my-shifts'] as $url) {
+            $response = $this->sees($this->sam, $url);
+            $response->assertSeeInOrder(['Wednesday, October 21', 'Cancelled', 'Front desk, 6:30 to 9:30pm', 'Power outage'], false);
+            $response->assertDontSee('href="'.url('/shifts/'.$cancelled->id.'/release').'"', false);
+            $response->assertDontSee('Holiday');
+        }
+
+        $this->assertNotContains($cancelled->id, app(HomeController::class)->openShifts($this->sam)->pluck('id')->all());
     }
 
     public function test_all_my_shifts_says_so_when_there_are_none(): void

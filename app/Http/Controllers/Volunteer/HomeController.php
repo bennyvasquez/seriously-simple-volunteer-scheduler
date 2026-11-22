@@ -15,7 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
 /**
- * A volunteer's Home (decision 16): the next 14 days of their shifts and the open shifts they could take, plus "All my shifts". Each list runs a fixed number of queries however many shifts there are, so nothing here asks the database once per card.
+ * A volunteer's Home (decision 16): the next 14 days of their shifts and the open shifts they could take, plus "All my shifts". The person's own cancelled shifts stay on both lists, tagged "Cancelled" with the reason and no "Can't make it", since cancelled shifts stay visible. Each list runs a fixed number of queries however many shifts there are, so nothing here asks the database once per card.
  */
 class HomeController extends Controller
 {
@@ -75,35 +75,35 @@ class HomeController extends Controller
     }
 
     /**
-     * The shifts this person is on that start in the next `$days` days, each with `card_tag`: "Every Thursday" for their regular slot, "Shadowing", or "One time".
+     * The shifts this person is on that start in the next `$days` days, cancelled ones included, each with `card_tag`: "Cancelled", "Every Thursday" for their regular slot, "Shadowing", or "One time".
      *
      * @return Collection<int, Shift>
      */
     public function nextShifts(User $user, int $days = 14): Collection
     {
-        return $this->shiftsFrom($user, now()->addDays($days), true)->each(fn (Shift $shift) => $this->tag($shift, $user));
+        return $this->shiftsFrom($user, now()->addDays($days), true, true)->each(fn (Shift $shift) => $this->tag($shift, $user));
     }
 
     /**
-     * Every shift from now on that this person is on (decision 16), with `card_tag` set the same way.
+     * Every shift from now on that this person is on (decision 16), cancelled ones included, with `card_tag` set the same way.
      *
      * @return Collection<int, Shift>
      */
     private function allFuture(User $user): Collection
     {
-        return $this->shiftsFrom($user, null, true)->each(fn (Shift $shift) => $this->tag($shift, $user));
+        return $this->shiftsFrom($user, null, true, true)->each(fn (Shift $shift) => $this->tag($shift, $user));
     }
 
     /**
-     * The person's uncancelled shifts, with their area, their own assignment and the slot's regulars. With `$notStarted` the shifts have to start after now, otherwise they only have to end after now, so one running now still counts for overlaps. With no `$until` there's no end.
+     * The person's shifts, with their area, their own assignment and the slot's regulars: uncancelled ones only (what overlaps count), unless `$withCancelled`. With `$notStarted` the shifts have to start after now, otherwise they only have to end after now, so one running now still counts for overlaps. With no `$until` there's no end.
      *
      * @return Collection<int, Shift>
      */
-    private function shiftsFrom(User $user, ?\DateTimeInterface $until, bool $notStarted): Collection
+    private function shiftsFrom(User $user, ?\DateTimeInterface $until, bool $notStarted, bool $withCancelled = false): Collection
     {
         $now = now();
 
-        return Shift::query()->active()
+        return Shift::query()->when(! $withCancelled, fn ($query) => $query->active())
             ->whereHas('assignments', fn ($assignments) => $assignments->where('user_id', $user->id))
             ->where($notStarted ? 'starts_at' : 'ends_at', '>', $now)
             ->when($until !== null, fn ($query) => $query->where('starts_at', '<=', $until))
@@ -123,6 +123,7 @@ class HomeController extends Controller
         $regular = $shift->weeklySlot?->regulars->first(fn (SlotRegular $regular) => $regular->user_id === $user->id && $regular->activeOn($date));
 
         $shift->setAttribute('card_tag', match (true) {
+            $shift->cancelled_at !== null => 'Cancelled',
             $assignment?->type === AssignmentType::Shadow => 'Shadowing',
             $regular === null => 'One time',
             $regular->frequency === SlotFrequency::EveryOtherWeek => 'Every other '.$shift->weeklySlot->weekdayName(),
