@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
+use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
@@ -52,7 +53,7 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertSame(['Electronics', 'Front desk', 'Woodshop'], Area::query()->orderBy('name')->pluck('name')->all());
         $this->assertSame('Shift lead', Area::query()->where('name', 'Front desk')->value('lead_name'));
 
-        $this->assertSame(7, WeeklySlot::query()->count());
+        $this->assertSame(8, WeeklySlot::query()->count());
         $this->assertSame(2, WeeklySlot::query()->where('frequency', 'every_other_week')->count());
 
         // Shifts four weeks ahead, from today through the 27th day after it.
@@ -69,6 +70,12 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertSame(1, AreaClosure::query()->count());
         $this->assertSame(2, $shifts->whereNotNull('area_closure_id')->count());
         $this->assertTrue($shifts->contains(fn (Shift $shift) => $shift->assignments->contains('type', AssignmentType::Shadow)));
+
+        // Both kinds of take page: a released shift with a note and a shadow, and a weekly slot with no regular.
+        $released = CoverRequest::query()->open()->with('shift.assignments')->sole();
+        $this->assertNotNull($released->note);
+        $this->assertTrue($released->shift->assignments->contains('type', AssignmentType::Shadow));
+        $this->assertTrue(WeeklySlot::query()->whereDoesntHave('regulars')->exists());
 
         // Four staff, fifteen volunteers, one not invited yet, one turned off and the shared record a removed person's history moves onto.
         $this->assertSame(22, User::query()->count());
@@ -105,7 +112,7 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertTrue($volunteer->regulars()->exists());
 
         // Built through the app's actions, so the change log has the same entries a live install would.
-        foreach (['organization.created', 'user.created', 'user.invited', 'user.accepted_invitation', 'user.password_set', 'two_factor.enabled', 'role.granted', 'area.created', 'area.updated', 'slot.created', 'regular.added', 'assignment.added', 'shift.created', 'closure.created', 'shift.cancelled', 'user.deactivated', 'user.removed'] as $action) {
+        foreach (['organization.created', 'user.created', 'user.invited', 'user.accepted_invitation', 'user.password_set', 'two_factor.enabled', 'role.granted', 'area.created', 'area.updated', 'slot.created', 'regular.added', 'assignment.added', 'shift.created', 'closure.created', 'shift.cancelled', 'cover_request.created', 'user.deactivated', 'user.removed'] as $action) {
             $this->assertTrue(ChangeLogEntry::query()->where('action', $action)->exists(), "The change log has a {$action} entry.");
         }
     }

@@ -3,6 +3,9 @@
 @section('title', 'Home')
 
 @section('content')
+@if (session('status'))
+<p role="status">{{ session('status') }}</p>
+@endif
 <h1>{{ trim('Hi '.$user->firstName()) }}</h1>
 
 <section class="shift-section">

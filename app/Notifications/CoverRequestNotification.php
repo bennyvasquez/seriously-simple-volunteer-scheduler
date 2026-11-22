@@ -26,7 +26,7 @@ class CoverRequestNotification extends Notification
             'date' => $shift->local_date->format('l, F j'),
             'when' => $shift->whenText(),
             // The take page comes in a later task; this is its address.
-            'url' => url('/shifts/'.$shift->id.'/take'),
+            'url' => route('shifts.take', $shift),
         ])->values()->all();
         $this->organization = Organization::current()->name;
     }

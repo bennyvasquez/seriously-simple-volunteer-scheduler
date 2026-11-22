@@ -14,6 +14,7 @@ use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\CreateWeeklySlot;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\PutOnShift;
+use App\Actions\Scheduling\ReleaseShifts;
 use App\Actions\Scheduling\UpdateArea;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
@@ -37,7 +38,7 @@ use RuntimeException;
 /**
  * A populated example install, the one the browser tests start from and the one `php artisan db:seed` gives developers. Everything is built through the app's own actions, so the change log has entries for it too. Accepting an invitation, choosing a password and connecting an authenticator app happen in controllers and Fortify, not actions, so those steps are written here the same way the app writes them, with the same change log entries, and without sending invitation emails.
  *
- * Every name is made up and every address is at example.org. Everyone who has accepted their invitation shares one password, made at random on each run, printed at the end of the run and returned by password(); ADMIN, COORDINATOR and AREA_LEAD have two-factor on with TWO_FACTOR_SECRET. NEEDS_SETUP is an area lead with a password who hasn't connected an authenticator app yet. Some actions email people after the response, so seeding a development install puts a few example emails in Mailpit.
+ * Every name is made up and every address is at example.org. Everyone who has accepted their invitation shares one password, made at random on each run, printed at the end of the run and returned by password(); ADMIN, COORDINATOR and AREA_LEAD have two-factor on with TWO_FACTOR_SECRET. NEEDS_SETUP is an area lead with a password who hasn't connected an authenticator app yet. Some actions email people after the response, so seeding a development install puts a few example emails in Mailpit. Both kinds of take page have an example: Łucja's released place on the next Tuesday front desk shift that's at least a day away (with a note, and Rosa shadowing), and a Sunday front desk slot with no regular.
  *
  * It runs only when APP_ENV is local or testing, even with --force, because these accounts are described in the public code. Anything else, including a real server set to production or staging, is refused before anything is written.
  */
@@ -154,6 +155,8 @@ class ExampleOrganizationSeeder extends Seeder
         $saturdayShop = $slot($woodshop, 6, '13:00', '17:00', 2);
         $mondayBench = $slot($electronics, 1, '18:00', '21:00', 2);
         $fridayBench = $slot($electronics, 5, '18:00', '21:00', 1, 0, SlotFrequency::EveryOtherWeek);
+        // No regular yet, so its dates offer "Every Sunday" on the take page.
+        $slot($frontDesk, 0, '11:30', '14:30', 1);
 
         $regulars = [
             [$tuesdayDesk, [$people['volunteer'], $people['lucja']]],
@@ -178,7 +181,11 @@ class ExampleOrganizationSeeder extends Seeder
         app(PutOnShift::class)->handle($admin, $workshop, $people['kai'], AssignmentType::Regular);
 
         // A new volunteer shadowing on the next Tuesday front desk shift that's at least a day away.
-        app(PutOnShift::class)->handle($admin, $this->shiftOf($tuesdayDesk, 1), $people['rosa'], AssignmentType::Shadow);
+        $shadowed = $this->shiftOf($tuesdayDesk, 1);
+        app(PutOnShift::class)->handle($admin, $shadowed, $people['rosa'], AssignmentType::Shadow);
+
+        // Łucja can't make that shift, so it's a cover request with a note and a shadow on it.
+        app(ReleaseShifts::class)->one($people['lucja'], $shadowed, 'The register key is in the top drawer.');
 
         // The Woodshop is closed for its whole third week, which cancels the shifts in it.
         app(CreateClosure::class)->handle($admin, [$woodshop->id], $this->today->addDays(14)->toDateString(), $this->today->addDays(20)->toDateString(), 'Floor refinishing');

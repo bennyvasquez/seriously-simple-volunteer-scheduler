@@ -12,16 +12,21 @@ use App\Actions\Scheduling\TakeShift;
 use App\Cover\CoverEligibility;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
+use App\Enums\TakeHow;
 use App\Http\Controllers\Volunteer\HomeController;
 use App\Models\Area;
 use App\Models\Assignment;
+use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
+use App\Notifications\LoginLinkNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
@@ -263,5 +268,340 @@ class VolunteerScreensTest extends TestCase
         }
 
         $this->assertSame($few, $count());
+    }
+
+    /** The response with its HTML entities decoded, so copy reads the same whether the template wrote it or echoed it. */
+    private function decoded(TestResponse $response): TestResponse
+    {
+        return TestResponse::fromBaseResponse(response(html_entity_decode($response->getContent(), ENT_QUOTES | ENT_HTML5), $response->getStatusCode()));
+    }
+
+    private function page(User $user, string $url): TestResponse
+    {
+        return $this->decoded($this->actingAs($user)->get($url)->assertOk());
+    }
+
+    /** A Thursday front desk slot, 6:30 to 9:30pm, with its shifts made and Sam as its regular from October 15. */
+    private function samsThursdays(): WeeklySlot
+    {
+        $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30']);
+        app(GenerateShifts::class)->handle(Organization::current());
+        app(AddRegular::class)->handle(null, $slot, $this->sam, '2026-10-15');
+
+        return $slot;
+    }
+
+    private function thursday(WeeklySlot $slot, string $date): Shift
+    {
+        return Shift::query()->where('weekly_slot_id', $slot->id)->where('local_date', $date)->sole();
+    }
+
+    public function test_the_release_form_asks_which_shifts_with_nothing_picked(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+
+        $response = $this->page($this->sam, route('shifts.release', $shift));
+        $response->assertSeeInOrder(['<h1>Can\'t make it</h1>', 'Thursday, October 22', 'Front desk, 6:30 to 9:30pm', 'Which shifts can\'t you make?', 'Just Thursday, October 22', 'Several dates (I\'m away)', 'From', 'To', 'Give up my weekly Thursday slot', 'Starting', 'Note for whoever covers (optional)', 'Release this shift', 'Keep it'], false);
+        $response->assertDontSee('checked', false);
+        $response->assertSee('type="date"', false)->assertSee('maxlength="500"', false);
+        $this->assertSame(1, substr_count($response->getContent(), '<h1'));
+    }
+
+    public function test_the_release_form_offers_the_weekly_slot_only_to_its_regular(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->sam);
+
+        $this->page($this->sam, route('shifts.release', $shift))
+            ->assertSee('Just Thursday, October 22')->assertSee('Several dates (I\'m away)', false)->assertDontSee('Give up my weekly');
+    }
+
+    public function test_a_shadow_just_confirms_leaving_the_shadow_spot(): void
+    {
+        $shift = $this->shift('2026-10-20');
+        $this->on($shift, $this->sam, AssignmentType::Shadow);
+
+        $response = $this->page($this->sam, route('shifts.release', $shift));
+        $response->assertSee('You\'ll leave your shadow spot on Tuesday, October 20. We\'ll let the coordinators know.', false)
+            ->assertSee('Note for whoever covers (optional)')->assertSee('Leave this shadow spot')->assertDontSee('Which shifts');
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['note' => 'Sorry, I have a cold.'])->assertRedirect(route('shifts.released'));
+        $this->assertFalse($shift->assignments()->where('user_id', $this->sam->id)->exists());
+
+        $this->page($this->sam, route('shifts.released'))
+            ->assertSee('You\'re off Tuesday, October 20', false)->assertSee('We\'ve let the coordinators know.', false);
+    }
+
+    public function test_releasing_one_shift_shows_you_are_off(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+        $this->on($shift, $this->robin, AssignmentType::Shadow);
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['scope' => 'one', 'note' => 'The register key is in the top drawer.'])
+            ->assertRedirect(route('shifts.released'));
+
+        $this->assertFalse($shift->assignments()->where('user_id', $this->sam->id)->exists());
+        $this->assertSame('The register key is in the top drawer.', CoverRequest::query()->sole()->note);
+
+        $response = $this->page($this->sam, route('shifts.released'));
+        $response->assertSeeInOrder(['role="status"', '<h1>You\'re off Thursday, October 22</h1>', 'We\'ve asked other volunteers to cover your Front desk shift. We\'ll email you when someone takes it.', 'Robin was going to shadow you. We\'ve told them their shadow spot is on hold until someone covers.', 'You stay the Thursday regular.', 'Changed your mind?', 'Your next shifts', 'Thursday, October 15', 'Back to home'], false);
+    }
+
+    public function test_the_released_page_without_a_release_goes_home(): void
+    {
+        $this->actingAs($this->sam)->get(route('shifts.released'))->assertRedirect(route('home'));
+    }
+
+    public function test_several_dates_are_checked_before_anything_changes(): void
+    {
+        $slot = $this->samsThursdays();
+        $saturday = $this->shift('2026-10-24', '14:30', '20:30');
+        $this->on($saturday, $this->sam);
+        $fields = ['scope' => 'range', 'from' => '2026-10-15', 'to' => '2026-10-31', 'note' => 'Away on a trip.'];
+
+        $response = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $this->thursday($slot, '2026-10-22')), $fields)->assertOk());
+        $response->assertSeeInOrder(['<h1>You\'d be off these 4 shifts</h1>', 'Thursday, October 15 to Saturday, October 31', 'Thursday, October 15', 'Front desk, 6:30 to 9:30pm', 'Thursday, October 22', 'Saturday, October 24', 'Front desk, 2:30 to 8:30pm', 'Thursday, October 29', 'You stay the Thursday regular.', 'Your note for whoever covers', 'Away on a trip.', 'Release these 4 shifts', 'Change the dates'], false);
+        $response->assertSee('name="confirm" value="1"', false);
+        $this->assertSame(0, CoverRequest::query()->count());
+        $this->assertSame(4, Assignment::query()->where('user_id', $this->sam->id)->whereIn('shift_id', Shift::query()->whereBetween('local_date', ['2026-10-15', '2026-10-31'])->select('id'))->count());
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $this->thursday($slot, '2026-10-22')), $fields + ['confirm' => 1])->assertRedirect(route('shifts.released'));
+        $this->assertSame(4, CoverRequest::query()->count());
+
+        $this->page($this->sam, route('shifts.released'))
+            ->assertSeeInOrder(['You\'re off 4 shifts', 'Thursday, October 15', 'Saturday, October 24', 'You stay the Thursday regular.'], false);
+    }
+
+    public function test_change_the_dates_goes_back_with_what_was_typed(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['scope' => 'range', 'from' => '2026-10-15', 'to' => '2026-10-31', 'note' => 'Away.', 'change' => 1])
+            ->assertRedirect(route('shifts.release', $shift));
+
+        $this->page($this->sam, route('shifts.release', $shift))
+            ->assertSee('value="range" checked', false)->assertSee('value="2026-10-31"', false)->assertSee('Away.</textarea>', false);
+    }
+
+    public function test_release_refusals_show_on_the_form(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+        $post = fn (array $fields) => $this->actingAs($this->sam)->from(route('shifts.release', $shift))->post(route('shifts.release', $shift), $fields);
+
+        $post(['note' => 'x'])->assertRedirect(route('shifts.release', $shift))->assertSessionHasErrors(['scope' => 'Pick which shifts you can\'t make.']);
+        $post(['scope' => 'range', 'from' => '2026-10-31', 'to' => '2026-10-15'])->assertSessionHasErrors(['dates' => 'The last date can\'t be before the first date.']);
+        $post(['scope' => 'range', 'from' => '2026-12-31', 'to' => '2027-01-02'])->assertSessionHasErrors(['dates' => 'You\'re not on any shifts on those dates.']);
+        $post(['scope' => 'one', 'note' => str_repeat('a', 501)])->assertSessionHasErrors(['note' => 'Keep the note under 500 characters.']);
+        $post(['scope' => 'slot', 'starting' => '2026-10-01'])->assertSessionHasErrors(['starting' => 'Pick a date from today on.']);
+
+        $this->assertSame(0, CoverRequest::query()->count());
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['scope' => 'range', 'from' => '2026-10-31', 'to' => '2026-10-15']);
+        $this->page($this->sam, route('shifts.release', $shift))->assertSee('The last date can\'t be before the first date.', false)->assertSee('value="range" checked', false);
+    }
+
+    public function test_giving_up_the_weekly_slot_is_checked_then_done(): void
+    {
+        $slot = $this->samsThursdays();
+        $shift = $this->thursday($slot, '2026-10-22');
+        $fields = ['scope' => 'slot', 'starting' => '2026-10-29'];
+
+        $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $shift), $fields)->assertOk())
+            ->assertSeeInOrder(['You\'d be off these', 'Thursday, October 29', 'You\'re no longer the Thursday regular from Thursday, October 29.', 'Release these'], false)
+            ->assertDontSee('Thursday, October 22</span>', false);
+        $this->assertNull($slot->regulars()->sole()->ends_on);
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), $fields + ['confirm' => 1])->assertRedirect(route('shifts.released'));
+        $this->assertSame('2026-10-28', $slot->regulars()->sole()->ends_on->toDateString());
+        $this->assertTrue($shift->assignments()->where('user_id', $this->sam->id)->exists());
+
+        $this->page($this->sam, route('shifts.released'))->assertSee('You\'re no longer the Thursday regular from Thursday, October 29.', false);
+    }
+
+    public function test_a_resubmitted_release_shows_the_refusal_on_home(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['scope' => 'one']);
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['scope' => 'one'])
+            ->assertRedirect(route('home'))->assertSessionHas('status', 'You\'re not on this shift any more.');
+        $this->page($this->sam, route('home'))->assertSee('<p role="status">You\'re not on this shift any more.</p>', false);
+        $this->assertSame(1, CoverRequest::query()->count());
+    }
+
+    public function test_the_release_form_for_a_shift_you_are_not_on_or_is_cancelled_goes_home(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->actingAs($this->sam)->get(route('shifts.release', $shift))->assertRedirect(route('home'))->assertSessionHas('status', 'You\'re not on this shift any more.');
+
+        $this->on($shift, $this->sam);
+        app(CancelShift::class)->handle($this->coordinator, $shift, 'Closed');
+        $this->actingAs($this->sam)->get(route('shifts.release', $shift))->assertRedirect(route('home'))->assertSessionHas('status', 'This shift was cancelled.');
+    }
+
+    public function test_the_take_page_for_a_cover_request_asks_no_question(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->robin);
+        $jo = User::factory()->create(['name' => 'Jo Trainee']);
+        $this->on($shift, $jo, AssignmentType::Shadow);
+        app(ReleaseShifts::class)->one($this->robin, $shift, 'The register key is in the top drawer.');
+
+        $response = $this->page($this->sam, route('shifts.take', $shift));
+        $response->assertSeeInOrder(['<h1>Can you cover this one?</h1>', 'Thursday, October 22', 'Front desk, 6:30 to 9:30pm', 'Robin can\'t make it. You\'d take this date only.', 'Shadowing: Jo', 'Note from Robin', 'The register key is in the top drawer.', 'Take this shift', 'Not this time'], false);
+        $response->assertDontSee('type="radio"', false)->assertSee('name="how" value="date"', false)->assertDontSee('Trainee');
+    }
+
+    public function test_the_take_page_for_a_slot_with_no_regular_offers_three_choices_none_picked(): void
+    {
+        WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 0, 'start_time' => '11:30', 'end_time' => '14:30']);
+        app(GenerateShifts::class)->handle(Organization::current());
+        $shift = Shift::query()->where('local_date', '2026-10-18')->sole();
+
+        $response = $this->page($this->sam, route('shifts.take', $shift));
+        $response->assertSeeInOrder(['Sunday, October 18', 'Front desk, 11:30am to 2:30pm', 'Needs 1 person', 'This weekly slot has no regular right now.', 'How long do you want it?', 'Just Sunday, October 18', 'Every Sunday', 'You\'d become this slot\'s regular.', 'Every other Sunday', 'Starting Sunday, October 18. Someone else can take the weeks in between.', 'Take this shift'], false);
+        $response->assertDontSee('checked', false);
+        $this->assertSame(3, substr_count($response->getContent(), 'type="radio"'));
+        $this->assertSame(1, substr_count($response->getContent(), '<h1'));
+
+        $this->actingAs($this->sam)->from(route('shifts.take', $shift))->post(route('shifts.take', $shift))->assertSessionHasErrors(['how' => 'Pick how long you want it.']);
+
+        $this->actingAs($this->sam)->post(route('shifts.take', $shift), ['how' => 'weekly'])->assertRedirect(route('shifts.taken', $shift));
+        $this->page($this->sam, route('shifts.taken', $shift))->assertSee('It\'s yours. Thanks, Sam!', false)->assertSee('You\'re now the Sunday regular, starting Sunday, October 18.', false);
+        $this->assertTrue(Shift::query()->where('local_date', '2026-10-25')->sole()->assignments()->where('user_id', $this->sam->id)->exists());
+    }
+
+    public function test_the_take_page_for_a_plain_open_shift_has_one_choice(): void
+    {
+        $shift = $this->shift('2026-10-22');
+
+        $this->page($this->sam, route('shifts.take', $shift))
+            ->assertSee('<h1>Can you take this one?</h1>', false)->assertSee('You\'d take this date only.', false)
+            ->assertDontSee('type="radio"', false)->assertSee('name="how" value="date"', false);
+    }
+
+    public function test_taking_a_cover_request_says_its_yours(): void
+    {
+        $lead = User::factory()->create(['name' => 'Alex Lead']);
+        app(GrantRole::class)->handle(null, $lead, Role::AreaLead, $this->frontDesk);
+        $this->frontDesk->update(['lead_name' => 'Shift lead']);
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->robin);
+        app(ReleaseShifts::class)->one($this->robin, $shift, null);
+
+        $this->actingAs($this->sam)->post(route('shifts.take', $shift), ['how' => 'date'])->assertRedirect(route('shifts.taken', $shift));
+        $this->assertTrue($shift->assignments()->where('user_id', $this->sam->id)->exists());
+
+        $response = $this->page($this->sam, route('shifts.taken', $shift));
+        $response->assertSeeInOrder(['role="status"', '<h1>It\'s yours. Thanks, Sam!</h1>', 'Thursday, October 22', 'Front desk, 6:30 to 9:30pm', 'We\'ve emailed you the details, and told Robin and Alex (Shift lead).', 'Can\'t make it after all? It\'s under "Your next shifts" on your home page.', 'Back to home'], false);
+    }
+
+    public function test_the_taken_page_needs_you_on_the_shift(): void
+    {
+        $shift = $this->shift('2026-10-22');
+
+        $this->actingAs($this->sam)->get(route('shifts.taken', $shift))->assertRedirect(route('shifts.take', $shift));
+    }
+
+    public function test_a_filled_shift_says_someone_already_took_it_and_lists_others(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $other = $this->shift('2026-10-23', '15:30', '18:30');
+        $this->on($shift, $this->robin);
+
+        $response = $this->page($this->sam, route('shifts.take', $shift));
+        $response->assertSeeInOrder(['role="status"', '<h1>Someone already took this one</h1>', 'Front desk on Thursday, October 22 is covered. Thanks for offering!', 'Other open shifts you can take', 'Friday, October 23', 'Back to home'], false);
+        $response->assertSee(route('shifts.take', $other), false)->assertDontSee('href="'.route('shifts.take', $shift).'"', false);
+    }
+
+    public function test_a_stale_take_shows_someone_already_took_it(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->robin);
+        app(ReleaseShifts::class)->one($this->robin, $shift, null);
+        $this->page($this->sam, route('shifts.take', $shift))->assertSee('Can you cover this one?');
+
+        $jo = User::factory()->create(['name' => 'Jo Example']);
+        app(TakeShift::class)->handle($jo, $shift, TakeHow::JustThisDate);
+
+        $this->actingAs($this->sam)->post(route('shifts.take', $shift), ['how' => 'date'])->assertRedirect(route('shifts.take', $shift));
+        $this->actingAs($this->sam)->get(route('shifts.take', $shift))->assertSee('Someone already took this one');
+        $this->assertFalse($shift->assignments()->where('user_id', $this->sam->id)->exists());
+    }
+
+    public function test_a_cancelled_or_started_shift_says_so_on_the_take_page(): void
+    {
+        $cancelled = $this->shift('2026-10-22');
+        app(CancelShift::class)->handle($this->coordinator, $cancelled, 'Closed');
+        $this->page($this->sam, route('shifts.take', $cancelled))->assertSee('This shift was cancelled.')->assertSee('href="'.route('home').'"', false)->assertDontSee('Take this shift');
+
+        $started = Shift::create(['area_id' => $this->frontDesk->id, 'local_date' => '2026-10-14', 'starts_at' => '2026-10-14 12:00:00', 'ends_at' => '2026-10-14 16:00:00', 'people_needed' => 1, 'shadow_spots' => 0]);
+        $this->page($this->sam, route('shifts.take', $started))->assertSee('This shift has already started.')->assertDontSee('Take this shift');
+    }
+
+    public function test_other_take_refusals_show_on_the_page(): void
+    {
+        $mine = $this->shift('2026-10-22', '18:00', '20:00');
+        $this->on($mine, $this->sam);
+        $overlap = $this->shift('2026-10-22', '19:00', '21:00', area: Area::factory()->create(['name' => 'Hosted events']));
+
+        $this->page($this->sam, route('shifts.take', $overlap))->assertSee('You\'re already on Front desk, Thursday, October 22, 6 to 8pm.', false)->assertDontSee('Take this shift');
+        $this->page($this->sam, route('shifts.take', $mine))->assertSee('You\'re already on this shift.', false);
+    }
+
+    public function test_home_cards_link_to_the_named_routes(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->sam);
+        $open = $this->shift('2026-10-23');
+
+        $this->sees($this->sam)->assertSee('href="'.route('shifts.release', $shift).'"', false)->assertSee('href="'.route('shifts.take', $open).'"', false);
+    }
+
+    public function test_a_guest_taking_a_shift_logs_in_by_link_and_lands_back_on_it(): void
+    {
+        Notification::fake();
+        $shift = $this->shift('2026-10-22');
+        $this->sam->update(['email' => 'sam@example.org']);
+
+        $this->get(route('shifts.take', $shift))->assertRedirect(route('login'));
+        $this->get(route('login'))->assertSee('Log in to take this shift. Once you\'re in, we\'ll take you straight back to it.', false);
+        $this->post(route('login-link.request'), ['email' => 'sam@example.org']);
+
+        $url = null;
+        Notification::assertSentTo($this->sam, LoginLinkNotification::class, function (LoginLinkNotification $notification) use (&$url) {
+            $url = $notification->url;
+
+            return true;
+        });
+
+        $this->flushSession();
+        $this->post(route('login-link.consume', basename(parse_url($url, PHP_URL_PATH))))->assertRedirect(route('shifts.take', $shift));
+        $this->get(route('shifts.take', $shift))->assertOk()->assertSee('Can you take this one?');
+    }
+
+    public function test_a_given_up_slot_offers_every_week_with_the_cover_request(): void
+    {
+        $slot = $this->samsThursdays();
+        $regular = $slot->regulars()->sole();
+        app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-22', 'Moving away, thanks all.');
+        $shift = $this->thursday($slot, '2026-10-22');
+
+        $response = $this->page($this->robin, route('shifts.take', $shift));
+        $response->assertSeeInOrder(['Thursday, October 22', 'Sam can\'t make it.', 'This weekly slot has no regular right now.', 'Note from Sam', 'Moving away, thanks all.', 'How long do you want it?', 'Just Thursday, October 22', 'Every Thursday', 'Every other Thursday'], false);
+        $response->assertDontSee('You\'d take this date only.', false)->assertDontSee('checked', false);
+    }
+
+    public function test_the_releaser_can_take_their_shift_back(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->robin);
+        app(ReleaseShifts::class)->one($this->robin, $shift, 'Note for the others.');
+
+        $this->page($this->robin, route('shifts.take', $shift))
+            ->assertSee('<h1>Can you make it after all?</h1>', false)->assertSee('You released this shift. You\'d take this date back.', false)->assertDontSee('Note for the others.');
+
+        $this->actingAs($this->robin)->post(route('shifts.take', $shift), ['how' => 'date'])->assertRedirect(route('shifts.taken', $shift));
+        $this->page($this->robin, route('shifts.taken', $shift))->assertSee('It\'s yours. Thanks, Robin!', false)->assertSee('We\'ve emailed you the details.', false);
     }
 }

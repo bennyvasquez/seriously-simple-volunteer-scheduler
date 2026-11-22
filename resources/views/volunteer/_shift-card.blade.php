@@ -10,5 +10,5 @@
 @if ($note ?? null)
 <div class="muted">{{ $note }}</div>
 @endif
-<a class="btn{{ $action === 'take' ? ' btn-primary' : '' }}" href="{{ url('/shifts/'.$shift->id.'/'.$action) }}" aria-label="{{ $label }}, {{ $shift->area->name }}, {{ $date }}">{{ $label }}</a>
+<a class="btn{{ $action === 'take' ? ' btn-primary' : '' }}" href="{{ route($action === 'take' ? 'shifts.take' : 'shifts.release', $shift) }}" aria-label="{{ $label }}, {{ $shift->area->name }}, {{ $date }}">{{ $label }}</a>
 </div>

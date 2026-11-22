@@ -1,6 +1,6 @@
-{{-- "Open shifts you can take". $open is HomeController::openShifts(), $timezone the organization's. --}}
+{{-- "Open shifts you can take". $open is HomeController::openShifts(), $timezone the organization's, and $heading (optional) replaces the heading. --}}
 <section class="shift-section">
-<h2>Open shifts you can take</h2>
+<h2>{{ $heading ?? 'Open shifts you can take' }}</h2>
 @forelse ($open as $shift)
 @include('volunteer._shift-card', [
     'shift' => $shift,
