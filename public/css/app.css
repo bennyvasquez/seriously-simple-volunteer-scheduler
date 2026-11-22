@@ -212,3 +212,11 @@ a{color:#1a1a1a}a:hover{color:#000}
 .log-filters .field{flex-basis:100%}
 .log-entry{grid-template-columns:minmax(0,1fr);gap:4px}
 }
+
+/* Home, All my shifts and Emails (volunteer screens). */
+.shift-section{display:flex;flex-direction:column;gap:10px}
+.shift-section h2{margin:0;font-size:16px}
+.card-strong{border:2px solid #1a1a1a}
+.card .when{font-weight:700;font-size:17px}
+.card .btn{margin-top:6px}
+.tag-strong{border-color:#1a1a1a;color:#1a1a1a;font-weight:700}

@@ -41,6 +41,7 @@ final class Describe
             'user.deactivated' => 'Turned off '.$possessive.' account',
             'user.removed' => 'Removed a person\'s account',
             'user.email_changed' => 'Changed '.($self ? 'their' : $possessive).' email address',
+            'user.email_settings_changed' => 'Turned '.(($changes['cover_request_emails']['new'] ?? true) ? 'on' : 'off').' cover request emails'.($self ? '' : ' for '.$person),
             'user.member_id_added' => 'Added a membership ID for '.$person,
             'user.password_set' => 'Set '.($self ? 'a' : $possessive).' password',
             'user.password_changed' => 'Changed '.($self ? 'their' : $possessive).' password',

@@ -48,6 +48,11 @@ class Shift extends Model
         return $this->belongsTo(AreaClosure::class);
     }
 
+    public function coverRequests(): HasMany
+    {
+        return $this->hasMany(CoverRequest::class);
+    }
+
     public function assignments(): HasMany
     {
         return $this->hasMany(Assignment::class);

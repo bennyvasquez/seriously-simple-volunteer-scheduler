@@ -35,8 +35,14 @@ final class CoverEligibility
             ->values();
     }
 
-    /** Why this person can't take the shift, written to be shown to them, or null when they can. Open places are checked separately, when they take it. */
-    public static function refusal(User $person, Shift $shift): ?string
+    /**
+     * Why this person can't take the shift, written to be shown to them, or null when they can. Open places are checked separately, when they take it.
+     *
+     * A screen checking many shifts for one person passes `$mine`: that person's active shifts, each with its area and its assignments for that person only. The answer is then worked out in memory with no queries, and reads the same as the queried one.
+     *
+     * @param  Collection<int, Shift>|null  $mine
+     */
+    public static function refusal(User $person, Shift $shift, ?Collection $mine = null): ?string
     {
         if ($shift->cancelled_at !== null) {
             return 'This shift was cancelled.';
@@ -46,13 +52,17 @@ final class CoverEligibility
             return 'This shift has already started.';
         }
 
-        $type = $shift->assignments()->where('user_id', $person->id)->first()?->type;
+        $type = $mine === null
+            ? $shift->assignments()->where('user_id', $person->id)->first()?->type
+            : $mine->firstWhere('id', $shift->id)?->assignments->firstWhere('user_id', $person->id)?->type;
 
         if ($type !== null) {
             return $type === AssignmentType::Shadow ? 'You\'re shadowing this shift.' : 'You\'re already on this shift.';
         }
 
-        $overlapping = PutOnShift::overlappingShift($person, $shift);
+        $overlapping = $mine === null
+            ? PutOnShift::overlappingShift($person, $shift)
+            : $mine->where('id', '!=', $shift->id)->filter(fn (Shift $other) => $other->starts_at < $shift->ends_at && $other->ends_at > $shift->starts_at)->sortBy('starts_at')->first();
 
         if ($overlapping !== null) {
             return 'You\'re already on '.$overlapping->area->name.', '.$overlapping->whenText().'.';

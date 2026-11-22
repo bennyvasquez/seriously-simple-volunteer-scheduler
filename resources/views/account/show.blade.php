@@ -53,6 +53,12 @@
 @endif
 
 <section class="panel">
+<h2>Emails</h2>
+<div class="muted">Choose whether you get an email when someone can't make a shift you could take.</div>
+<a class="btn" href="{{ route('account.emails') }}">Emails</a>
+</section>
+
+<section class="panel">
 <h2>Signed in somewhere you shouldn't be?</h2>
 <p class="muted">This logs you out on every phone and computer, including this one.</p>
 <form method="POST" action="{{ route('account.sign-out-everywhere') }}">
