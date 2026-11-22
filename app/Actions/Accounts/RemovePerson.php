@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Removes someone who asked to be removed (spec section 13, "People leaving"). First ReleaseFutureSchedule removes them from every shift that hasn't started and ends their regular slots, without emailing them, in its own transaction. Then their shifts, regular slots and change log entries move onto the one shared "Removed person" record, their name, email address and membership ID are scrubbed from the change log (including the release's entries), and their own row is deleted, so nothing left can tell one removed person from another. It can't be undone. If someone put them on a shift or made them a regular between the two steps, the removal is refused with a message written to be shown on screen, and trying again releases that too.
+ * Removes someone who asked to be removed (spec section 13, "People leaving"). First ReleaseFutureSchedule removes them from every shift that hasn't started and ends their regular slots, without emailing them, in its own transaction. Then their shifts, regular slots, cover requests and change log entries move onto the one shared "Removed person" record, their name, email address and membership ID are scrubbed from the change log (including the release's entries), and their own row is deleted, so nothing left can tell one removed person from another. It can't be undone. If someone put them on a shift or made them a regular between the two steps, the removal is refused with a message written to be shown on screen, and trying again releases that too.
  */
 class RemovePerson
 {
@@ -43,6 +43,8 @@ class RemovePerson
 
             DB::table('assignments')->where('user_id', $locked->id)->update(['user_id' => $removed->id]);
             DB::table('slot_regulars')->where('user_id', $locked->id)->update(['user_id' => $removed->id]);
+            DB::table('cover_requests')->where('released_by', $locked->id)->update(['released_by' => $removed->id]);
+            DB::table('cover_requests')->where('filled_by', $locked->id)->update(['filled_by' => $removed->id]);
             DB::table('change_log')->where('actor_id', $locked->id)->update(['actor_id' => $removed->id]);
             DB::table('change_log')->where('affected_user_id', $locked->id)->update(['affected_user_id' => $removed->id]);
             DB::table('change_log')->where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)->update(['subject_id' => $removed->id]);
@@ -77,20 +79,23 @@ class RemovePerson
         return null;
     }
 
-    /** Ids stored inside entries rather than in their columns: a person's id in `changes` (an assignment or regular's user_id), in the list of people told about a cancelled shift, and in the regulars put back on a shift a slot change brought back. Written with the query builder, the same way forgetPersonalDetailsOf() writes, because the model refuses edits. */
+    /** Ids stored inside entries rather than in their columns: a person's id in `changes` (an assignment or regular's user_id, a cover request's released_by or filled_by), in the list of people told about a cancelled shift, and in the regulars put back on a shift a slot change brought back. Written with the query builder, the same way forgetPersonalDetailsOf() writes, because the model refuses edits. */
     private function repointIdsInsideEntries(User $person, User $removed): void
     {
-        // Relies on every entry with a user_id in its changes being recorded with about: the person (PutOnShift and AddRegular do), so it's found by affected_user_id.
+        // Relies on every entry with one of these ids in its changes being recorded with about: the person (PutOnShift and AddRegular do, and releasing and taking a shift must), so it's found by affected_user_id.
         $about = DB::table('change_log')->where('affected_user_id', $person->id)->whereNotNull('changes')->get(['id', 'changes']);
 
         foreach ($about as $row) {
             $changes = json_decode($row->changes, true);
             $touched = false;
 
-            foreach (['old', 'new'] as $side) {
-                if (isset($changes['user_id'][$side]) && (int) $changes['user_id'][$side] === $person->id) {
-                    $changes['user_id'][$side] = $removed->id;
-                    $touched = true;
+            // user_id for assignments and regulars, released_by and filled_by for cover requests.
+            foreach (['user_id', 'released_by', 'filled_by'] as $key) {
+                foreach (['old', 'new'] as $side) {
+                    if (isset($changes[$key][$side]) && (int) $changes[$key][$side] === $person->id) {
+                        $changes[$key][$side] = $removed->id;
+                        $touched = true;
+                    }
                 }
             }
 

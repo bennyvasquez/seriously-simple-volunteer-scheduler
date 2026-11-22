@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * The escalation ladder for cover requests (spec section 8.3), with the default timings. A shift still open RESEND_HOURS before it starts gets its cover request sent again, once, unless it was released inside that window (decision 11). A shift still open URGENT_HOURS before it starts is escalated, once: the area's active leads and everyone with the coordinator role get the urgent email (decision 12), and when nobody but shadows is left on it, the shadows are told not to come in if nobody takes it (decision 6). Cancelled shifts are skipped and picked up again if they're brought back. run() is the scheduled step; escalateLocked() is shared with releasing a shift inside URGENT_HOURS.
+ * The escalation ladder for cover requests (spec section 8.3), with the default timings. A shift still open RESEND_HOURS before it starts gets its cover request sent again, once per shift, counting only requests made before that window (decision 11). A shift still open URGENT_HOURS before it starts is escalated, once: the area's active leads and everyone with the coordinator role get the urgent email (decision 12), and when nobody but shadows is left on it, the shadows are told not to come in if nobody takes it (decision 6). Cancelled shifts are skipped and picked up again if they're brought back. run() is the scheduled step; escalateLocked() is shared with releasing a shift inside URGENT_HOURS.
  */
 final class CoverLadder
 {
@@ -86,14 +86,19 @@ final class CoverLadder
             return $unescalated->isEmpty() ? [null, null] : ['escalated', $this->escalateLocked($shift, $unescalated)];
         }
 
-        $unsent = $requests->whereNull('resent_at')->values();
-        $releasedEarlyEnough = $requests->first()->created_at->lessThan($shift->starts_at->subHours(self::RESEND_HOURS));
-
-        if ($unsent->isEmpty() || ! $releasedEarlyEnough) {
+        // Once per shift: a shift whose request already went out again never gets a second "Still open", and a request made inside the window doesn't count, since its first email went out inside it (decision 11).
+        if ($requests->contains(fn (CoverRequest $request) => $request->resent_at !== null)) {
             return [null, null];
         }
 
-        return ['resent', $this->resendLocked($shift, $requests->first(), $unsent)];
+        $cutoff = $shift->starts_at->subHours(self::RESEND_HOURS);
+        $releasedEarlyEnough = $requests->filter(fn (CoverRequest $request) => $request->created_at->lessThan($cutoff))->values();
+
+        if ($releasedEarlyEnough->isEmpty()) {
+            return [null, null];
+        }
+
+        return ['resent', $this->resendLocked($shift, $releasedEarlyEnough->first(), $releasedEarlyEnough)];
     }
 
     /**
@@ -152,7 +157,7 @@ final class CoverLadder
     }
 
     /**
-     * Marks the requests sent again, logs cover_request.resent for each, and returns a closure that sends "Still open" to everyone who could take the shift now, once each, naming the oldest request's releaser and note.
+     * Marks the requests sent again (the ones made before the window), logs cover_request.resent for each, and returns a closure that sends "Still open" to everyone who could take the shift now, once each, naming the oldest request's releaser and note.
      *
      * @param  Collection<int, CoverRequest>  $unsent
      */

@@ -116,7 +116,7 @@ class CoverLadderTest extends TestCase
                 $lines = implode("\n", array_merge($mail->introLines, $mail->outroLines));
 
                 return $mail->subject === 'Still open: Front desk on Thursday, October 22'
-                    && str_contains($lines, 'Nobody has taken Robin\'s front desk shift yet. It\'s Thursday, October 22, 6:30 to 9:30pm.')
+                    && str_contains($lines, 'Nobody has taken Robin\'s Front desk shift yet. It\'s Thursday, October 22, 6:30 to 9:30pm.')
                     && str_contains($lines, 'Note from Robin: The key is in the drawer.')
                     && $mail->actionText === 'Take this shift'
                     && $mail->actionUrl === url('/shifts/'.$shift->id.'/take');
@@ -233,7 +233,7 @@ class CoverLadderTest extends TestCase
 
             return $notification->notice === ShadowSpotNotice::StillUncovered
                 && $mail->subject === 'Your shadow shift tomorrow still has nobody to shadow'
-                && str_contains($lines, 'Nobody has taken Robin\'s front desk shift on Thursday, October 22 yet. If someone does, we\'ll email you.')
+                && str_contains($lines, 'Nobody has taken Robin\'s Front desk shift on Thursday, October 22 yet. If someone does, we\'ll email you.')
                 && str_contains($lines, 'If nobody does, there\'s nobody to shadow, so please don\'t come in for it. Alex (Shift lead) knows.');
         });
     }
@@ -299,6 +299,27 @@ class CoverLadderTest extends TestCase
         Notification::assertSentTo($lead, CoverUrgentNotification::class, fn (CoverUrgentNotification $notification) => str_contains(implode("\n", $notification->toMail($lead)->introLines), 'Robin released it on Tuesday, October 20. We emailed 3 volunteers when it was released.'));
     }
 
+    public function test_a_second_release_inside_72_hours_gets_no_second_resend(): void
+    {
+        $shift = $this->released(peopleNeeded: 2);
+        Notification::fake();
+
+        $this->at('2026-10-19 18:30');
+        $this->assertSame(['resent' => 1, 'escalated' => 0], app(CoverLadder::class)->run());
+
+        // Sam releases the other place 50 hours before the start.
+        $this->at('2026-10-20 16:30');
+        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $second = CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'notified_count' => 2]);
+
+        $this->at('2026-10-20 16:40');
+        $this->assertSame(['resent' => 0, 'escalated' => 0], app(CoverLadder::class)->run());
+
+        Notification::assertSentToTimes($this->morgan, CoverRequestNotification::class, 1);
+        $this->assertNull($second->fresh()->resent_at);
+        $this->assertSame(1, ChangeLogEntry::query()->forSubject($shift)->ofAction('cover_request.resent')->count());
+    }
+
     public function test_several_open_requests_send_one_email_each_naming_the_oldest(): void
     {
         $shift = $this->released(peopleNeeded: 2);
@@ -311,7 +332,7 @@ class CoverLadderTest extends TestCase
         $this->assertSame(['resent' => 1, 'escalated' => 0], app(CoverLadder::class)->run());
 
         Notification::assertSentToTimes($this->morgan, CoverRequestNotification::class, 1);
-        Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => str_contains(implode("\n", $notification->toMail($this->morgan)->introLines), 'Nobody has taken Robin\'s front desk shift yet.'));
+        Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => str_contains(implode("\n", $notification->toMail($this->morgan)->introLines), 'Nobody has taken Robin\'s Front desk shift yet.'));
         $this->assertSame(2, ChangeLogEntry::query()->forSubject($shift)->ofAction('cover_request.resent')->count());
         $this->assertSame(0, CoverRequest::query()->whereNull('resent_at')->count());
     }

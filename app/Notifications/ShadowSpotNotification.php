@@ -32,7 +32,7 @@ class ShadowSpotNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $area = mb_strtolower($this->area);
+        $area = $this->area;
 
         return match ($this->notice) {
             ShadowSpotNotice::OnHold => (new MailMessage)

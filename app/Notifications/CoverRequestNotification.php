@@ -39,7 +39,7 @@ class CoverRequestNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $first = $this->shifts[0];
-        $area = mb_strtolower($first['area']);
+        $area = $first['area'];
         $several = count($this->shifts) > 1;
 
         $mail = (new MailMessage)->greeting('Hi '.$notifiable->firstName().',');

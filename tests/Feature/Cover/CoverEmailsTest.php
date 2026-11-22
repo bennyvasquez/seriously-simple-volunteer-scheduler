@@ -53,9 +53,9 @@ class CoverEmailsTest extends TestCase
         $mail = (new CoverRequestNotification(collect([$shift]), 'Robin', 'The key is in the drawer.'))->toMail($this->morgan);
         $text = $this->text($mail);
 
-        $this->assertSame('Can you cover front desk on Thursday, October 22?', $mail->subject);
+        $this->assertSame('Can you cover Front desk on Thursday, October 22?', $mail->subject);
         $this->assertStringContainsString('Hi Morgan,', $text);
-        $this->assertStringContainsString('Robin can\'t make their front desk shift. Can you take it?', $text);
+        $this->assertStringContainsString('Robin can\'t make their Front desk shift. Can you take it?', $text);
         $this->assertStringContainsString('Front desk, Thursday, October 22, 6:30 to 9:30pm', $text);
         $this->assertStringContainsString('Note from Robin: The key is in the drawer.', $text);
         $this->assertSame('Take this shift', $mail->actionText);
@@ -79,8 +79,8 @@ class CoverEmailsTest extends TestCase
         $mail = (new CoverRequestNotification(collect([$first, $second]), 'Robin', null))->toMail($this->morgan);
         $text = $this->text($mail);
 
-        $this->assertSame('Can you cover front desk on 2 dates?', $mail->subject);
-        $this->assertStringContainsString('Robin can\'t make their front desk shifts. Can you take one?', $text);
+        $this->assertSame('Can you cover Front desk on 2 dates?', $mail->subject);
+        $this->assertStringContainsString('Robin can\'t make their Front desk shifts. Can you take one?', $text);
         $this->assertStringContainsString('[Front desk, Thursday, October 22, 6:30 to 9:30pm]('.url('/shifts/'.$first->id.'/take').')', $text);
         $this->assertStringContainsString('[Front desk, Thursday, October 29, 6:30 to 9:30pm]('.url('/shifts/'.$second->id.'/take').')', $text);
         $this->assertStringContainsString('Stop getting cover requests', $text);
@@ -91,8 +91,8 @@ class CoverEmailsTest extends TestCase
         $mail = (new CoverRequestNotification(collect([$this->shift('2026-10-22'), $this->shift('2026-10-29')]), 'Sam', null, gaveUpSlot: true))->toMail($this->morgan);
         $text = $this->text($mail);
 
-        $this->assertSame('Can you cover front desk on some Thursdays?', $mail->subject);
-        $this->assertStringContainsString('Sam is giving up their weekly Thursday front desk slot. These dates need someone:', $text);
+        $this->assertSame('Can you cover Front desk on some Thursdays?', $mail->subject);
+        $this->assertStringContainsString('Sam is giving up their weekly Thursday Front desk slot. These dates need someone:', $text);
         $this->assertStringContainsString('You\'re getting this because you volunteer with Example Makerspace and cover request emails are on for you.', $text);
     }
 
@@ -102,7 +102,7 @@ class CoverEmailsTest extends TestCase
 
         $onHold = (new ShadowSpotNotification($shift, ShadowSpotNotice::OnHold, 'Robin'))->toMail($this->morgan);
         $this->assertSame('Your shadow shift on Thursday, October 22 is on hold', $onHold->subject);
-        $this->assertStringContainsString('Robin can\'t make their front desk shift on Thursday, October 22, so right now there\'s nobody for you to shadow.', $this->text($onHold));
+        $this->assertStringContainsString('Robin can\'t make their Front desk shift on Thursday, October 22, so right now there\'s nobody for you to shadow.', $this->text($onHold));
         $this->assertStringContainsString('We\'ve asked other volunteers to cover it, and we\'ll email you as soon as someone does. You don\'t need to do anything.', $this->text($onHold));
 
         $backOn = (new ShadowSpotNotification($shift, ShadowSpotNotice::BackOn, 'Robin', 'Sam'))->toMail($this->morgan);
