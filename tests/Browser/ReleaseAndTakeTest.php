@@ -2,7 +2,6 @@
 
 namespace Tests\Browser;
 
-use App\Models\Shift;
 use App\Models\User;
 use Database\Seeders\ExampleOrganizationSeeder;
 use Laravel\Dusk\Browser;
@@ -18,10 +17,8 @@ class ReleaseAndTakeTest extends DuskTestCase
         $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
         $sebnem = User::where('email', 'sebnem@example.org')->firstOrFail();
 
-        // A Tuesday front desk shift of the volunteer's at least a week away, clear of the seeded cover request.
-        $shift = Shift::query()->whereNull('cancelled_at')->where('starts_at', '>', now()->addDays(7))
-            ->whereHas('assignments', fn ($assignments) => $assignments->where('user_id', $volunteer->id))
-            ->orderBy('starts_at')->firstOrFail();
+        // Clear of the seeded cover request on any day of the week (ExampleOrganizationSeederTest checks this with the clock moved).
+        $shift = ExampleOrganizationSeeder::releasableShiftOf($volunteer);
         $date = $shift->local_date->format('l, F j');
 
         // One browser, since the browser container runs one session at a time: the volunteer releases, logs out, and Şebnem takes it.

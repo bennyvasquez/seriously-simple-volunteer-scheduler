@@ -28,7 +28,7 @@ class TakeController extends Controller
 {
     public const PICK_HOW = 'Pick how long you want it.';
 
-    public function show(Request $request, TakeShift $takeShift, HomeController $home, Shift $shift): View
+    public function show(Request $request, TakeShift $takeShift, HomeController $home, Shift $shift): View|RedirectResponse
     {
         $user = $request->user();
         Gate::forUser($user)->authorize('take', $shift);
@@ -37,6 +37,11 @@ class TakeController extends Controller
         $card = ReleaseController::card($shift);
         $refusal = CoverEligibility::refusal($user, $shift);
         $onIt = $shift->assignments->contains('user_id', $user->id);
+
+        // Already filling a place (a double submit, or a second visit after taking it): that's "It's yours", not a refusal.
+        if (self::stillAhead($shift) && $shift->assignments->contains(fn ($assignment) => $assignment->user_id === $user->id && $assignment->type === AssignmentType::Regular)) {
+            return redirect()->route('shifts.taken', $shift);
+        }
 
         if ($refusal !== null && ($onIt || $shift->cancelled_at !== null || $shift->starts_at->lessThanOrEqualTo(now()))) {
             return view('volunteer.take', ['mode' => 'refused', 'shift' => $shift, 'card' => $card, 'refusal' => $refusal]);
@@ -93,6 +98,10 @@ class TakeController extends Controller
         } catch (ShiftAlreadyTaken) {
             return redirect()->route('shifts.take', $shift);
         } catch (DomainException $e) {
+            if ($shift->assignments()->where('user_id', $user->id)->where('type', AssignmentType::Regular)->exists()) {
+                return redirect()->route('shifts.taken', $shift);
+            }
+
             // Taking it every week leaves a full date out rather than saying it's taken, so a full shift is checked here and shown as taken.
             $fresh = $shift->fresh();
 
@@ -106,12 +115,13 @@ class TakeController extends Controller
         return redirect()->route('shifts.taken', $shift)->with('took', $how->value);
     }
 
-    /** "It's yours" (wireframe 45), only for someone on the shift; anyone else goes to the take page. Who was told is worked out the way CoverFill::notices() picks them: the releaser of the request this person filled (unless they took it back) and the area's active leads, each only when they can be emailed. */
+    /** "It's yours" (wireframe 45), only for someone on a shift that's still ahead; anyone else goes to the take page. Who was told is worked out the way CoverFill::notices() picks them: the releaser of the request this person filled (unless they took it back) and the area's active leads, each only when they can be emailed. */
     public function taken(Request $request, Shift $shift): View|RedirectResponse
     {
         $user = $request->user();
 
-        if (! $shift->assignments()->where('user_id', $user->id)->exists()) {
+        // A cancelled or started shift is never "yours" here; the take page says what happened to it.
+        if (! self::stillAhead($shift) || ! $shift->assignments()->where('user_id', $user->id)->exists()) {
             return redirect()->route('shifts.take', $shift);
         }
 
@@ -148,5 +158,11 @@ class TakeController extends Controller
             'told' => $told,
             'regularLine' => $regularLine,
         ]);
+    }
+
+    /** Not cancelled and not started yet. */
+    private static function stillAhead(Shift $shift): bool
+    {
+        return $shift->cancelled_at === null && $shift->starts_at->greaterThan(now());
     }
 }

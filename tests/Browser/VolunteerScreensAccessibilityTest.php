@@ -62,12 +62,10 @@ class VolunteerScreensAccessibilityTest extends DuskTestCase
         $this->assertFalse($volunteer->fresh()->cover_request_emails);
     }
 
-    /** The volunteer's first shift at least a week away. */
+    /** The volunteer's first shift that nobody has released, so its pages show only the volunteer's own place (see ExampleOrganizationSeeder::releasableShiftOf()). */
     private function volunteersShift(User $volunteer): Shift
     {
-        return Shift::query()->whereNull('cancelled_at')->where('starts_at', '>', now()->addDays(7))
-            ->whereHas('assignments', fn ($assignments) => $assignments->where('user_id', $volunteer->id))
-            ->orderBy('starts_at')->firstOrFail();
+        return ExampleOrganizationSeeder::releasableShiftOf($volunteer);
     }
 
     public function test_the_release_form_and_its_check_step(): void

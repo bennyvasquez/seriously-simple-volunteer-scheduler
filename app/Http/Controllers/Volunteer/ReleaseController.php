@@ -27,6 +27,8 @@ class ReleaseController extends Controller
 {
     public const PICK_SCOPE = 'Pick which shifts you can\'t make.';
 
+    public const NOT_ON_IT = 'You\'re not on this shift any more.';
+
     public function show(Request $request, Shift $shift): View|RedirectResponse
     {
         $user = $request->user();
@@ -36,9 +38,15 @@ class ReleaseController extends Controller
             return redirect()->route('home')->with('status', $refusal);
         }
 
+        $assignment = $this->assignment($user, $shift);
+
+        if ($assignment === null) {
+            return redirect()->route('home')->with('status', self::NOT_ON_IT);
+        }
+
         $shift->load(['area', 'weeklySlot', 'assignments.user']);
         $date = $shift->local_date->toDateString();
-        $shadow = $this->assignment($user, $shift)->type === AssignmentType::Shadow;
+        $shadow = $assignment->type === AssignmentType::Shadow;
 
         // The shadows who'd hear their spot is on hold: only when this person is the last one filling a place.
         $shadowNames = ! $shadow && $shift->filledCount() === 1
@@ -86,7 +94,13 @@ class ReleaseController extends Controller
             return $back('note', $e->getMessage());
         }
 
-        $isShadow = $this->assignment($user, $shift)->type === AssignmentType::Shadow;
+        $assignment = $this->assignment($user, $shift);
+
+        if ($assignment === null) {
+            return redirect()->route('home')->with('status', self::NOT_ON_IT);
+        }
+
+        $isShadow = $assignment->type === AssignmentType::Shadow;
         $scope = $isShadow ? 'one' : (string) $request->input('scope');
         $confirmed = $request->boolean('confirm');
 
@@ -205,7 +219,7 @@ class ReleaseController extends Controller
         if (! Gate::forUser($user)->allows('release', $shift)) {
             abort_unless($user->isActive(), 403);
 
-            return 'You\'re not on this shift any more.';
+            return self::NOT_ON_IT;
         }
 
         if ($shift->cancelled_at !== null) {
@@ -219,9 +233,10 @@ class ReleaseController extends Controller
         return null;
     }
 
-    private function assignment(User $user, Shift $shift): Assignment
+    /** The person's place on the shift, or null when it went between the policy check and here (another tab released it). */
+    private function assignment(User $user, Shift $shift): ?Assignment
     {
-        return $shift->assignments()->where('user_id', $user->id)->firstOrFail();
+        return $shift->assignments()->where('user_id', $user->id)->first();
     }
 
     /** The person's weekly regular for this shift's slot on its date, the one "Give up my weekly slot" ends, or null when they aren't its regular then. */

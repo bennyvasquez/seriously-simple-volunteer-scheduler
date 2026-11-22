@@ -89,6 +89,15 @@ class ExampleOrganizationSeeder extends Seeder
 
     private CarbonImmutable $today;
 
+    /** For the browser tests: this person's first shift more than a day away (so releasing it doesn't escalate) that nobody has released, so its take page names this person rather than the seeded cover request's releaser, on any day of the week. */
+    public static function releasableShiftOf(User $person): Shift
+    {
+        return Shift::query()->whereNull('cancelled_at')->where('starts_at', '>', now()->addDay())
+            ->whereHas('assignments', fn ($assignments) => $assignments->where('user_id', $person->id))
+            ->whereDoesntHave('coverRequests')
+            ->orderBy('starts_at')->orderBy('id')->firstOrFail();
+    }
+
     /** The password everyone who accepted their invitation has, from the latest run in this PHP process. */
     public static function password(): string
     {

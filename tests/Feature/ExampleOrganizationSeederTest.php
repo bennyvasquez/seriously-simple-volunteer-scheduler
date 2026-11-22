@@ -117,6 +117,27 @@ class ExampleOrganizationSeederTest extends TestCase
         }
     }
 
+    /** Six in the evening on each day of a week, starting Monday 23 November 2026 in Detroit. On the Monday the seeded release is on Tuesday 1 December, just over 7 days away, which a day count alone would pick. */
+    public static function eveningsOfAWeek(): array
+    {
+        return collect(range(0, 6))->mapWithKeys(fn (int $day) => [CarbonImmutable::parse('2026-11-23')->addDays($day)->format('l') => [$day]])->all();
+    }
+
+    #[DataProvider('eveningsOfAWeek')]
+    public function test_the_browser_tests_shift_is_clear_of_the_seeded_cover_request(int $day): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 18:00', 'America/Detroit')->addDays($day));
+        $this->seed(ExampleOrganizationSeeder::class);
+
+        $volunteer = User::query()->where('email', ExampleOrganizationSeeder::VOLUNTEER)->sole();
+        $shift = ExampleOrganizationSeeder::releasableShiftOf($volunteer);
+
+        $this->assertFalse($shift->coverRequests()->exists());
+        $this->assertTrue($shift->assignments()->where('user_id', $volunteer->id)->exists());
+        $this->assertTrue($shift->starts_at->greaterThan(now()->addDay()));
+        $this->assertNull($shift->cancelled_at);
+    }
+
     public function test_it_seeds_at_any_time_of_day(): void
     {
         // Late in the evening, after that day's shifts have started, so the seeder has to skip today's dates.

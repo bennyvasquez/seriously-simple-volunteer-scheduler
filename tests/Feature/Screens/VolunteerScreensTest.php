@@ -25,6 +25,7 @@ use App\Notifications\LoginLinkNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\InteractsWithTwoFactor;
@@ -546,7 +547,9 @@ class VolunteerScreensTest extends TestCase
         $overlap = $this->shift('2026-10-22', '19:00', '21:00', area: Area::factory()->create(['name' => 'Hosted events']));
 
         $this->page($this->sam, route('shifts.take', $overlap))->assertSee('You\'re already on Front desk, Thursday, October 22, 6 to 8pm.', false)->assertDontSee('Take this shift');
-        $this->page($this->sam, route('shifts.take', $mine))->assertSee('You\'re already on this shift.', false);
+        $shadowed = $this->shift('2026-10-23');
+        $this->on($shadowed, $this->sam, AssignmentType::Shadow);
+        $this->page($this->sam, route('shifts.take', $shadowed))->assertSee('You\'re shadowing this shift.', false)->assertDontSee('Take this shift');
     }
 
     public function test_home_cards_link_to_the_named_routes(): void
@@ -603,5 +606,47 @@ class VolunteerScreensTest extends TestCase
 
         $this->actingAs($this->robin)->post(route('shifts.take', $shift), ['how' => 'date'])->assertRedirect(route('shifts.taken', $shift));
         $this->page($this->robin, route('shifts.taken', $shift))->assertSee('It\'s yours. Thanks, Robin!', false)->assertSee('We\'ve emailed you the details.', false);
+    }
+
+    public function test_a_repeated_take_goes_to_its_yours(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->robin);
+        app(ReleaseShifts::class)->one($this->robin, $shift, null);
+
+        $this->actingAs($this->sam)->post(route('shifts.take', $shift), ['how' => 'date'])->assertRedirect(route('shifts.taken', $shift));
+        $this->actingAs($this->sam)->post(route('shifts.take', $shift), ['how' => 'date'])->assertRedirect(route('shifts.taken', $shift))->assertSessionHasNoErrors();
+        $this->actingAs($this->sam)->get(route('shifts.take', $shift))->assertRedirect(route('shifts.taken', $shift));
+        $this->assertSame(1, $shift->assignments()->where('user_id', $this->sam->id)->count());
+    }
+
+    public function test_a_release_that_loses_a_race_goes_home(): void
+    {
+        // The policy said yes, but the place was gone by the time the form loaded it, as when another tab released it in between.
+        Gate::before(fn () => true);
+        $shift = $this->shift('2026-10-22');
+
+        $this->actingAs($this->sam)->get(route('shifts.release', $shift))->assertRedirect(route('home'))->assertSessionHas('status', 'You\'re not on this shift any more.');
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['scope' => 'one'])->assertRedirect(route('home'))->assertSessionHas('status', 'You\'re not on this shift any more.');
+    }
+
+    public function test_release_form_errors_are_announced(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+
+        foreach ([['note' => ''], ['scope' => 'range', 'from' => '2026-10-31', 'to' => '2026-10-15'], ['scope' => 'slot', 'starting' => '2026-10-01'], ['scope' => 'one', 'note' => str_repeat('a', 501)]] as $fields) {
+            $this->actingAs($this->sam)->post(route('shifts.release', $shift), $fields);
+            $this->assertMatchesRegularExpression('/<span class="field-error" id="\w+-error" role="alert">/', $this->actingAs($this->sam)->get(route('shifts.release', $shift))->getContent(), json_encode($fields));
+        }
+    }
+
+    public function test_a_cancelled_shift_you_are_on_never_says_its_yours(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->sam);
+        app(CancelShift::class)->handle($this->coordinator, $shift, 'Closed');
+
+        $this->page($this->sam, route('shifts.take', $shift))->assertSee('This shift was cancelled.')->assertDontSee('It\'s yours', false);
+        $this->actingAs($this->sam)->get(route('shifts.taken', $shift))->assertRedirect(route('shifts.take', $shift));
     }
 }

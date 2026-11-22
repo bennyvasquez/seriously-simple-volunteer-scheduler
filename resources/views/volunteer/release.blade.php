@@ -25,7 +25,7 @@
 @else
 <fieldset class="choices options" @error('scope') aria-describedby="scope-error" @enderror>
 <legend>Which shifts can't you make?</legend>
-@error('scope')<span class="field-error" id="scope-error">{{ $message }}</span>@enderror
+@error('scope')<span class="field-error" id="scope-error" role="alert">{{ $message }}</span>@enderror
 <label class="opt"><input type="radio" name="scope" value="one" @checked($values['scope'] === 'one')><span><strong>Just {{ $card['date'] }}</strong>@if ($regular)<br><span class="muted">You stay on your other {{ $regular->weeklySlot->weekdayName() }}s.</span>@endif</span></label>
 <div class="opt-group">
 <label class="opt"><input type="radio" name="scope" value="range" @checked($values['scope'] === 'range') aria-describedby="range-hint"><span><strong>Several dates (I'm away)</strong><br><span class="muted" id="range-hint">Pick the first and last day you're gone.</span></span></label>
@@ -33,7 +33,7 @@
 <div class="field"><label for="from">From</label><input type="date" name="from" id="from" value="{{ $values['from'] }}" @error('dates') aria-invalid="true" aria-describedby="dates-error" @enderror></div>
 <div class="field"><label for="to">To</label><input type="date" name="to" id="to" value="{{ $values['to'] }}" @error('dates') aria-invalid="true" aria-describedby="dates-error" @enderror></div>
 </div>
-@error('dates')<span class="field-error" id="dates-error">{{ $message }}</span>@enderror
+@error('dates')<span class="field-error" id="dates-error" role="alert">{{ $message }}</span>@enderror
 </div>
 @if ($regular)
 <div class="opt-group">
@@ -41,7 +41,7 @@
 <div class="opt-fields">
 <div class="field"><label for="starting">Starting</label><input type="date" name="starting" id="starting" value="{{ $values['starting'] }}" @error('starting') aria-invalid="true" aria-describedby="starting-error" @enderror></div>
 </div>
-@error('starting')<span class="field-error" id="starting-error">{{ $message }}</span>@enderror
+@error('starting')<span class="field-error" id="starting-error" role="alert">{{ $message }}</span>@enderror
 </div>
 @endif
 </fieldset>
@@ -51,7 +51,7 @@
 <label for="note">Note for whoever covers (optional)</label>
 <textarea name="note" id="note" rows="2" maxlength="500" aria-describedby="note-hint{{ $noteError ? ' note-error' : '' }}" @if ($noteError) aria-invalid="true" @endif>{{ $values['note'] }}</textarea>
 <span class="field-hint" id="note-hint">Anything they should know. Up to 500 characters.</span>
-@if ($noteError)<span class="field-error" id="note-error">{{ $noteError }}</span>@endif
+@if ($noteError)<span class="field-error" id="note-error" role="alert">{{ $noteError }}</span>@endif
 </div>
 
 @unless ($shadow)
