@@ -11,6 +11,7 @@ use App\Notifications\CoverRequestNotification;
 use App\Notifications\ShadowSpotNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Mail\Markdown;
 use Illuminate\Notifications\Messages\MailMessage;
 use Tests\TestCase;
 
@@ -83,6 +84,12 @@ class CoverEmailsTest extends TestCase
         $this->assertStringNotContainsString('<h1>not a heading', $html);
         $this->assertStringNotContainsString('<b>bold</b>', $html);
         $this->assertStringContainsString('Note from Robin: Call [me](https://evil.example.org) *first* # not a heading &lt;b&gt;bold&lt;/b&gt;', $html);
+
+        // The plain-text part shows the note as written, without escapes.
+        $text = (string) app(Markdown::class)->renderText($mail->markdown, $mail->data());
+        $this->assertStringContainsString('Note from Robin: Call [me](https://evil.example.org) *first* # not a heading <b>bold</b>', $text);
+        $this->assertStringNotContainsString('\\', $text);
+        $this->assertStringNotContainsString('&#', $text);
     }
 
     public function test_a_cover_request_for_several_shifts_lists_each_with_its_own_link(): void

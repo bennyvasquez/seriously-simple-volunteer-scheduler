@@ -62,7 +62,7 @@ class CoverRequestNotification extends Notification
         }
 
         if ($this->note !== null && $this->note !== '') {
-            $mail->line('Note from '.$this->releaserFirstName.': '.self::plain($this->note));
+            $mail->line(PlainText::line('Note from '.$this->releaserFirstName.': '.$this->note));
         }
 
         if (! $several) {
@@ -76,14 +76,6 @@ class CoverRequestNotification extends Notification
             ->line('You\'re getting this because you volunteer with '.$this->organization.' and cover request emails are on for you.')
             // The Emails page comes in a later task; this is its address.
             ->line('[Stop getting cover requests]('.url('/account/emails').')');
-    }
-
-    /** The note as plain text for a mail line: whitespace (line breaks included) becomes single spaces, so nothing in it starts a heading or a list, and Markdown punctuation is escaped, so link or emphasis syntax shows as typed. Angle brackets are left alone because Blade already turns them into entities. */
-    private static function plain(string $text): string
-    {
-        $text = trim(preg_replace('/\s+/u', ' ', $text));
-
-        return preg_replace('/([\\\\`*_\[\]!#|~])/', '\\\\$1', $text);
     }
 
     private function weekday(): string

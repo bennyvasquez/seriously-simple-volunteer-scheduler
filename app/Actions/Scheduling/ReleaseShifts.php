@@ -18,14 +18,14 @@ use App\Notifications\CoverRequestNotification;
 use App\Notifications\ShadowLeftNotification;
 use App\Notifications\ShadowSpotNotification;
 use App\Notifications\ShiftsReleasedNotification;
-use Closure;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * A volunteer says "Can't make it" (spec section 8.3): they release their place on one shift, or on every shift they're on in a range of dates. Each released regular place becomes a cover request, emailed to everyone who could take the shift (decision 4). Releasing never changes the person's weekly regular. When nobody but shadows is left on a shift, its shadows hear that their spot is on hold (decision 6). A shift that starts within CoverLadder::URGENT_HOURS is escalated in the same transaction, so leads and coordinators get the urgent email at once and the shadows get only "still nobody" (decision 10). A shadow who releases leaves the shadow spot with no cover request, and the coordinators are told (decision 14). Each person gets one email per action, listing every shift that concerns them. The refusals are written to be shown on screen. Volunteers reach this through ShiftPolicy::release(); the action itself checks the shift and the person's place on it again under the locks.
+ * A volunteer says "Can't make it" (spec section 8.3): they release their place on one shift, or on every shift they're on in a range of dates. Each released regular place becomes a cover request, emailed to everyone who could take the shift (decision 4). Releasing never changes the person's weekly regular. When nobody but shadows is left on a shift, its shadows hear that their spot is on hold (decision 6). A shift that starts within CoverLadder::URGENT_HOURS and still has an open place is escalated in the same transaction, so leads and coordinators get the urgent email at once (instead of the cover request, for anyone who would get both) and the shadows get only "still nobody" (decision 10). A shadow who releases leaves the shadow spot with no cover request, and the coordinators are told (decision 14). Each person gets one email per action, listing every shift that concerns them. The refusals are written to be shown on screen. Volunteers reach this through ShiftPolicy::release(); the action itself checks the shift and the person's place on it again under the locks.
  */
 class ReleaseShifts
 {
@@ -110,7 +110,7 @@ class ReleaseShifts
     }
 
     /**
-     * The shared step, also used for giving up a weekly slot. Deletes the assignment through RemoveFromShift::removeLocked(), logged as assignment.removed about the person with `via` "release:{$via}". For a regular place it creates the cover request, logged as cover_request.created with the shift as the subject, about the person (so RemovePerson rewrites the ids in it), and the request's values, note included, in `changes`. Returns the request, or null for a shadow. It sends nothing. The people asked are attached to the request as its `recipients` relation (not stored), so the caller emails exactly the people counted in notified_count. The caller holds the area and shift locks and the assignment's row lock.
+     * The shared step. Deletes the assignment through RemoveFromShift::removeLocked(), logged as assignment.removed about the person with `via` "release:{$via}". For a regular place it creates the cover request, logged as cover_request.created with the shift as the subject, about the person (so RemovePerson rewrites the ids in it), and the request's values, note included, in `changes`. Returns the request, or null for a shadow. It sends nothing and doesn't escalate; releaseAndCollectLocked() does both. The people asked are attached to the request as its `recipients` relation (not stored), so the caller emails exactly the people counted in notified_count. When the shift will be escalated at once, the urgent email's audience is left out of them, so each of those people hears about the shift once. The caller holds the area and shift locks and the assignment's row lock.
      */
     public function releaseLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): ?CoverRequest
     {
@@ -123,7 +123,13 @@ class ReleaseShifts
         }
 
         // The request isn't saved yet, so recipients() can't leave the releaser out by their request; they're left out here.
-        $recipients = CoverEligibility::recipients($lockedShift)->reject(fn (User $recipient) => $recipient->id === $person->id)->values();
+        $leftOut = [$person->id];
+
+        if (self::escalatesNow($lockedShift)) {
+            $leftOut = array_merge($leftOut, array_keys(CoverLadder::urgentAudience($lockedShift->loadMissing('area')->area)));
+        }
+
+        $recipients = CoverEligibility::recipients($lockedShift)->reject(fn (User $recipient) => in_array($recipient->id, $leftOut, true))->values();
 
         $request = new CoverRequest(['shift_id' => $lockedShift->id, 'released_by' => $person->id, 'note' => $note, 'notified_count' => $recipients->count()]);
         $changes = ChangeLogEntry::changesOf($request);
@@ -146,15 +152,24 @@ class ReleaseShifts
         return $note === '' ? null : $note;
     }
 
+    /** Whether releasing a place on this shift escalates it at once: it starts within URGENT_HOURS and still has an open place, the same test CoverLadder::step() makes. */
+    private static function escalatesNow(Shift $lockedShift): bool
+    {
+        return $lockedShift->cancelled_at === null
+            && $lockedShift->starts_at->greaterThan(now())
+            && $lockedShift->starts_at->lessThanOrEqualTo(now()->addHours(CoverLadder::URGENT_HOURS))
+            && $lockedShift->openPlaces() > 0;
+    }
+
     /**
-     * Releases one place and works out who hears about it, without sending: the cover request's recipients, the shadows told their spot is on hold, and, inside URGENT_HOURS, the escalation's send closure (which tells the shadows instead, when nobody but shadows is left).
+     * Releases one place and works out who hears about it, without sending: the cover request's recipients, the shadows told their spot is on hold, and, when the shift escalates at once, the escalation's emails (which tell the shadows instead, when nobody but shadows is left). Every caller that releases places, giving up a weekly slot included, calls this inside its transaction for each place and passes the results to sendAfterCommit() once, so each person gets one email per action.
      *
-     * @return array{shift: Shift, request: ?CoverRequest, recipients: Collection<int, User>, onHold: Collection<int, User>, shadowsTold: list<string>, escalation: ?Closure}
+     * @return array{shift: Shift, request: ?CoverRequest, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}
      */
-    private function releaseAndCollectLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): array
+    protected function releaseAndCollectLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): array
     {
         $request = $this->releaseLocked($person, $lockedShift, $assignment, $note, $via);
-        $released = ['shift' => $lockedShift, 'request' => $request, 'recipients' => collect(), 'onHold' => collect(), 'shadowsTold' => [], 'escalation' => null];
+        $released = ['shift' => $lockedShift, 'request' => $request, 'recipients' => collect(), 'sends' => [], 'shadowsTold' => []];
 
         if ($request === null) {
             return $released;
@@ -166,12 +181,12 @@ class ReleaseShifts
         $shadows = $lockedShift->filledCount() > 0 ? collect() : Assignment::query()->with('user')
             ->where('shift_id', $lockedShift->id)->where('type', AssignmentType::Shadow)->orderBy('id')->get()->pluck('user');
 
-        if ($lockedShift->starts_at->lessThanOrEqualTo(now()->addHours(CoverLadder::URGENT_HOURS))) {
+        if (self::escalatesNow($lockedShift)) {
             // Every unescalated open request, the way the ladder would take them, so it never escalates this shift a second time.
             $unescalated = CoverRequest::query()->open()->whereNull('escalated_at')->where('shift_id', $lockedShift->id)->orderBy('created_at')->orderBy('id')->lockForUpdate()->get();
-            $released['escalation'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $person);
+            $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $person);
         } else {
-            $released['onHold'] = $shadows;
+            $released['sends'] = $shadows->map(fn (User $shadow) => [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::OnHold, $person->firstName())])->all();
         }
 
         $released['shadowsTold'] = $shadows->filter(fn (User $shadow) => $shadow->canSignIn())->map(fn (User $shadow) => $shadow->firstName())->values()->all();
@@ -180,37 +195,32 @@ class ReleaseShifts
     }
 
     /**
-     * Sends, after the response, one email per person for everything this action released: the releaser's "You're off", one cover request per recipient listing the shifts they could take, one "on hold" per shadow, the escalation emails, and one "can't make their shadow shift" per coordinator.
+     * Sends, after the response, one email per person for everything this action released: the releaser's "You're off" (when they left at least one regular place), one cover request per recipient listing the shifts they could take, the "on hold" and escalation emails merged so each person gets one of each kind listing every shift, and one "can't make their shadow shift" per coordinator, with the note.
      *
-     * @param  list<array{shift: Shift, request: ?CoverRequest, recipients: Collection<int, User>, onHold: Collection<int, User>, shadowsTold: list<string>, escalation: ?Closure}>  $released
+     * @param  list<array{shift: Shift, request: ?CoverRequest, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}>  $released
      */
-    private function sendAfterCommit(User $person, array $released, ?string $note): void
+    protected function sendAfterCommit(User $person, array $released, ?string $note): void
     {
         $releaser = $person->firstName();
         $regularPlaces = array_values(array_filter($released, fn (array $place) => $place['request'] !== null));
         $shadowShifts = collect($released)->filter(fn (array $place) => $place['request'] === null)->pluck('shift')->values();
         $sends = [];
-
         $forRecipient = [];
-        $forShadow = [];
 
         foreach ($regularPlaces as $place) {
             foreach ($place['recipients'] as $recipient) {
                 $forRecipient[$recipient->id] ??= [$recipient, collect()];
                 $forRecipient[$recipient->id][1]->push($place['shift']);
             }
-
-            foreach ($place['onHold'] as $shadow) {
-                $forShadow[$shadow->id] ??= [$shadow, collect()];
-                $forShadow[$shadow->id][1]->push($place['shift']);
-            }
         }
 
         if ($regularPlaces !== []) {
+            $regularShifts = collect($regularPlaces)->pluck('shift');
             $sends[] = [$person, new ShiftsReleasedNotification(
-                collect($regularPlaces)->pluck('shift'),
+                collect($released)->pluck('shift'),
                 collect($regularPlaces)->mapWithKeys(fn (array $place) => [$place['shift']->id => $place['shadowsTold']])->all(),
-                $this->stillRegularOn($person, collect($regularPlaces)->pluck('shift')),
+                $this->stillRegularOn($person, $regularShifts),
+                $shadowShifts->pluck('id')->all(),
             )];
         }
 
@@ -218,8 +228,8 @@ class ReleaseShifts
             $sends[] = [$recipient, new CoverRequestNotification($shifts, $releaser, $note)];
         }
 
-        foreach ($forShadow as [$shadow, $shifts]) {
-            $sends[] = [$shadow, new ShadowSpotNotification($shifts->first(), ShadowSpotNotice::OnHold, $releaser, alsoOnHold: $shifts->slice(1)->values())];
+        foreach ($released as $place) {
+            array_push($sends, ...$place['sends']);
         }
 
         if ($shadowShifts->isNotEmpty()) {
@@ -228,21 +238,43 @@ class ReleaseShifts
                 ->orderBy('id')->get();
 
             foreach ($coordinators as $coordinator) {
-                $sends[] = [$coordinator, new ShadowLeftNotification($releaser, $shadowShifts)];
+                $sends[] = [$coordinator, new ShadowLeftNotification($releaser, $shadowShifts, $note)];
             }
         }
 
-        $escalations = array_values(array_filter(array_column($released, 'escalation')));
+        $sends = self::merged($sends);
 
-        defer(function () use ($sends, $escalations) {
+        defer(function () use ($sends) {
             foreach ($sends as [$recipient, $notification]) {
                 $recipient->notify($notification);
             }
-
-            foreach ($escalations as $send) {
-                $send();
-            }
         });
+    }
+
+    /**
+     * Folds emails of the same kind to the same person into one, using the notification's merge(): the urgent emails of several escalated shifts, or a shadow's "on hold" or "still nobody" for several dates. Kept in the order first sent.
+     *
+     * @param  list<array{0: User, 1: Notification}>  $sends
+     * @return list<array{0: User, 1: Notification}>
+     */
+    private static function merged(array $sends): array
+    {
+        $merged = [];
+
+        foreach ($sends as [$recipient, $notification]) {
+            $key = $recipient->id.' '.$notification::class.($notification instanceof ShadowSpotNotification ? ' '.$notification->notice->value : '');
+
+            if (! isset($merged[$key])) {
+                $merged[$key] = [$recipient, $notification];
+            } elseif (method_exists($merged[$key][1], 'merge')) {
+                $merged[$key][1]->merge($notification);
+            } else {
+                // A kind that can't be merged is sent as it is rather than dropped.
+                $merged[$key.' '.count($merged)] = [$recipient, $notification];
+            }
+        }
+
+        return array_values($merged);
     }
 
     /**

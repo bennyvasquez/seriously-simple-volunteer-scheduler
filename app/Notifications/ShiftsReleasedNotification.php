@@ -9,19 +9,20 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 
 /**
- * Tells a volunteer they're off the shifts they released (wireframe 41). One email per action, listing every shift for a range. It names the shadows who were told their spot is on hold, and says the person stays the regular when they still are for those dates.
+ * Tells a volunteer they're off the shifts they released (wireframe 41). One email per action, listing every shift for a range. Shadow spots the person left in the same action are listed too; leaving only a shadow spot sends no email, since the screen confirms it. It names the shadows who were told their spot is on hold, and says the person stays the regular when they still are for those dates.
  */
 class ShiftsReleasedNotification extends Notification
 {
-    /** @var list<array{area: string, date: string, weekday: string, when: string, shadows: list<string>, regular: bool}> */
+    /** @var list<array{area: string, date: string, weekday: string, when: string, shadows: list<string>, regular: bool, shadowSpot: bool}> */
     public array $shifts;
 
     /**
      * @param  Collection<int, Shift>  $shifts  With their areas loaded.
      * @param  array<int, list<string>>  $shadowsTold  The first names of the shadows told, keyed by shift id.
      * @param  list<int>  $stillRegularOn  The ids of the shifts whose weekly slot the person stays the regular for.
+     * @param  list<int>  $shadowSpots  The ids of the shifts where the person left a shadow spot.
      */
-    public function __construct(Collection $shifts, array $shadowsTold = [], array $stillRegularOn = [])
+    public function __construct(Collection $shifts, array $shadowsTold = [], array $stillRegularOn = [], array $shadowSpots = [])
     {
         $this->shifts = $shifts->map(fn (Shift $shift) => [
             'area' => $shift->area->name,
@@ -30,6 +31,7 @@ class ShiftsReleasedNotification extends Notification
             'when' => $shift->whenText(),
             'shadows' => $shadowsTold[$shift->id] ?? [],
             'regular' => in_array($shift->id, $stillRegularOn, true),
+            'shadowSpot' => in_array($shift->id, $shadowSpots, true),
         ])->values()->all();
     }
 
@@ -64,7 +66,7 @@ class ShiftsReleasedNotification extends Notification
             ->line('You\'re off these shifts:');
 
         foreach ($this->shifts as $shift) {
-            $mail->line($shift['area'].', '.$shift['when']);
+            $mail->line($shift['shadowSpot'] ? $shift['date'].': shadow spot on '.$shift['area'] : $shift['area'].', '.$shift['when']);
         }
 
         $mail->line('We\'ve asked other volunteers to cover them, and we\'ll email you when someone does.');

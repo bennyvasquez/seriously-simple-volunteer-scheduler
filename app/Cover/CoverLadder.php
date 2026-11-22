@@ -83,7 +83,17 @@ final class CoverLadder
         if ($shift->starts_at->lessThanOrEqualTo(now()->addHours(self::URGENT_HOURS))) {
             $unescalated = $requests->whereNull('escalated_at')->values();
 
-            return $unescalated->isEmpty() ? [null, null] : ['escalated', $this->escalateLocked($shift, $unescalated)];
+            if ($unescalated->isEmpty()) {
+                return [null, null];
+            }
+
+            $sends = $this->escalateLocked($shift, $unescalated);
+
+            return ['escalated', function () use ($sends) {
+                foreach ($sends as [$person, $notification]) {
+                    $person->notify($notification);
+                }
+            }];
         }
 
         // Once per shift: a shift whose request already went out again never gets a second "Still open", and a request made inside the window doesn't count, since its first email went out inside it (decision 11).
@@ -102,11 +112,12 @@ final class CoverLadder
     }
 
     /**
-     * Marks the requests escalated, logs cover_request.escalated for each (with the shift as the subject), and returns a closure that sends the urgent emails and, when nobody but shadows is left on the shift, the shadows' "still nobody to shadow" email. Each person gets at most one email, even when they're both a lead and a coordinator. The caller holds the area, shift and cover request locks, and runs the closure after the commit. `$openRequests` are in the order they were made; the oldest names the releaser. `$actor` is null when the ladder runs it.
+     * Marks the requests escalated, logs cover_request.escalated for each (with the shift as the subject), and returns what to send, without sending: the urgent email for each lead and coordinator and, when nobody but shadows is left on the shift, the shadows' "still nobody to shadow" email. Each person appears at most once for the shift, even when they're both a lead and a coordinator. The caller holds the area, shift and cover request locks and sends after the commit; ReleaseShifts merges the emails of several shifts per person first. `$openRequests` are in the order they were made; the oldest names the releaser. `$actor` is null when the ladder runs it.
      *
      * @param  Collection<int, CoverRequest>  $openRequests
+     * @return list<array{0: User, 1: CoverUrgentNotification|ShadowSpotNotification}>
      */
-    public function escalateLocked(Shift $lockedShift, Collection $openRequests, ?User $actor = null): Closure
+    public function escalateLocked(Shift $lockedShift, Collection $openRequests, ?User $actor = null): array
     {
         $lockedShift->loadMissing('area');
         $area = $lockedShift->area;
@@ -122,26 +133,18 @@ final class CoverLadder
             ChangeLogEntry::record($actor, 'cover_request.escalated', $lockedShift, ['cover_request_id' => $request->id], $changes);
         }
 
-        $leads = User::query()->people()->whereNull('deactivated_at')
-            ->whereHas('roles', fn (Builder $query) => $query->where('role', Role::AreaLead->value)->where('area_id', $area->id))
-            ->orderBy('id')->get();
-        $coordinators = User::query()->people()->whereNull('deactivated_at')
-            ->whereHas('roles', fn (Builder $query) => $query->where('role', Role::Coordinator->value))
-            ->orderBy('id')->get();
-
         $sends = [];
-        $leadReason = Describe::roleName(Role::AreaLead, $area);
+        $audience = self::urgentAudience($area);
 
-        foreach ($leads as $lead) {
-            $sends[$lead->id] = [$lead, new CoverUrgentNotification($lockedShift, $releaser, $oldest->created_at, $oldest->notified_count, $oldest->resent_at !== null, $leadReason)];
-        }
-
-        foreach ($coordinators as $coordinator) {
-            $sends[$coordinator->id] ??= [$coordinator, new CoverUrgentNotification($lockedShift, $releaser, $oldest->created_at, $oldest->notified_count, $oldest->resent_at !== null, 'a coordinator')];
+        foreach ($audience as $id => [$person, $reason]) {
+            $sends[$id] = [$person, new CoverUrgentNotification($lockedShift, $releaser, $oldest->created_at, $oldest->notified_count, $oldest->resent_at !== null, $reason)];
         }
 
         if ($lockedShift->filledCount() === 0) {
-            $leadText = $leads->isEmpty() ? null : $leads->first()->firstName().' ('.$area->leadTitle().')';
+            // Leads come first in the audience, in id order, so the first with the lead reason is the first lead.
+            $leadReason = Describe::roleName(Role::AreaLead, $area);
+            $lead = collect($audience)->first(fn (array $entry) => $entry[1] === $leadReason);
+            $leadText = $lead === null ? null : $lead[0]->firstName().' ('.$area->leadTitle().')';
             $shadows = Assignment::query()->with('user')->where('shift_id', $lockedShift->id)->where('type', AssignmentType::Shadow)->orderBy('id')->get();
 
             foreach ($shadows as $shadow) {
@@ -149,11 +152,35 @@ final class CoverLadder
             }
         }
 
-        return function () use ($sends) {
-            foreach ($sends as [$person, $notification]) {
-                $person->notify($notification);
-            }
-        };
+        return array_values($sends);
+    }
+
+    /**
+     * Who gets the urgent email for a shift in this area (decision 12): its active leads, then everyone active with the coordinator role, each once and keyed by id, with the reason their email gives ("a shift lead for Front desk" or "a coordinator"). ReleaseShifts leaves these people out of a cover request for a shift it escalates, so they get only the urgent email.
+     *
+     * @return array<int, array{0: User, 1: string}>
+     */
+    public static function urgentAudience(Area $area): array
+    {
+        $leads = User::query()->people()->whereNull('deactivated_at')
+            ->whereHas('roles', fn (Builder $query) => $query->where('role', Role::AreaLead->value)->where('area_id', $area->id))
+            ->orderBy('id')->get();
+        $coordinators = User::query()->people()->whereNull('deactivated_at')
+            ->whereHas('roles', fn (Builder $query) => $query->where('role', Role::Coordinator->value))
+            ->orderBy('id')->get();
+
+        $audience = [];
+        $leadReason = Describe::roleName(Role::AreaLead, $area);
+
+        foreach ($leads as $lead) {
+            $audience[$lead->id] = [$lead, $leadReason];
+        }
+
+        foreach ($coordinators as $coordinator) {
+            $audience[$coordinator->id] ??= [$coordinator, 'a coordinator'];
+        }
+
+        return $audience;
     }
 
     /**

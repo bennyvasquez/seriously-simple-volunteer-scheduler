@@ -337,6 +337,113 @@ class ReleaseShiftsTest extends TestCase
         Notification::assertSentToTimes($casey, ShadowSpotNotification::class, 1);
     }
 
+    public function test_a_lead_who_could_cover_gets_only_the_urgent_email(): void
+    {
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $shift = $this->robinOn('2026-10-15');
+        Notification::fake();
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 19:00', self::TIMEZONE));
+
+        $request = app(ReleaseShifts::class)->one($this->robin, $shift, null);
+
+        // Morgan and Sam are asked; Alex and Chris get the urgent email instead.
+        $this->assertSame(2, $request->fresh()->notified_count);
+        foreach ([$lead, $this->coordinator] as $person) {
+            Notification::assertSentToTimes($person, CoverUrgentNotification::class, 1);
+            Notification::assertNotSentTo($person, CoverRequestNotification::class);
+        }
+        Notification::assertSentTo($lead, CoverUrgentNotification::class, fn (CoverUrgentNotification $notification) => str_contains($this->text($notification->toMail($lead)), 'We emailed 2 volunteers when it was released.'));
+        foreach ([$this->morgan, $this->sam] as $person) {
+            Notification::assertSentToTimes($person, CoverRequestNotification::class, 1);
+        }
+    }
+
+    public function test_a_range_with_two_shifts_inside_24_hours_sends_one_urgent_email_per_person(): void
+    {
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $morning = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->hostedEvents, '2026-10-15', '10:00', '12:00', 1, 1, null);
+        $this->on($morning, $this->robin);
+        $evening = $this->robinOn('2026-10-15');
+        $this->on($morning, $casey, AssignmentType::Shadow);
+        $this->on($evening, $casey, AssignmentType::Shadow);
+        Notification::fake();
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 19:00', self::TIMEZONE));
+
+        app(ReleaseShifts::class)->range($this->robin, '2026-10-14', '2026-10-15', null);
+
+        $this->assertSame(2, CoverRequest::query()->whereNotNull('escalated_at')->count());
+        $this->assertSame(2, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
+
+        Notification::assertSentToTimes($this->coordinator, CoverUrgentNotification::class, 1);
+        Notification::assertSentTo($this->coordinator, CoverUrgentNotification::class, function (CoverUrgentNotification $notification) {
+            $mail = $notification->toMail($this->coordinator);
+            $text = $this->text($mail);
+
+            return count($notification->shifts) === 2
+                && $mail->subject === 'Needs someone tomorrow: 2 shifts'
+                && str_contains($text, 'Nobody has taken these shifts yet, and they start in less than 24 hours.')
+                && str_contains($text, 'Hosted events, Thursday, October 15, 10am to 12pm')
+                && str_contains($text, 'Front desk, Thursday, October 15, 6:30 to 9:30pm')
+                && str_contains($text, 'You\'re getting this because you\'re a coordinator.');
+        });
+        Notification::assertNotSentTo($this->coordinator, CoverRequestNotification::class);
+        Notification::assertSentToTimes($lead, CoverUrgentNotification::class, 1);
+        Notification::assertSentTo($lead, CoverUrgentNotification::class, fn (CoverUrgentNotification $notification) => array_column($notification->shifts, 'area') === ['Front desk']);
+        Notification::assertSentToTimes($lead, CoverRequestNotification::class, 1);
+        Notification::assertSentTo($lead, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => array_column($notification->shifts, 'area') === ['Hosted events']);
+
+        Notification::assertSentToTimes($casey, ShadowSpotNotification::class, 1);
+        Notification::assertSentTo($casey, ShadowSpotNotification::class, function (ShadowSpotNotification $notification) use ($casey) {
+            $mail = $notification->toMail($casey);
+
+            return $notification->notice === ShadowSpotNotice::StillUncovered
+                && $mail->subject === 'Your shadow shifts tomorrow still have nobody to shadow'
+                && count($notification->shifts) === 2
+                && str_contains($this->text($mail), 'Alex (Shift lead) knows.');
+        });
+        Notification::assertSentToTimes($this->morgan, CoverRequestNotification::class, 1);
+        Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => count($notification->shifts) === 2);
+    }
+
+    public function test_releasing_inside_24_hours_doesnt_escalate_a_shift_that_still_has_its_people(): void
+    {
+        $shift = $this->robinOn('2026-10-15');
+        $this->on($shift, $this->morgan);
+        Notification::fake();
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 19:00', self::TIMEZONE));
+
+        $request = app(ReleaseShifts::class)->one($this->robin, $shift, null);
+
+        $this->assertNull($request->fresh()->escalated_at);
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
+        Notification::assertNotSentTo($this->coordinator, CoverUrgentNotification::class);
+        Notification::assertSentToTimes($this->coordinator, CoverRequestNotification::class, 1);
+    }
+
+    public function test_the_releaser_email_lists_shadow_spots_left_in_the_same_range(): void
+    {
+        $this->robinOn('2026-10-22');
+        $shadowed = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-29', '18:30', '21:30', 1, 1, null);
+        $this->on($shadowed, $this->morgan);
+        $this->on($shadowed, $this->robin, AssignmentType::Shadow);
+        Notification::fake();
+
+        app(ReleaseShifts::class)->range($this->robin, '2026-10-20', '2026-10-31', null);
+
+        Notification::assertSentToTimes($this->robin, ShiftsReleasedNotification::class, 1);
+        Notification::assertSentTo($this->robin, ShiftsReleasedNotification::class, function (ShiftsReleasedNotification $notification) {
+            $mail = $notification->toMail($this->robin);
+            $text = $this->text($mail);
+
+            return $mail->subject === 'You\'re off 2 shifts'
+                && str_contains($text, 'Front desk, Thursday, October 22, 6:30 to 9:30pm')
+                && str_contains($text, 'Thursday, October 29: shadow spot on Front desk');
+        });
+        Notification::assertSentToTimes($this->coordinator, ShadowLeftNotification::class, 1);
+        Notification::assertSentTo($this->coordinator, ShadowLeftNotification::class, fn (ShadowLeftNotification $notification) => count($notification->shifts) === 1);
+    }
+
     public function test_a_shadow_who_cant_make_it_tells_the_coordinators(): void
     {
         $otherCoordinator = $this->withRole('Pat Coordinator', Role::Coordinator);
@@ -349,7 +456,7 @@ class ReleaseShiftsTest extends TestCase
         $assignment = Assignment::query()->where('shift_id', $shift->id)->where('user_id', $this->robin->id)->sole();
         Notification::fake();
 
-        $this->assertNull(app(ReleaseShifts::class)->one($this->robin, $shift, 'Sorry!'));
+        $this->assertNull(app(ReleaseShifts::class)->one($this->robin, $shift, 'Sorry, [car](https://example.org) trouble!'));
 
         $this->assertDatabaseMissing('assignments', ['id' => $assignment->id]);
         $this->assertSame(0, CoverRequest::query()->count());
@@ -360,6 +467,8 @@ class ReleaseShiftsTest extends TestCase
                 $text = $this->text($mail);
 
                 return $mail->subject === 'Robin can\'t make their shadow shift'
+                    && str_contains(html_entity_decode($text), 'Note from Robin: Sorry, [car](https://example.org) trouble!')
+                    && ! str_contains((string) $mail->render(), 'href="https://example.org"')
                     && str_contains($text, 'Front desk')
                     && str_contains($text, 'Thursday, October 22, 6:30 to 9:30pm')
                     && $mail->actionText === 'Open the shift'
