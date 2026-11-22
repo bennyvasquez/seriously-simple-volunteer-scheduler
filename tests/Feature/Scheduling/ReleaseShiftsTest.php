@@ -695,10 +695,63 @@ class ReleaseShiftsTest extends TestCase
 
         $request = app(ReleaseShifts::class)->one($this->robin, $shift, null);
 
-        $this->assertNull($request->fresh()->escalated_at);
+        $this->assertNull($request);
+        $this->assertSame(0, CoverRequest::query()->count());
         $this->assertSame(0, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
         Notification::assertNotSentTo($this->coordinator, CoverUrgentNotification::class);
-        Notification::assertSentToTimes($this->coordinator, CoverRequestNotification::class, 1);
+        Notification::assertNotSentTo($this->coordinator, CoverRequestNotification::class);
+    }
+
+    public function test_releasing_from_a_shift_that_still_has_its_people_asks_nobody(): void
+    {
+        $shift = $this->robinOn('2026-10-22');
+        $this->on($shift, $this->morgan);
+        Notification::fake();
+
+        $releaseShifts = app(ReleaseShifts::class);
+        $request = $releaseShifts->one($this->robin, $shift, 'Sorry.');
+
+        $this->assertNull($request);
+        $this->assertSame([$shift->id], $releaseShifts->nobodyAsked);
+        $this->assertFalse(Assignment::query()->where('shift_id', $shift->id)->where('user_id', $this->robin->id)->exists());
+        $this->assertSame(0, CoverRequest::query()->count());
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('cover_request.created')->count());
+        $removed = ChangeLogEntry::query()->ofAction('assignment.removed')->sole();
+        $this->assertSame('release:one', $removed->details['via']);
+        $this->assertSame($this->robin->id, $removed->affected_user_id);
+        Notification::assertNotSentTo([$this->coordinator, $this->sam, $this->morgan], CoverRequestNotification::class);
+        Notification::assertSentToTimes($this->robin, ShiftsReleasedNotification::class, 1);
+        Notification::assertSentTo($this->robin, ShiftsReleasedNotification::class, function (ShiftsReleasedNotification $notification) {
+            $text = $this->text($notification->toMail($this->robin));
+
+            return str_contains($text, 'You\'re off your Front desk shift on Thursday, October 22, 6:30 to 9:30pm.')
+                && str_contains($text, 'Front desk still has the people it needs, so nobody else was asked.')
+                && ! str_contains($text, 'We\'ve asked')
+                && ! str_contains($text, 'take it back');
+        });
+
+        // The ladder never sees a request there.
+        $this->travelTo(CarbonImmutable::parse('2026-10-21 19:00', self::TIMEZONE));
+        $this->assertSame(['resent' => 0, 'escalated' => 0], app(CoverLadder::class)->run());
+    }
+
+    public function test_a_range_says_which_shifts_still_have_their_people(): void
+    {
+        $full = $this->robinOn('2026-10-22');
+        $this->on($full, $this->morgan);
+        $this->robinOn('2026-10-23');
+        Notification::fake();
+
+        app(ReleaseShifts::class)->range($this->robin, '2026-10-22', '2026-10-23', null);
+
+        $this->assertSame(1, CoverRequest::query()->count());
+        Notification::assertSentTo($this->sam, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => array_column($notification->shifts, 'date') === ['Friday, October 23']);
+        Notification::assertSentTo($this->robin, ShiftsReleasedNotification::class, function (ShiftsReleasedNotification $notification) {
+            $text = $this->text($notification->toMail($this->robin));
+
+            return str_contains($text, 'Front desk still has the people it needs on Thursday, October 22, so nobody else was asked.')
+                && str_contains($text, 'We\'ve asked other volunteers to cover the rest, and we\'ll email you when someone does.');
+        });
     }
 
     public function test_the_releaser_email_lists_shadow_spots_left_in_the_same_range(): void

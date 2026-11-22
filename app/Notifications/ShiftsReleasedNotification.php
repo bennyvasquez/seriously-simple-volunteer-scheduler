@@ -9,11 +9,11 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 
 /**
- * Tells a volunteer they're off the shifts they released (wireframe 41). One email per action, listing every shift for a range. Shadow spots the person left in the same action are listed too; leaving only a shadow spot sends no email, since the screen confirms it. It names the shadows who were told their spot is on hold, and says the person stays the regular when they still are for those dates. When they gave up their weekly slot (decision 13), it says they're no longer the regular from that date instead, and it's sent even when none of the slot's shifts from that date are on the calendar yet.
+ * Tells a volunteer they're off the shifts they released (wireframe 41). One email per action, listing every shift for a range. Shadow spots the person left in the same action are listed too; leaving only a shadow spot sends no email, since the screen confirms it. It names the shadows who were told their spot is on hold, and says the person stays the regular when they still are for those dates. When they gave up their weekly slot (decision 13), it says they're no longer the regular from that date instead, and it's sent even when none of the slot's shifts from that date are on the calendar yet. A shift that still has the people it needs after they came off it is named as one where nobody else was asked, and there's nothing to take back there.
  */
 class ShiftsReleasedNotification extends Notification
 {
-    /** @var list<array{area: string, date: string, weekday: string, when: string, shadows: list<string>, regular: bool, shadowSpot: bool}> */
+    /** @var list<array{area: string, date: string, weekday: string, when: string, shadows: list<string>, regular: bool, shadowSpot: bool, nobodyAsked: bool}> */
     public array $shifts;
 
     /**
@@ -22,8 +22,9 @@ class ShiftsReleasedNotification extends Notification
      * @param  list<int>  $stillRegularOn  The ids of the shifts whose weekly slot the person stays the regular for.
      * @param  list<int>  $shadowSpots  The ids of the shifts where the person left a shadow spot.
      * @param  array{weekday: string, from: string}|null  $gaveUpSlot  The weekday of the slot the person gave up and the first date they're no longer its regular ("Thursday, October 29").
+     * @param  list<int>  $nobodyAsked  The ids of the shifts that still have the people they need, so nobody was asked to cover them.
      */
-    public function __construct(Collection $shifts, array $shadowsTold = [], array $stillRegularOn = [], array $shadowSpots = [], public ?array $gaveUpSlot = null)
+    public function __construct(Collection $shifts, array $shadowsTold = [], array $stillRegularOn = [], array $shadowSpots = [], public ?array $gaveUpSlot = null, array $nobodyAsked = [])
     {
         $this->shifts = $shifts->map(fn (Shift $shift) => [
             'area' => $shift->area->name,
@@ -33,6 +34,7 @@ class ShiftsReleasedNotification extends Notification
             'shadows' => $shadowsTold[$shift->id] ?? [],
             'regular' => in_array($shift->id, $stillRegularOn, true),
             'shadowSpot' => in_array($shift->id, $shadowSpots, true),
+            'nobodyAsked' => in_array($shift->id, $nobodyAsked, true),
         ])->values()->all();
     }
 
@@ -57,7 +59,7 @@ class ShiftsReleasedNotification extends Notification
             $shift = $this->shifts[0];
             $mail->subject('You\'re off '.$shift['date'])
                 ->line('You\'re off your '.$shift['area'].' shift on '.$shift['when'].'.')
-                ->line('We\'ve asked other volunteers to cover it, and we\'ll email you when someone does.');
+                ->line($shift['nobodyAsked'] ? $shift['area'].' still has the people it needs, so nobody else was asked.' : 'We\'ve asked other volunteers to cover it, and we\'ll email you when someone does.');
 
             if ($shift['shadows'] !== []) {
                 $mail->line(self::names($shift['shadows']).' going to shadow you, so we\'ve told them too.');
@@ -69,8 +71,11 @@ class ShiftsReleasedNotification extends Notification
                 $mail->line('You stay the '.$shift['weekday'].' regular. This only changes '.$shift['date'].'.');
             }
 
-            return $mail->line('If you can make it after all, you can take it back from your home page while it\'s still open.')
-                ->action('Open my shifts', url('/'));
+            if (! $shift['nobodyAsked']) {
+                $mail->line('If you can make it after all, you can take it back from your home page while it\'s still open.');
+            }
+
+            return $mail->action('Open my shifts', url('/'));
         }
 
         $mail->subject('You\'re off '.count($this->shifts).' shifts')
@@ -80,7 +85,16 @@ class ShiftsReleasedNotification extends Notification
             $mail->line($shift['shadowSpot'] ? $shift['date'].': shadow spot on '.$shift['area'] : $shift['area'].', '.$shift['when']);
         }
 
-        $mail->line('We\'ve asked other volunteers to cover them, and we\'ll email you when someone does.');
+        $nobodyAsked = collect($this->shifts)->where('nobodyAsked', true);
+        $asked = collect($this->shifts)->where('nobodyAsked', false)->where('shadowSpot', false);
+
+        foreach ($nobodyAsked as $shift) {
+            $mail->line($shift['area'].' still has the people it needs on '.$shift['date'].', so nobody else was asked.');
+        }
+
+        if ($asked->isNotEmpty()) {
+            $mail->line($nobodyAsked->isEmpty() ? 'We\'ve asked other volunteers to cover them, and we\'ll email you when someone does.' : 'We\'ve asked other volunteers to cover the rest, and we\'ll email you when someone does.');
+        }
 
         // One line per group of shadows, naming the dates unless it's every one of them.
         $byShadows = collect($this->shifts)->filter(fn (array $shift) => $shift['shadows'] !== [])->groupBy(fn (array $shift) => implode("\n", $shift['shadows']));
@@ -98,8 +112,11 @@ class ShiftsReleasedNotification extends Notification
             $mail->line(($weekdays->count() === 1 ? 'You stay the '.$weekdays[0].' regular.' : 'You stay the regular on your weekly shifts.').' This only changes these dates.');
         }
 
-        return $mail->line('If you can make any of them after all, you can take them back from your home page while they\'re still open.')
-            ->action('Open my shifts', url('/'));
+        if ($asked->isNotEmpty()) {
+            $mail->line('If you can make any of them after all, you can take them back from your home page while they\'re still open.');
+        }
+
+        return $mail->action('Open my shifts', url('/'));
     }
 
     /** "Casey was", "Casey and Jo were". */

@@ -111,7 +111,7 @@ class ReleaseController extends Controller
                 return $back('scope', $e->getMessage());
             }
 
-            return $this->toReleased($user, collect([$shift]), $isShadow ? [$shift->id] : []);
+            return $this->toReleased($user, collect([$shift]), $isShadow ? [$shift->id] : [], $releaseShifts->nobodyAsked);
         }
 
         if ($scope === 'range') {
@@ -150,7 +150,7 @@ class ReleaseController extends Controller
                 return $back('dates', $e->getMessage());
             }
 
-            return $this->toReleased($user, $released, $shadowIds);
+            return $this->toReleased($user, $released, $shadowIds, $releaseShifts->nobodyAsked);
         }
 
         if ($scope === 'slot') {
@@ -187,7 +187,7 @@ class ReleaseController extends Controller
                 return $back('starting', $e->getMessage());
             }
 
-            return $this->toReleased($user, $released, [], $noLonger, $regular->weeklySlot->weekdayName());
+            return $this->toReleased($user, $released, [], $releaseShifts->nobodyAsked, $noLonger, $regular->weeklySlot->weekdayName());
         }
 
         return $back('scope', self::PICK_SCOPE);
@@ -315,12 +315,13 @@ class ReleaseController extends Controller
     }
 
     /**
-     * Puts what was released in the session flash and goes to "You're off". The shadows named are the ones told their spot is on hold: on a regular place, when nobody but shadows is left on the shift, and only those who can be emailed.
+     * Puts what was released in the session flash and goes to "You're off". The shadows named are the ones told their spot is on hold: on a regular place, when nobody but shadows is left on the shift, and only those who can be emailed. `askedCount` counts the regular places someone was asked to cover; the others still had the people they need (`nobodyAsked` on their card).
      *
      * @param  Collection<int, Shift>  $released
      * @param  list<int>  $shadowIds
+     * @param  list<int>  $nobodyAsked  ReleaseShifts::$nobodyAsked after the release.
      */
-    private function toReleased(User $user, Collection $released, array $shadowIds, ?string $noLonger = null, ?string $slotWeekday = null): RedirectResponse
+    private function toReleased(User $user, Collection $released, array $shadowIds, array $nobodyAsked, ?string $noLonger = null, ?string $slotWeekday = null): RedirectResponse
     {
         $regularShifts = $released->reject(fn (Shift $shift) => in_array($shift->id, $shadowIds, true))->values();
         $told = [];
@@ -337,8 +338,9 @@ class ReleaseController extends Controller
         $weekdays = $noLonger === null ? $this->regularsOn($user, $regularShifts)->map(fn (SlotRegular $regular) => $regular->weeklySlot->weekdayName())->values() : collect();
 
         return redirect()->route('shifts.released')->with('released', [
-            'shifts' => $released->map(fn (Shift $shift) => self::card($shift) + ['shadowSpot' => in_array($shift->id, $shadowIds, true)])->values()->all(),
+            'shifts' => $released->map(fn (Shift $shift) => self::card($shift) + ['shadowSpot' => in_array($shift->id, $shadowIds, true), 'nobodyAsked' => in_array($shift->id, $nobodyAsked, true)])->values()->all(),
             'regularCount' => $regularShifts->count(),
+            'askedCount' => $regularShifts->reject(fn (Shift $shift) => in_array($shift->id, $nobodyAsked, true))->count(),
             'shadows' => array_values(array_unique($told)),
             'regularLine' => $noLonger ?? match ($weekdays->count()) {
                 0 => null,

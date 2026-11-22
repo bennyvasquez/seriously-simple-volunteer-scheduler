@@ -348,6 +348,20 @@ class VolunteerScreensTest extends TestCase
         $response->assertSeeInOrder(['role="status"', '<h1>You\'re off Thursday, October 22</h1>', 'We\'ve asked other volunteers to cover your Front desk shift. We\'ll email you when someone takes it.', 'Robin was going to shadow you. We\'ve told them their shadow spot is on hold until someone covers.', 'You stay the Thursday regular.', 'Changed your mind?', 'Your next shifts', 'Thursday, October 15', 'Back to home'], false);
     }
 
+    public function test_releasing_from_a_shift_that_still_has_its_people_says_nobody_was_asked(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->sam);
+        $this->on($shift, $this->robin);
+
+        $this->actingAs($this->sam)->post(route('shifts.release', $shift), ['scope' => 'one', 'note' => ''])->assertRedirect(route('shifts.released'));
+
+        $this->assertSame(0, CoverRequest::query()->count());
+        $response = $this->page($this->sam, route('shifts.released'));
+        $response->assertSeeInOrder(['<h1>You\'re off Thursday, October 22</h1>', 'Front desk still has the people it needs, so nobody else was asked.'], false);
+        $response->assertDontSee('We\'ve asked')->assertDontSee('Changed your mind?');
+    }
+
     public function test_the_released_page_without_a_release_goes_home(): void
     {
         $this->actingAs($this->sam)->get(route('shifts.released'))->assertRedirect(route('home'));

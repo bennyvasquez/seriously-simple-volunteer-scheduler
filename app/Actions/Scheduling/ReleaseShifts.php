@@ -27,15 +27,18 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * A volunteer says "Can't make it" (spec section 8.3): they release their place on one shift, or on every shift they're on in a range of dates. Each released regular place becomes a cover request, emailed to everyone who could take the shift (decision 4). Releasing one shift or a range never changes the person's weekly regular; giving up a weekly slot (decision 13) ends it through EndRegular::endOwn() and releases every future shift of it in the same transaction. When nobody but shadows is left on a shift, its shadows hear that their spot is on hold (decision 6). A shift that starts within CoverLadder::URGENT_HOURS and still has an open place is escalated in the same transaction, so leads and coordinators get the urgent email at once (instead of the cover request, for anyone who would get both) and the shadows get only "still nobody" (decision 10). A shadow who releases leaves the shadow spot with no cover request, and the coordinators are told (decision 14). Each person gets one email per action, listing every shift that concerns them. The refusals are written to be shown on screen. Volunteers reach this through ShiftPolicy::release(); the action itself checks the shift and the person's place on it again under the locks.
+ * A volunteer says "Can't make it" (spec section 8.3): they release their place on one shift, or on every shift they're on in a range of dates. Each released regular place that opens a place becomes a cover request, emailed to everyone who could take the shift (decision 4). A shift that still has the people it needs after the person comes off it gets no cover request and nobody is asked; the person's email says so, and `$nobodyAsked` lists those shifts for the screen. Releasing one shift or a range never changes the person's weekly regular; giving up a weekly slot (decision 13) ends it through EndRegular::endOwn() and releases every future shift of it in the same transaction. When nobody but shadows is left on a shift, its shadows hear that their spot is on hold (decision 6). A shift that starts within CoverLadder::URGENT_HOURS and still has an open place is escalated in the same transaction, so leads and coordinators get the urgent email at once (instead of the cover request, for anyone who would get both) and the shadows get only "still nobody" (decision 10). A shadow who releases leaves the shadow spot with no cover request, and the coordinators are told (decision 14). Each person gets one email per action, listing every shift that concerns them. The refusals are written to be shown on screen. Volunteers reach this through ShiftPolicy::release(); the action itself checks the shift and the person's place on it again under the locks.
  */
 class ReleaseShifts
 {
     public const NOTE_LIMIT = 500;
 
+    /** @var list<int> The shifts the last release took the person off without asking anybody, because they still had the people they need. */
+    public array $nobodyAsked = [];
+
     public function __construct(private RemoveFromShift $remover, private CoverLadder $ladder, private EndRegular $endRegular) {}
 
-    /** Releases the person's place on one shift. Returns the cover request, or null when they were a shadow (decision 14). */
+    /** Releases the person's place on one shift. Returns the cover request, or null when they were a shadow (decision 14) or the shift still has the people it needs (`$nobodyAsked` then lists it). */
     public function one(User $person, Shift $shift, ?string $note): ?CoverRequest
     {
         $note = self::cleanNote($note);
@@ -169,7 +172,7 @@ class ReleaseShifts
     }
 
     /**
-     * The shared step. Deletes the assignment through RemoveFromShift::removeLocked(), logged as assignment.removed about the person with `via` "release:{$via}". For a regular place it creates the cover request, logged as cover_request.created with the shift as the subject, about the person (so RemovePerson rewrites the ids in it), and the request's values, note included, in `changes`. Returns the request, or null for a shadow. It sends nothing and doesn't escalate; releaseAndCollectLocked() does both. The people asked are attached to the request as its `recipients` relation (not stored), so the caller emails exactly the people counted in notified_count. Everyone who could take the shift is asked, leads and coordinators included, since this step doesn't escalate. The caller holds the area and shift locks and the assignment's row lock.
+     * The shared step. Deletes the assignment through RemoveFromShift::removeLocked(), logged as assignment.removed about the person with `via` "release:{$via}". For a regular place that leaves the shift with an open place it creates the cover request, logged as cover_request.created with the shift as the subject, about the person (so RemovePerson rewrites the ids in it), and the request's values, note included, in `changes`. Returns the request, or null for a shadow or when the shift still has the people it needs, so no place opened. It sends nothing and doesn't escalate; releaseAndCollectLocked() does both. The people asked are attached to the request as its `recipients` relation (not stored), so the caller emails exactly the people counted in notified_count. Everyone who could take the shift is asked, leads and coordinators included, since this step doesn't escalate. The caller holds the area and shift locks and the assignment's row lock.
      */
     public function releaseLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): ?CoverRequest
     {
@@ -183,7 +186,8 @@ class ReleaseShifts
 
         $this->remover->removeLocked($person, $lockedShift, $assignment, ['via' => 'release:'.$via]);
 
-        if ($assignment->type === AssignmentType::Shadow) {
+        // A shadow doesn't hold a place, and a shift that had more people than it needs still has them all, so neither opens a place to cover.
+        if ($assignment->type === AssignmentType::Shadow || $lockedShift->openPlaces() === 0) {
             return null;
         }
 
@@ -229,12 +233,14 @@ class ReleaseShifts
     /**
      * Releases one place and works out who hears about it, without sending: the cover request's recipients, the shadows told their spot is on hold, and, when the shift escalates at once, the escalation's emails (which tell the shadows instead, when nobody but shadows is left). Every caller that releases places, giving up a weekly slot included, calls this inside its transaction for each place and passes the results to sendAfterCommit() once, so each person gets one email per action.
      *
-     * @return array{shift: Shift, request: ?CoverRequest, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}
+     * `nobodyAsked` is true for a regular place on a shift that still has the people it needs, where nobody is asked and nothing escalates.
+     *
+     * @return array{shift: Shift, request: ?CoverRequest, nobodyAsked: bool, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}
      */
     protected function releaseAndCollectLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): array
     {
         $request = $this->releaseLockedLeavingOut($person, $lockedShift, $assignment, $note, $via, true);
-        $released = ['shift' => $lockedShift, 'request' => $request, 'recipients' => collect(), 'sends' => [], 'shadowsTold' => []];
+        $released = ['shift' => $lockedShift, 'request' => $request, 'nobodyAsked' => $request === null && $assignment->type === AssignmentType::Regular, 'recipients' => collect(), 'sends' => [], 'shadowsTold' => []];
 
         if ($request === null) {
             return $released;
@@ -264,14 +270,16 @@ class ReleaseShifts
      *
      * When the person gave up their weekly slot, `$gaveUpSlot` holds the slot's weekday and the first date they're no longer the regular ("Thursday, October 29"): the cover requests use the "giving up their weekly slot" wording, and the person's email says they're no longer the regular, sent even when nothing was released.
      *
-     * @param  list<array{shift: Shift, request: ?CoverRequest, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}>  $released
+     * @param  list<array{shift: Shift, request: ?CoverRequest, nobodyAsked: bool, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}>  $released
      * @param  array{weekday: string, from: string}|null  $gaveUpSlot
      */
     protected function sendAfterCommit(User $person, array $released, ?string $note, ?array $gaveUpSlot = null): void
     {
         $releaser = $person->firstName();
-        $regularPlaces = array_values(array_filter($released, fn (array $place) => $place['request'] !== null));
-        $shadowShifts = collect($released)->filter(fn (array $place) => $place['request'] === null)->pluck('shift')->values();
+        $regularPlaces = array_values(array_filter($released, fn (array $place) => $place['request'] !== null || $place['nobodyAsked']));
+        $shadowShifts = collect($released)->filter(fn (array $place) => $place['request'] === null && ! $place['nobodyAsked'])->pluck('shift')->values();
+        $nobodyAsked = collect($regularPlaces)->filter(fn (array $place) => $place['nobodyAsked'])->map(fn (array $place) => $place['shift']->id)->values()->all();
+        $this->nobodyAsked = $nobodyAsked;
         $sends = [];
         $forRecipient = [];
 
@@ -290,6 +298,7 @@ class ReleaseShifts
                 $this->stillRegularOn($person, $regularShifts),
                 $shadowShifts->pluck('id')->all(),
                 $gaveUpSlot,
+                $nobodyAsked,
             )];
         }
 
