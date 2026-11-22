@@ -9,7 +9,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 
 /**
- * Tells a volunteer they're off the shifts they released (wireframe 41). One email per action, listing every shift for a range. Shadow spots the person left in the same action are listed too; leaving only a shadow spot sends no email, since the screen confirms it. It names the shadows who were told their spot is on hold, and says the person stays the regular when they still are for those dates.
+ * Tells a volunteer they're off the shifts they released (wireframe 41). One email per action, listing every shift for a range. Shadow spots the person left in the same action are listed too; leaving only a shadow spot sends no email, since the screen confirms it. It names the shadows who were told their spot is on hold, and says the person stays the regular when they still are for those dates. When they gave up their weekly slot (decision 13), it says they're no longer the regular from that date instead, and it's sent even when none of the slot's shifts from that date are on the calendar yet.
  */
 class ShiftsReleasedNotification extends Notification
 {
@@ -21,8 +21,9 @@ class ShiftsReleasedNotification extends Notification
      * @param  array<int, list<string>>  $shadowsTold  The first names of the shadows told, keyed by shift id.
      * @param  list<int>  $stillRegularOn  The ids of the shifts whose weekly slot the person stays the regular for.
      * @param  list<int>  $shadowSpots  The ids of the shifts where the person left a shadow spot.
+     * @param  array{weekday: string, from: string}|null  $gaveUpSlot  The weekday of the slot the person gave up and the first date they're no longer its regular ("Thursday, October 29").
      */
-    public function __construct(Collection $shifts, array $shadowsTold = [], array $stillRegularOn = [], array $shadowSpots = [])
+    public function __construct(Collection $shifts, array $shadowsTold = [], array $stillRegularOn = [], array $shadowSpots = [], public ?array $gaveUpSlot = null)
     {
         $this->shifts = $shifts->map(fn (Shift $shift) => [
             'area' => $shift->area->name,
@@ -43,6 +44,14 @@ class ShiftsReleasedNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)->greeting('Hi '.$notifiable->firstName().',');
+        $noLongerRegular = $this->gaveUpSlot === null ? null : 'You\'re no longer the '.$this->gaveUpSlot['weekday'].' regular from '.$this->gaveUpSlot['from'].'.';
+
+        if ($this->shifts === [] && $noLongerRegular !== null) {
+            return $mail->subject('You\'re no longer the '.$this->gaveUpSlot['weekday'].' regular')
+                ->line($noLongerRegular)
+                ->line('None of those dates are on the calendar yet, so nobody needed to be asked to cover them.')
+                ->action('Open my shifts', url('/'));
+        }
 
         if (count($this->shifts) === 1) {
             $shift = $this->shifts[0];
@@ -54,7 +63,9 @@ class ShiftsReleasedNotification extends Notification
                 $mail->line(self::names($shift['shadows']).' going to shadow you, so we\'ve told them too.');
             }
 
-            if ($shift['regular']) {
+            if ($noLongerRegular !== null) {
+                $mail->line($noLongerRegular);
+            } elseif ($shift['regular']) {
                 $mail->line('You stay the '.$shift['weekday'].' regular. This only changes '.$shift['date'].'.');
             }
 
@@ -81,7 +92,9 @@ class ShiftsReleasedNotification extends Notification
 
         $weekdays = collect($this->shifts)->where('regular', true)->pluck('weekday')->unique()->values();
 
-        if ($weekdays->isNotEmpty()) {
+        if ($noLongerRegular !== null) {
+            $mail->line($noLongerRegular);
+        } elseif ($weekdays->isNotEmpty()) {
             $mail->line(($weekdays->count() === 1 ? 'You stay the '.$weekdays[0].' regular.' : 'You stay the regular on your weekly shifts.').' This only changes these dates.');
         }
 

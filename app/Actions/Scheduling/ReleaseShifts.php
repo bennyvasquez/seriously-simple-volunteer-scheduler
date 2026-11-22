@@ -18,6 +18,7 @@ use App\Notifications\CoverRequestNotification;
 use App\Notifications\ShadowLeftNotification;
 use App\Notifications\ShadowSpotNotification;
 use App\Notifications\ShiftsReleasedNotification;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Notifications\Notification;
@@ -25,13 +26,13 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * A volunteer says "Can't make it" (spec section 8.3): they release their place on one shift, or on every shift they're on in a range of dates. Each released regular place becomes a cover request, emailed to everyone who could take the shift (decision 4). Releasing never changes the person's weekly regular. When nobody but shadows is left on a shift, its shadows hear that their spot is on hold (decision 6). A shift that starts within CoverLadder::URGENT_HOURS and still has an open place is escalated in the same transaction, so leads and coordinators get the urgent email at once (instead of the cover request, for anyone who would get both) and the shadows get only "still nobody" (decision 10). A shadow who releases leaves the shadow spot with no cover request, and the coordinators are told (decision 14). Each person gets one email per action, listing every shift that concerns them. The refusals are written to be shown on screen. Volunteers reach this through ShiftPolicy::release(); the action itself checks the shift and the person's place on it again under the locks.
+ * A volunteer says "Can't make it" (spec section 8.3): they release their place on one shift, or on every shift they're on in a range of dates. Each released regular place becomes a cover request, emailed to everyone who could take the shift (decision 4). Releasing one shift or a range never changes the person's weekly regular; giving up a weekly slot (decision 13) ends it through EndRegular::endOwn() and releases every future shift of it in the same transaction. When nobody but shadows is left on a shift, its shadows hear that their spot is on hold (decision 6). A shift that starts within CoverLadder::URGENT_HOURS and still has an open place is escalated in the same transaction, so leads and coordinators get the urgent email at once (instead of the cover request, for anyone who would get both) and the shadows get only "still nobody" (decision 10). A shadow who releases leaves the shadow spot with no cover request, and the coordinators are told (decision 14). Each person gets one email per action, listing every shift that concerns them. The refusals are written to be shown on screen. Volunteers reach this through ShiftPolicy::release(); the action itself checks the shift and the person's place on it again under the locks.
  */
 class ReleaseShifts
 {
     public const NOTE_LIMIT = 500;
 
-    public function __construct(private RemoveFromShift $remover, private CoverLadder $ladder) {}
+    public function __construct(private RemoveFromShift $remover, private CoverLadder $ladder, private EndRegular $endRegular) {}
 
     /** Releases the person's place on one shift. Returns the cover request, or null when they were a shadow (decision 14). */
     public function one(User $person, Shift $shift, ?string $note): ?CoverRequest
@@ -105,6 +106,47 @@ class ReleaseShifts
         });
 
         $this->sendAfterCommit($person, $released, $note);
+
+        return collect($released)->pluck('shift')->values();
+    }
+
+    /**
+     * What slot() would release: the future, uncancelled shifts of the regular's weekly slot from `$from` on (inside the regular's own dates) that the person is on as a regular, in time order, with their areas. Changes nothing.
+     *
+     * @return Collection<int, Shift>
+     */
+    public function slotPreview(User $person, SlotRegular $regular, string $from): Collection
+    {
+        if ($regular->user_id !== $person->id) {
+            throw new DomainException('That isn\'t your weekly slot.');
+        }
+
+        return Shift::query()
+            ->where('weekly_slot_id', $regular->weekly_slot_id)
+            ->where('local_date', '>=', CarbonImmutable::parse($from, 'UTC')->toDateString())
+            ->when($regular->ends_on !== null, fn (Builder $query) => $query->where('local_date', '<=', $regular->ends_on->toDateString()))
+            ->whereNull('cancelled_at')
+            ->where('starts_at', '>', now())
+            ->whereHas('assignments', fn ($query) => $query->where('user_id', $person->id)->where('type', AssignmentType::Regular))
+            ->with('area')->orderBy('starts_at')->orderBy('id')->get();
+    }
+
+    /**
+     * Gives up the person's weekly slot from `$from` on (decision 13): the regular ends the day before, through EndRegular::endOwn(), and each future shift of the slot they're on becomes a cover request in the same transaction. A shift that has started stays theirs. Volunteers get the cover request in its "giving up their weekly slot" wording listing the dates, a shift inside CoverLadder::URGENT_HOURS escalates at once, and the person gets one email saying they're no longer the regular from that date, even when no shifts of it are on the calendar yet.
+     *
+     * @return Collection<int, Shift> The shifts released, in time order.
+     */
+    public function slot(User $person, SlotRegular $regular, string $from, ?string $note): Collection
+    {
+        $note = self::cleanNote($note);
+        $from = CarbonImmutable::parse($from, 'UTC')->toDateString();
+        $released = [];
+
+        $this->endRegular->endOwn($person, $regular, CarbonImmutable::parse($from, 'UTC')->subDay()->toDateString(), function (Shift $lockedShift, Assignment $assignment) use ($person, $note, &$released) {
+            $released[] = $this->releaseAndCollectLocked($person, $lockedShift->loadMissing('area'), $assignment, $note, 'slot');
+        });
+
+        $this->sendAfterCommit($person, $released, $note, ['weekday' => $regular->weeklySlot->weekdayName(), 'from' => CarbonImmutable::parse($from, 'UTC')->format('l, F j')]);
 
         return collect($released)->pluck('shift')->values();
     }
@@ -203,9 +245,12 @@ class ReleaseShifts
     /**
      * Sends, after the response, one email per person for everything this action released: the releaser's "You're off" (when they left at least one regular place), one cover request per recipient listing the shifts they could take, the "on hold" and escalation emails merged so each person gets one of each kind listing every shift, and one "can't make their shadow shift" per coordinator, with the note.
      *
+     * When the person gave up their weekly slot, `$gaveUpSlot` holds the slot's weekday and the first date they're no longer the regular ("Thursday, October 29"): the cover requests use the "giving up their weekly slot" wording, and the person's email says they're no longer the regular, sent even when nothing was released.
+     *
      * @param  list<array{shift: Shift, request: ?CoverRequest, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}>  $released
+     * @param  array{weekday: string, from: string}|null  $gaveUpSlot
      */
-    protected function sendAfterCommit(User $person, array $released, ?string $note): void
+    protected function sendAfterCommit(User $person, array $released, ?string $note, ?array $gaveUpSlot = null): void
     {
         $releaser = $person->firstName();
         $regularPlaces = array_values(array_filter($released, fn (array $place) => $place['request'] !== null));
@@ -220,18 +265,19 @@ class ReleaseShifts
             }
         }
 
-        if ($regularPlaces !== []) {
+        if ($regularPlaces !== [] || $gaveUpSlot !== null) {
             $regularShifts = collect($regularPlaces)->pluck('shift');
             $sends[] = [$person, new ShiftsReleasedNotification(
                 collect($released)->pluck('shift'),
                 collect($regularPlaces)->mapWithKeys(fn (array $place) => [$place['shift']->id => $place['shadowsTold']])->all(),
                 $this->stillRegularOn($person, $regularShifts),
                 $shadowShifts->pluck('id')->all(),
+                $gaveUpSlot,
             )];
         }
 
         foreach ($forRecipient as [$recipient, $shifts]) {
-            $sends[] = [$recipient, new CoverRequestNotification($shifts, $releaser, $note)];
+            $sends[] = [$recipient, new CoverRequestNotification($shifts, $releaser, $note, gaveUpSlot: $gaveUpSlot !== null)];
         }
 
         foreach ($released as $place) {

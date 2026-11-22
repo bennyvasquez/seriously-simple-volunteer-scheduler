@@ -24,6 +24,7 @@ use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\CoverRequestNotification;
 use App\Notifications\CoverUrgentNotification;
+use App\Notifications\RegularEndedNotification;
 use App\Notifications\ShadowLeftNotification;
 use App\Notifications\ShadowSpotNotification;
 use App\Notifications\ShiftsReleasedNotification;
@@ -262,6 +263,215 @@ class ReleaseShiftsTest extends TestCase
         $this->assertFalse($shift->assignments()->exists());
         $this->assertTrue($slot->shifts()->where('local_date', '2026-10-29')->sole()->assignments()->where('user_id', $this->robin->id)->exists());
         Notification::assertSentTo($this->robin, ShiftsReleasedNotification::class, fn (ShiftsReleasedNotification $notification) => str_contains($this->text($notification->toMail($this->robin)), 'You stay the Thursday regular. This only changes Thursday, October 22.'));
+    }
+
+    /** Sam as the regular for Front desk on Thursdays, 6:30 to 9:30pm, from October 15, with the shifts generated through Tuesday, December 8. */
+    private function samsSlot(): SlotRegular
+    {
+        $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '18:30', 'end_time' => '21:30', 'people_needed' => 1]);
+        app(GenerateShifts::class)->handle(Organization::current());
+
+        return app(AddRegular::class)->handle(null, $slot, $this->sam, '2026-10-15');
+    }
+
+    /** @return list<string> */
+    private function samsDates(): array
+    {
+        return Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $this->sam->id))
+            ->orderBy('starts_at')->get()->map(fn (Shift $shift) => $shift->local_date->toDateString())->all();
+    }
+
+    public function test_giving_up_a_slot_ends_the_regular_and_releases_every_future_shift(): void
+    {
+        $regular = $this->samsSlot();
+        $released = $regular->weeklySlot->shifts()->where('local_date', '>=', '2026-10-29')->orderBy('starts_at')->pluck('id')->all();
+        $this->assertCount(6, $released);
+        Notification::fake();
+
+        $shifts = app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-29', 'Moving away.');
+
+        $this->assertSame($released, $shifts->pluck('id')->all());
+        $this->assertSame('2026-10-28', $regular->fresh()->ends_on->toDateString());
+        $this->assertSame(['2026-10-15', '2026-10-22'], $this->samsDates());
+
+        $requests = CoverRequest::query()->orderBy('id')->get();
+        $this->assertSame($released, $requests->pluck('shift_id')->all());
+        $this->assertTrue($requests->every(fn (CoverRequest $request) => $request->released_by === $this->sam->id && $request->note === 'Moving away.' && $request->notified_count === 3 && $request->escalated_at === null));
+
+        $ended = ChangeLogEntry::query()->about($this->sam)->ofAction('regular.ended')->sole();
+        $this->assertSame($this->sam->id, $ended->actor_id);
+        $this->assertSame($regular->id, $ended->subject_id);
+        $this->assertSame(['ends_on' => ['old' => null, 'new' => '2026-10-28']], $ended->changes);
+        $this->assertSame($released, $ended->details['removed_from_shift_ids']);
+        $this->assertSame([], $ended->details['past_shift_ids']);
+
+        $created = ChangeLogEntry::query()->ofAction('cover_request.created')->orderBy('id')->get();
+        $this->assertCount(6, $created);
+        $this->assertSame($released, $created->pluck('subject_id')->all());
+        $this->assertTrue($created->every(fn (ChangeLogEntry $entry) => $entry->actor_id === $this->sam->id && $entry->affected_user_id === $this->sam->id && $entry->changes['released_by'] === ['old' => null, 'new' => $this->sam->id]));
+
+        $removed = ChangeLogEntry::query()->ofAction('assignment.removed')->get();
+        $this->assertCount(6, $removed);
+        $this->assertTrue($removed->every(fn (ChangeLogEntry $entry) => $entry->details['via'] === 'release:slot' && $entry->actor_id === $this->sam->id && $entry->affected_user_id === $this->sam->id));
+
+        foreach ([$this->coordinator, $this->robin, $this->morgan] as $person) {
+            Notification::assertSentToTimes($person, CoverRequestNotification::class, 1);
+            Notification::assertSentTo($person, CoverRequestNotification::class, function (CoverRequestNotification $notification) use ($person) {
+                $mail = $notification->toMail($person);
+                $text = $this->text($mail);
+
+                return $notification->gaveUpSlot
+                    && $mail->subject === 'Can you cover Front desk on some Thursdays?'
+                    && str_contains($text, 'Sam is giving up their weekly Thursday Front desk slot. These dates need someone:')
+                    && str_contains($text, 'Front desk, Thursday, October 29, 6:30 to 9:30pm')
+                    && str_contains($text, 'Front desk, Thursday, December 3, 6:30 to 9:30pm')
+                    && ! str_contains($text, 'October 22')
+                    && str_contains($text, 'Note from Sam: Moving away.');
+            });
+        }
+
+        Notification::assertSentToTimes($this->sam, ShiftsReleasedNotification::class, 1);
+        Notification::assertSentTo($this->sam, ShiftsReleasedNotification::class, function (ShiftsReleasedNotification $notification) {
+            $mail = $notification->toMail($this->sam);
+            $text = $this->text($mail);
+
+            return $mail->subject === 'You\'re off 6 shifts'
+                && str_contains($text, 'Front desk, Thursday, October 29, 6:30 to 9:30pm')
+                && str_contains($text, 'You\'re no longer the Thursday regular from Thursday, October 29.')
+                && ! str_contains($text, 'You stay');
+        });
+        Notification::assertNotSentTo($this->sam, CoverRequestNotification::class);
+        Notification::assertNotSentTo($this->sam, RegularEndedNotification::class);
+    }
+
+    public function test_giving_up_a_slot_with_one_shift_left_reads_in_the_singular(): void
+    {
+        $regular = $this->samsSlot();
+        Notification::fake();
+
+        app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-12-03', null);
+
+        Notification::assertSentTo($this->sam, ShiftsReleasedNotification::class, function (ShiftsReleasedNotification $notification) {
+            $mail = $notification->toMail($this->sam);
+            $text = $this->text($mail);
+
+            return $mail->subject === 'You\'re off Thursday, December 3'
+                && str_contains($text, 'You\'re off your Front desk shift on Thursday, December 3, 6:30 to 9:30pm.')
+                && str_contains($text, 'You\'re no longer the Thursday regular from Thursday, December 3.')
+                && ! str_contains($text, 'You stay');
+        });
+        Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => $notification->toMail($this->morgan)->subject === 'Can you cover Front desk on Thursday, December 3?'
+            && str_contains($this->text($notification->toMail($this->morgan)), 'Sam is giving up their weekly Thursday Front desk slot. These dates need someone:'));
+    }
+
+    public function test_the_slot_preview_lists_the_future_shifts_and_changes_nothing(): void
+    {
+        $regular = $this->samsSlot();
+        $slot = $regular->weeklySlot;
+        $slot->shifts()->where('local_date', '2026-11-12')->update(['cancelled_at' => now(), 'cancel_reason' => 'Power outage']);
+        // Sam's shadow spot on a one-time shift isn't part of the slot.
+        $other = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-11-05', '10:00', '12:00', 1, 1, null);
+        $this->on($other, $this->sam, AssignmentType::Shadow);
+        $expected = $slot->shifts()->where('local_date', '>=', '2026-10-29')->where('local_date', '!=', '2026-11-12')->orderBy('starts_at')->pluck('id')->all();
+        $before = $this->samsDates();
+
+        $preview = app(ReleaseShifts::class)->slotPreview($this->sam, $regular, '2026-10-29');
+
+        $this->assertSame($expected, $preview->pluck('id')->all());
+        $this->assertSame('Front desk', $preview->first()->area->name);
+        $this->assertNull($regular->fresh()->ends_on);
+        $this->assertSame($before, $this->samsDates());
+        $this->assertSame(0, CoverRequest::query()->count());
+    }
+
+    public function test_giving_up_a_slot_with_a_shift_inside_24_hours_escalates_it(): void
+    {
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $regular = $this->samsSlot();
+        $tomorrow = $regular->weeklySlot->shifts()->where('local_date', '2026-10-15')->sole();
+        Notification::fake();
+        // Wednesday, 7pm: Thursday's shift starts in 23 and a half hours.
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 19:00', self::TIMEZONE));
+
+        $shifts = app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-15', null);
+
+        $this->assertCount(8, $shifts);
+        $this->assertSame([$tomorrow->id], CoverRequest::query()->whereNotNull('escalated_at')->pluck('shift_id')->all());
+        $this->assertSame(1, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
+
+        foreach ([$lead, $this->coordinator] as $person) {
+            Notification::assertSentToTimes($person, CoverUrgentNotification::class, 1);
+            Notification::assertSentTo($person, CoverUrgentNotification::class, fn (CoverUrgentNotification $notification) => count($notification->shifts) === 1);
+            Notification::assertSentToTimes($person, CoverRequestNotification::class, 1);
+            Notification::assertSentTo($person, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => count($notification->shifts) === 7
+                && ! in_array('Thursday, October 15', array_column($notification->shifts, 'date'), true));
+        }
+        Notification::assertSentToTimes($this->morgan, CoverRequestNotification::class, 1);
+        Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => count($notification->shifts) === 8 && $notification->gaveUpSlot);
+        Notification::assertSentToTimes($this->sam, ShiftsReleasedNotification::class, 1);
+    }
+
+    public function test_giving_up_from_today_leaves_a_started_shift_alone(): void
+    {
+        $regular = $this->samsSlot();
+        $today = $regular->weeklySlot->shifts()->where('local_date', '2026-10-15')->sole();
+        // Thursday, 7pm: today's shift started at 6:30.
+        $this->travelTo(CarbonImmutable::parse('2026-10-15 19:00', self::TIMEZONE));
+        Notification::fake();
+
+        $shifts = app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-15', null);
+
+        $this->assertCount(7, $shifts);
+        $this->assertNotContains($today->id, $shifts->pluck('id')->all());
+        $this->assertSame('2026-10-14', $regular->fresh()->ends_on->toDateString());
+        $this->assertSame(['2026-10-15'], $this->samsDates());
+        $this->assertFalse(CoverRequest::query()->where('shift_id', $today->id)->exists());
+        $this->assertNotContains($today->id, ChangeLogEntry::query()->ofAction('regular.ended')->sole()->details['removed_from_shift_ids']);
+        Notification::assertSentTo($this->sam, ShiftsReleasedNotification::class, fn (ShiftsReleasedNotification $notification) => count($notification->shifts) === 7);
+    }
+
+    public function test_giving_up_a_slot_with_no_shifts_on_the_calendar_from_that_date(): void
+    {
+        $regular = $this->samsSlot();
+        Notification::fake();
+
+        // Shifts are on the calendar through Tuesday, December 8.
+        $shifts = app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-12-10', null);
+
+        $this->assertCount(0, $shifts);
+        $this->assertSame('2026-12-09', $regular->fresh()->ends_on->toDateString());
+        $this->assertSame(1, ChangeLogEntry::query()->about($this->sam)->ofAction('regular.ended')->count());
+        $this->assertSame(0, CoverRequest::query()->count());
+        Notification::assertNotSentTo([$this->coordinator, $this->robin, $this->morgan], CoverRequestNotification::class);
+        Notification::assertNotSentTo($this->sam, RegularEndedNotification::class);
+        Notification::assertSentToTimes($this->sam, ShiftsReleasedNotification::class, 1);
+        Notification::assertSentTo($this->sam, ShiftsReleasedNotification::class, function (ShiftsReleasedNotification $notification) {
+            $mail = $notification->toMail($this->sam);
+            $text = $this->text($mail);
+
+            return $mail->subject === 'You\'re no longer the Thursday regular'
+                && str_contains($text, 'You\'re no longer the Thursday regular from Thursday, December 10.')
+                && ! str_contains($text, 'You\'re off');
+        });
+    }
+
+    public function test_giving_up_a_slot_refuses_someone_elses_slot_and_a_past_date(): void
+    {
+        $regular = $this->samsSlot();
+        Notification::fake();
+
+        foreach ([[$this->robin, '2026-10-29', 'That isn\'t your weekly slot.'], [$this->sam, '2026-10-13', 'Pick a date from today on.']] as [$person, $from, $message]) {
+            try {
+                app(ReleaseShifts::class)->slot($person, $regular, $from, null);
+                $this->fail('Expected a refusal for '.$from);
+            } catch (DomainException $exception) {
+                $this->assertSame($message, $exception->getMessage());
+            }
+        }
+
+        $this->assertNull($regular->fresh()->ends_on);
+        $this->assertSame(0, CoverRequest::query()->count());
+        Notification::assertNothingSent();
     }
 
     public function test_shadows_are_told_only_when_nobody_but_shadows_is_left(): void
