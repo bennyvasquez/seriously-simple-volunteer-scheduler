@@ -89,11 +89,7 @@ final class CoverLadder
 
             $sends = $this->escalateLocked($shift, $unescalated);
 
-            return ['escalated', function () use ($sends) {
-                foreach ($sends as [$person, $notification]) {
-                    $person->notify($notification);
-                }
-            }];
+            return ['escalated', CoverFill::sender($sends)];
         }
 
         // Once per shift: a shift whose request already went out again never gets a second "Still open", and a request made inside the window doesn't count, since its first email went out inside it (decision 11).
@@ -213,10 +209,6 @@ final class CoverLadder
         $recipients = CoverEligibility::recipients($lockedShift);
         $notification = new CoverRequestNotification(collect([$lockedShift]), $oldest->releasedBy->firstName(), $oldest->note, stillOpen: true);
 
-        return function () use ($recipients, $notification) {
-            foreach ($recipients as $person) {
-                $person->notify($notification);
-            }
-        };
+        return CoverFill::sender($recipients->map(fn (User $person) => [$person, $notification])->values()->all());
     }
 }

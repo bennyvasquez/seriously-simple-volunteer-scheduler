@@ -3,6 +3,7 @@
 namespace App\Actions\Scheduling;
 
 use App\Cover\CoverEligibility;
+use App\Cover\CoverFill;
 use App\Cover\CoverLadder;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
@@ -322,11 +323,7 @@ class ReleaseShifts
 
         $sends = self::merged($sends);
 
-        defer(function () use ($sends) {
-            foreach ($sends as [$recipient, $notification]) {
-                $recipient->notify($notification);
-            }
-        });
+        defer(CoverFill::sender($sends));
     }
 
     /**

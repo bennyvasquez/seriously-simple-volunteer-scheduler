@@ -190,8 +190,9 @@ class TakeShift
             $fullDates,
         );
 
+        // CoverFill::sendEach() reports a failed email and carries on, so the person's own email failing doesn't stop the others.
         defer(function () use ($person, $notification, $others) {
-            $person->notify($notification);
+            CoverFill::sendEach([[$person, $notification]]);
             $others();
         });
     }

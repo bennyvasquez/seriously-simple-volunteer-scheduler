@@ -16,6 +16,7 @@ use App\Notifications\ShiftTakenLeadNotification;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Notifications\Notification;
+use Throwable;
 
 /**
  * Filling a cover request when someone takes a released place, shared by TakeShift and PutOnShift so a coordinator filling a released shift stops the ladder and tells the releaser too. A coordinator's change that puts regulars on shifts (AddRegular, RestoreShift bringing a shift back, UpdateWeeklySlot bringing a date back) fills them through fillForRegularsLocked(). With several open requests on a shift, the oldest is filled first (decision 9), so the ladder's next run names the right releaser.
@@ -163,17 +164,29 @@ final class CoverFill
     }
 
     /**
-     * A closure that sends each email, for after the commit.
+     * A closure that sends each email through sendEach(), for after the commit.
      *
      * @param  list<array{0: User, 1: Notification}>  $sends
      */
     public static function sender(array $sends): Closure
     {
-        return function () use ($sends) {
-            foreach ($sends as [$recipient, $notification]) {
+        return fn () => self::sendEach($sends);
+    }
+
+    /**
+     * Sends each email in turn. One that fails (a bad address, the mail server refusing it) is reported and doesn't stop the ones after it. Every cover email goes through here: releasing, taking, filling and the ladder.
+     *
+     * @param  iterable<array{0: User, 1: Notification}>  $sends
+     */
+    public static function sendEach(iterable $sends): void
+    {
+        foreach ($sends as [$recipient, $notification]) {
+            try {
                 $recipient->notify($notification);
+            } catch (Throwable $exception) {
+                report($exception);
             }
-        };
+        }
     }
 
     /** @return list<User> The shift's shadows, in the order they were put on. */

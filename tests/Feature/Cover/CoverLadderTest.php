@@ -25,12 +25,13 @@ use App\Notifications\ShadowSpotNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Tests\Concerns\FailsTheFirstEmail;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
 class CoverLadderTest extends TestCase
 {
-    use InteractsWithTwoFactor, RefreshDatabase;
+    use FailsTheFirstEmail, InteractsWithTwoFactor, RefreshDatabase;
 
     private const TIMEZONE = 'America/Detroit';
 
@@ -124,6 +125,27 @@ class CoverLadderTest extends TestCase
         $open = app(HomeController::class)->openShifts($jo);
 
         $this->assertSame(['Robin'], $open->firstWhere('id', $shift->id)->cover_names);
+    }
+
+    public function test_one_failed_email_doesnt_stop_the_others_on_the_ladder(): void
+    {
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $shift = $this->released();
+        $this->at('2026-10-19 18:30');
+        $sent = $this->failTheFirstEmail();
+
+        // "Still open" goes to the three people who could take it; the first fails and the other two still get theirs.
+        $this->assertSame(['resent' => 1, 'escalated' => 0], app(CoverLadder::class)->run());
+        $this->assertTheFailureWasReported();
+        $this->assertCount(2, array_filter($sent->getArrayCopy(), fn (array $email) => $email[1] === CoverRequestNotification::class));
+
+        // The urgent email goes to the lead first, then the coordinator. Fail the lead's this time.
+        $this->at('2026-10-21 18:30');
+        $sent = $this->failTheFirstEmail();
+
+        $this->assertSame(['resent' => 0, 'escalated' => 1], app(CoverLadder::class)->run());
+        $this->assertNotContains([$lead->id, CoverUrgentNotification::class], $sent->getArrayCopy());
+        $this->assertContains([$this->coordinator->id, CoverUrgentNotification::class], $sent->getArrayCopy());
     }
 
     public function test_nothing_happens_before_72_hours(): void

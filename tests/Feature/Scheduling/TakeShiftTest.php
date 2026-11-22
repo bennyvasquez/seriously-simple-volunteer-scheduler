@@ -38,12 +38,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
+use Tests\Concerns\FailsTheFirstEmail;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
 class TakeShiftTest extends TestCase
 {
-    use InteractsWithTwoFactor, RefreshDatabase;
+    use FailsTheFirstEmail, InteractsWithTwoFactor, RefreshDatabase;
 
     private const TIMEZONE = 'America/Detroit';
 
@@ -212,6 +213,20 @@ class TakeShiftTest extends TestCase
 
         Notification::assertNothingSentTo($this->coordinator);
         Notification::assertNothingSentTo($this->sam);
+    }
+
+    public function test_one_failed_email_doesnt_stop_the_others_after_a_take(): void
+    {
+        $shift = $this->released();
+        $sent = $this->failTheFirstEmail();
+
+        // The taker's own email goes first and fails.
+        app(TakeShift::class)->handle($this->jordan, $shift, TakeHow::JustThisDate);
+
+        $this->assertTheFailureWasReported();
+        $this->assertNotContains([$this->jordan->id, ShiftTakenNotification::class], $sent->getArrayCopy());
+        $this->assertContains([$this->robin->id, ShiftCoveredNotification::class], $sent->getArrayCopy());
+        $this->assertContains([$this->lead->id, ShiftTakenLeadNotification::class], $sent->getArrayCopy());
     }
 
     public function test_two_people_taking_the_last_place_at_once_only_one_gets_it(): void

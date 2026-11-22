@@ -39,12 +39,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Tests\Concerns\FailsTheFirstEmail;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
 class ReleaseShiftsTest extends TestCase
 {
-    use InteractsWithTwoFactor, RefreshDatabase;
+    use FailsTheFirstEmail, InteractsWithTwoFactor, RefreshDatabase;
 
     private const TIMEZONE = 'America/Detroit';
 
@@ -849,6 +850,21 @@ class ReleaseShiftsTest extends TestCase
         $entry = ChangeLogEntry::query()->ofAction('cover_request.filled')->where('subject_id', $shift->id)->sole();
         $this->assertSame($this->robin->id, $entry->affected_user_id);
         Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->dates === ['Thursday, October 22'] && $notification->takerFirstName === 'Robin');
+    }
+
+    public function test_one_failed_email_doesnt_stop_the_others_after_a_release(): void
+    {
+        $shift = $this->robinOn('2026-10-22');
+        $sent = $this->failTheFirstEmail();
+
+        // Robin's own email goes first and fails.
+        app(ReleaseShifts::class)->one($this->robin, $shift, null);
+
+        $this->assertTheFailureWasReported();
+        $this->assertNotContains([$this->robin->id, ShiftsReleasedNotification::class], $sent->getArrayCopy());
+        foreach ([$this->coordinator, $this->morgan, $this->sam] as $person) {
+            $this->assertContains([$person->id, CoverRequestNotification::class], $sent->getArrayCopy());
+        }
     }
 
     public function test_the_releaser_email_lists_shadow_spots_left_in_the_same_range(): void
