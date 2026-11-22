@@ -72,6 +72,19 @@ class CoverEmailsTest extends TestCase
         $this->assertStringNotContainsString('Note from', $this->text($mail));
     }
 
+    public function test_the_note_shows_as_plain_text_even_with_markdown_or_links_in_it(): void
+    {
+        $note = "Call [me](https://evil.example.org) *first*\n# not a heading <b>bold</b>";
+        $mail = (new CoverRequestNotification(collect([$this->shift('2026-10-22')]), 'Robin', $note))->toMail($this->morgan);
+        $html = (string) $mail->render();
+
+        $this->assertStringNotContainsString('href="https://evil.example.org"', $html);
+        $this->assertStringNotContainsString('<em>', $html);
+        $this->assertStringNotContainsString('<h1>not a heading', $html);
+        $this->assertStringNotContainsString('<b>bold</b>', $html);
+        $this->assertStringContainsString('Note from Robin: Call [me](https://evil.example.org) *first* # not a heading &lt;b&gt;bold&lt;/b&gt;', $html);
+    }
+
     public function test_a_cover_request_for_several_shifts_lists_each_with_its_own_link(): void
     {
         $first = $this->shift('2026-10-22');

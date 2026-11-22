@@ -66,7 +66,8 @@ final class Describe
             'shift.cancelled' => 'Cancelled '.self::shiftWords($entry->subject, true),
             'shift.restored' => 'Brought back '.self::shiftWords($entry->subject, true),
             'assignment.added' => 'Put '.$person.' on '.self::shiftWords($entry->subject, true),
-            'assignment.removed' => 'Removed '.$person.' from '.self::shiftWords($entry->subject, true),
+            'assignment.removed' => self::assignmentRemoved($entry, $details, $self ? 'their' : $possessive, $person),
+            'cover_request.created' => 'Cover request sent for '.self::shiftDay($entry->subject),
             'cover_request.resent' => 'Cover request sent again for '.self::shiftDay($entry->subject),
             'cover_request.escalated' => ucfirst(self::shiftDay($entry->subject)).' marked urgent',
             'closure.created' => self::closureWords($entry->subject),
@@ -210,6 +211,18 @@ final class Describe
         }
 
         return ($the ? 'the ' : 'a ').($shift->area?->name ?? 'area').' shift on '.$shift->whenText();
+    }
+
+    /** "Removed Robin from the ...", or, when the person released it themselves, "Released their place on the ..." or "Gave up their shadow spot on the ...". */
+    private static function assignmentRemoved(ChangeLogEntry $entry, array $details, string $whose, string $person): string
+    {
+        $shift = self::shiftWords($entry->subject, true);
+
+        if (! str_starts_with($details['via'] ?? '', 'release:')) {
+            return 'Removed '.$person.' from '.$shift;
+        }
+
+        return ($details['type'] ?? null) === 'shadow' ? 'Gave up '.$whose.' shadow spot on '.$shift : 'Released '.$whose.' place on '.$shift;
     }
 
     /** "Front desk, Thursday, October 22", without the time. */
