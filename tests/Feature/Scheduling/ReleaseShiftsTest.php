@@ -867,6 +867,23 @@ class ReleaseShiftsTest extends TestCase
         }
     }
 
+    public function test_a_lead_releasing_inside_24_hours_doesnt_get_the_urgent_email_about_it(): void
+    {
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-15', '18:30', '21:30', 1, 1, null);
+        $this->on($shift, $lead);
+        Notification::fake();
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 19:00', self::TIMEZONE));
+
+        $request = app(ReleaseShifts::class)->one($lead, $shift, null);
+
+        $this->assertNotNull($request->fresh()->escalated_at);
+        Notification::assertNotSentTo($lead, CoverUrgentNotification::class);
+        Notification::assertNotSentTo($lead, CoverRequestNotification::class);
+        Notification::assertSentToTimes($lead, ShiftsReleasedNotification::class, 1);
+        Notification::assertSentToTimes($this->coordinator, CoverUrgentNotification::class, 1);
+    }
+
     public function test_the_releaser_email_lists_shadow_spots_left_in_the_same_range(): void
     {
         $this->robinOn('2026-10-22');
