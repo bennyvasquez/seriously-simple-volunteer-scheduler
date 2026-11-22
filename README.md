@@ -6,13 +6,13 @@ Volunteers see their shifts, take open ones, and release the ones they can't mak
 
 ## Status
 
-The foundation and scheduling core are built (development environment, Laravel 13 skeleton, shift generation) and the accounts and login backend (roles, invitations, email-link and password login, two-factor), with placeholder screens. To run it locally, see [DEVELOPMENT.md](DEVELOPMENT.md). The spec is in [docs/spec.md](docs/spec.md). Why it exists and what else we considered: [docs/background.md](docs/background.md).
+Built so far: the foundation and shift generation, accounts and sign-in with their screens (roles, invitations, email-link and password login, two-factor), the coordinator calendar, the people pages and change log, and the volunteer screens (Home, releasing a shift, taking one, and the Emails setting). To run it locally, see [DEVELOPMENT.md](DEVELOPMENT.md). The spec is in [docs/spec.md](docs/spec.md). Why it exists and what else we considered: [docs/background.md](docs/background.md).
 
 ## What it does
 
 - Invite-only accounts, with roles for coordinators, area leads, event organizers, and volunteers.
 - Weekly standing shifts (every week or every other week) and one-time shifts, side by side.
-- "I can't make it" in one step, with an automatic cover request and a claim link.
+- "I can't make it" in one step, with an automatic cover request email and a "Take this shift" link (taking it needs a login).
 - Escalation when a shift is still open close to its start time.
 - Shadow shifts for new volunteers, and a "cleared for regular shifts" sign-off.
 - Notifications by email, chat webhook, and text message, each person choosing their own.
