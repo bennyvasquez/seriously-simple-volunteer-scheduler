@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * The escalation ladder for cover requests (spec section 8.3), with the default timings. A shift still open RESEND_HOURS before it starts gets its cover request sent again, once per shift, counting only requests made before that window (decision 11). A shift still open URGENT_HOURS before it starts is escalated, once: the area's active leads and everyone with the coordinator role get the urgent email (decision 12), and when nobody but shadows is left on it, the shadows are told not to come in if nobody takes it (decision 6). Cancelled shifts are skipped and picked up again if they're brought back. run() is the scheduled step; escalateLocked() is shared with releasing a shift inside URGENT_HOURS.
+ * The escalation ladder for cover requests (spec section 8.3), with the default timings. A shift still open RESEND_HOURS before it starts gets its cover request sent again, once per shift, counting only requests made before that window (decision 11). A shift still open URGENT_HOURS before it starts is escalated, once: the area's active leads and everyone with the coordinator role get the urgent email (decision 12), and when nobody but shadows is left on it, the shadows are told not to come in if nobody takes it (decision 6). Cancelled shifts are skipped and picked up again if they're brought back. Only a shift's oldest openPlaces() open requests count (openRequestsLocked()), so a request left open by a path that put someone on the shift without filling it is never sent again or escalated. run() is the scheduled step; escalateLocked() is shared with releasing a shift inside URGENT_HOURS.
  */
 final class CoverLadder
 {
@@ -74,7 +74,7 @@ final class CoverLadder
             return [null, null];
         }
 
-        $requests = CoverRequest::query()->with('releasedBy')->open()->where('shift_id', $shift->id)->orderBy('created_at')->orderBy('id')->lockForUpdate()->get();
+        $requests = self::openRequestsLocked($shift);
 
         if ($requests->isEmpty()) {
             return [null, null];
@@ -109,6 +109,18 @@ final class CoverLadder
         }
 
         return ['resent', $this->resendLocked($shift, $releasedEarlyEnough->first(), $releasedEarlyEnough)];
+    }
+
+    /**
+     * The shift's open cover requests that stand for one of its open places: the oldest openPlaces() of them, oldest first, with their releasers, locked. Every place a request stood for should have filled it, so any beyond that are left alone rather than sent again or escalated. The caller holds the shift lock.
+     *
+     * @return Collection<int, CoverRequest>
+     */
+    public static function openRequestsLocked(Shift $lockedShift): Collection
+    {
+        $requests = CoverRequest::query()->with('releasedBy')->open()->where('shift_id', $lockedShift->id)->orderBy('created_at')->orderBy('id')->lockForUpdate()->get();
+
+        return $requests->take($lockedShift->openPlaces())->values();
     }
 
     /**

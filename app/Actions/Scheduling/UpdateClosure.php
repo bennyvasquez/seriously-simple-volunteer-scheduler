@@ -2,6 +2,7 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Cover\CoverFill;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
@@ -14,6 +15,7 @@ use App\Notifications\ShiftCancelledNotification;
 use App\Notifications\ShiftRestoredNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -21,7 +23,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Changes a closure's days or reason (spec section 8.5), with the same checks and messages as adding one. A closure that has started keeps its first day, and its last day can move only to yesterday or later; ending it yesterday reopens today. A closure that ended before yesterday keeps its days. Days that have passed are never changed: to fix them, remove the closure.
  *
- * In one transaction, locking the area, the closure, the area's weekly slots and their regulars (a shift that comes back catches up with its slot, see RestoreShift::restoreLocked()), and then every shift the change can touch (by start, then id): days it no longer covers get their shifts back (see releaseLocked()), newly covered days have their shifts cancelled (CreateClosure::cancelCovered()), and a new reason is copied onto the shifts it cancelled, without email. Shifts that have started are never changed. After the transaction commits, each of the area's weekly slots is generated again, so days that reopened get the shifts they never had; generation locks the slot and its regulars, which can't come after the shift locks held inside. After the response, each person gets at most one email: the shifts cancelled, the shifts back on, or both.
+ * In one transaction, locking the area, the closure, the area's weekly slots and their regulars (a shift that comes back catches up with its slot, see RestoreShift::restoreLocked()), and then every shift the change can touch (by start, then id): days it no longer covers get their shifts back (see releaseLocked()), newly covered days have their shifts cancelled (CreateClosure::cancelCovered()), and a new reason is copied onto the shifts it cancelled, without email. Shifts that have started are never changed. After the transaction commits, each of the area's weekly slots is generated again, so days that reopened get the shifts they never had; generation locks the slot and its regulars, which can't come after the shift locks held inside. After the response, each person gets at most one email: the shifts cancelled, the shifts back on, or both. A regular who comes back onto a released shift fills its cover request, and the releaser hears who is covering.
  */
 class UpdateClosure
 {
@@ -114,7 +116,7 @@ class UpdateClosure
             }
 
             if ($changes === []) {
-                return [$locked->setRelation('area', $area), [], ['restoredByPerson' => [], 'restored' => [], 'removed' => collect()], false];
+                return [$locked->setRelation('area', $area), [], ['restoredByPerson' => [], 'restored' => [], 'removed' => collect(), 'covered' => []], false];
             }
 
             $locked->save();
@@ -184,6 +186,7 @@ class UpdateClosure
         $this->outcome['restored'] = collect($released['restored']);
         $this->outcome['removed'] = $released['removed'];
         $this->outcome['emailed'] = self::sendEmails($cancelledByPerson, $released['restoredByPerson'], $saved->reason);
+        CoverFill::sendAfterCommit($released['covered']);
 
         return $saved;
     }
@@ -226,13 +229,15 @@ class UpdateClosure
      * Releases the closure's cancelled shifts that haven't started, for days it no longer covers: each is handed to another closure of the area that covers its day (its id and reason, logged shift.updated), left cancelled with SLOT_CHANGED when its weekly slot no longer runs that day (logged shift.updated, nobody emailed), or brought back with RestoreShift::restoreLocked(). The caller holds the area, closure and shift locks and sends the email. RemoveClosure uses this too.
      *
      * @param  Collection<int, Shift>  $lockedShifts
-     * @return array{restoredByPerson: array<int, array{person: User, shifts: list<Shift>}>, restored: list<Shift>, removed: Collection<int, User>}
+     *                                                `covered` holds the emails for any cover requests the shifts' returning regulars filled (RestoreShift::restoreLocked()), for the caller to send after the commit with CoverFill::sendAfterCommit().
+     * @return array{restoredByPerson: array<int, array{person: User, shifts: list<Shift>}>, restored: list<Shift>, removed: Collection<int, User>, covered: list<array{0: User, 1: Notification}>}
      */
     public function releaseLocked(User $actor, AreaClosure $closure, Collection $lockedShifts, string $via): array
     {
         $restoredByPerson = [];
         $restored = [];
         $removed = collect();
+        $covered = [];
 
         foreach ($lockedShifts as $shift) {
             $fate = self::fate($shift, $closure);
@@ -242,6 +247,7 @@ class UpdateClosure
                 $shift->setRelation('area', $closure->area);
                 $restored[] = $shift;
                 $removed = $removed->merge($result['removed']);
+                array_push($covered, ...$result['covered']);
 
                 foreach ($result['emailed'] as $person) {
                     $restoredByPerson[$person->id] ??= ['person' => $person, 'shifts' => []];
@@ -259,7 +265,7 @@ class UpdateClosure
             ChangeLogEntry::record($actor, 'shift.updated', $shift, ['area_id' => $shift->area_id, 'via' => $via, 'area_closure_id' => $closure->id], $changes);
         }
 
-        return ['restoredByPerson' => $restoredByPerson, 'restored' => $restored, 'removed' => $removed->unique('id')->values()];
+        return ['restoredByPerson' => $restoredByPerson, 'restored' => $restored, 'removed' => $removed->unique('id')->values(), 'covered' => $covered];
     }
 
     /** Generates the area's weekly slots again after a closure stops covering days, so the days that reopened get their shifts. Runs after the closure's transaction commits. Logs what it made as shifts.generated, with the closure change in `via`. */

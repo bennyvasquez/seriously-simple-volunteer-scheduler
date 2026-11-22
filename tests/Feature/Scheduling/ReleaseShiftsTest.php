@@ -8,6 +8,8 @@ use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\ReleaseShifts;
+use App\Actions\Scheduling\RestoreShift;
+use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\ChangeLog\Describe;
 use App\Cover\CoverLadder;
 use App\Enums\AssignmentType;
@@ -24,10 +26,13 @@ use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\CoverRequestNotification;
 use App\Notifications\CoverUrgentNotification;
+use App\Notifications\MadeRegularNotification;
 use App\Notifications\RegularEndedNotification;
 use App\Notifications\ShadowLeftNotification;
 use App\Notifications\ShadowSpotNotification;
+use App\Notifications\ShiftCoveredNotification;
 use App\Notifications\ShiftsReleasedNotification;
+use App\Notifications\ShiftTakenLeadNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -752,6 +757,98 @@ class ReleaseShiftsTest extends TestCase
             return str_contains($text, 'Front desk still has the people it needs on Thursday, October 22, so nobody else was asked.')
                 && str_contains($text, 'We\'ve asked other volunteers to cover the rest, and we\'ll email you when someone does.');
         });
+    }
+
+    public function test_a_coordinator_adding_a_regular_fills_the_slots_open_requests(): void
+    {
+        $regular = $this->samsSlot();
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-29', null);
+        $requests = CoverRequest::query()->orderBy('id')->get();
+        $this->assertCount(6, $requests);
+        Notification::fake();
+
+        $added = app(AddRegular::class)->handle($this->coordinator, $regular->weeklySlot, $this->morgan, '2026-10-29');
+
+        $this->assertSame(6, $added->getAttribute('added_to_shifts'));
+        foreach ($requests as $request) {
+            $request->refresh();
+            $this->assertSame($this->morgan->id, $request->filled_by);
+            $this->assertNotNull($request->filled_at);
+        }
+
+        $entries = ChangeLogEntry::query()->ofAction('cover_request.filled')->orderBy('id')->get();
+        $this->assertCount(6, $entries);
+        foreach ($entries as $entry) {
+            $this->assertSame($this->coordinator->id, $entry->actor_id);
+            $this->assertSame($this->morgan->id, $entry->affected_user_id);
+            $this->assertSame(['filled_at', 'filled_by'], collect(array_keys($entry->changes))->sort()->values()->all());
+            $this->assertSame($this->morgan->id, $entry->changes['filled_by']['new']);
+        }
+
+        // The releaser gets one email listing every date; the leads aren't told, since a coordinator did it. The new regular gets the usual email.
+        Notification::assertSentToTimes($this->sam, ShiftCoveredNotification::class, 1);
+        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => count($notification->dates) === 6 && $notification->takerFirstName === 'Morgan');
+        Notification::assertNotSentTo($lead, ShiftTakenLeadNotification::class);
+        Notification::assertSentToTimes($this->morgan, MadeRegularNotification::class, 1);
+
+        // The ladder has nothing left to send for those dates.
+        $this->travelTo(CarbonImmutable::parse('2026-10-28 19:00', self::TIMEZONE));
+        $this->assertSame(['resent' => 0, 'escalated' => 0], app(CoverLadder::class)->run());
+    }
+
+    public function test_bringing_a_shift_back_with_its_regulars_fills_its_request(): void
+    {
+        $regular = $this->samsSlot();
+        app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-22', null);
+        $shift = Shift::query()->where('weekly_slot_id', $regular->weekly_slot_id)->where('local_date', '2026-10-22')->sole();
+        $request = CoverRequest::query()->where('shift_id', $shift->id)->sole();
+        app(CancelShift::class)->handle($this->coordinator, $shift, 'Snow day');
+        app(AddRegular::class)->handle($this->coordinator, $regular->weeklySlot, $this->morgan, '2026-10-22');
+        $this->assertNull($request->fresh()->filled_at);
+        Notification::fake();
+
+        app(RestoreShift::class)->handle($this->coordinator, $shift->fresh());
+
+        $this->assertTrue($shift->assignments()->where('user_id', $this->morgan->id)->exists());
+        $request->refresh();
+        $this->assertSame($this->morgan->id, $request->filled_by);
+        $entry = ChangeLogEntry::query()->ofAction('cover_request.filled')->where('subject_id', $shift->id)->sole();
+        $this->assertSame($this->coordinator->id, $entry->actor_id);
+        $this->assertSame($this->morgan->id, $entry->affected_user_id);
+        $this->assertSame(['filled_at', 'filled_by'], collect(array_keys($entry->changes))->sort()->values()->all());
+        Notification::assertSentToTimes($this->sam, ShiftCoveredNotification::class, 1);
+        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->dates === ['Thursday, October 22']);
+    }
+
+    public function test_a_slot_change_bringing_a_date_back_fills_its_request(): void
+    {
+        $regular = $this->samsSlot();
+        $slot = $regular->weeklySlot;
+        app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-22', null);
+        $shift = Shift::query()->where('weekly_slot_id', $slot->id)->where('local_date', '2026-10-22')->sole();
+        $request = CoverRequest::query()->where('shift_id', $shift->id)->sole();
+        $attributes = fn (WeeklySlot $slot) => [
+            'weekday' => $slot->weekday, 'start_time' => substr($slot->start_time, 0, 5), 'end_time' => substr($slot->end_time, 0, 5),
+            'people_needed' => $slot->people_needed, 'shadow_spots' => $slot->shadow_spots, 'frequency' => $slot->frequency->value,
+            'valid_from' => $slot->valid_from->toDateString(), 'valid_until' => $slot->valid_until?->toDateString(),
+            'title' => $slot->title, 'is_rotation' => $slot->is_rotation,
+        ];
+
+        // The slot stops running before October 22, then runs again, bringing that date back with the regulars working it.
+        app(UpdateWeeklySlot::class)->handle($this->coordinator, $slot, ['valid_until' => '2026-10-21'] + $attributes($slot));
+        $this->assertNotNull($shift->fresh()->cancelled_at);
+        app(AddRegular::class)->handle($this->coordinator, $slot->fresh(), $this->robin, '2026-10-22', '2026-10-22');
+        Notification::fake();
+
+        app(UpdateWeeklySlot::class)->handle($this->coordinator, $slot->fresh(), ['valid_until' => null] + $attributes($slot->fresh()));
+
+        $this->assertNull($shift->fresh()->cancelled_at);
+        $this->assertTrue($shift->assignments()->where('user_id', $this->robin->id)->exists());
+        $this->assertSame($this->robin->id, $request->fresh()->filled_by);
+        $entry = ChangeLogEntry::query()->ofAction('cover_request.filled')->where('subject_id', $shift->id)->sole();
+        $this->assertSame($this->robin->id, $entry->affected_user_id);
+        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->dates === ['Thursday, October 22'] && $notification->takerFirstName === 'Robin');
     }
 
     public function test_the_releaser_email_lists_shadow_spots_left_in_the_same_range(): void

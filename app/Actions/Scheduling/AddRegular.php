@@ -2,6 +2,7 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Cover\CoverFill;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Models\Area;
@@ -29,7 +30,7 @@ use InvalidArgumentException;
  *
  * The transaction locks the area, then the slot, then reads the regulars and locks the shifts, the same order EndRegular uses, so the two can't interleave.
  *
- * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
+ * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift. Each of those shifts' oldest open cover request is filled through CoverFill::fillForRegularsLocked(), so a slot someone gave up stops asking for cover when a coordinator adds a new regular; the releasers get one "is covering" email each, listing their dates, and the leads aren't told.
  *
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on, and a `skipped_full` attribute listing the dates a self-claim left out because they already have the people they need (always empty otherwise).
  *
@@ -139,6 +140,7 @@ class AddRegular
             $shifts = new Collection;
             $skippedOverlaps = [];
             $skippedFull = [];
+            $covered = [];
 
             foreach ($candidates as $shift) {
                 $on = $assignments->get($shift->id, new Collection);
@@ -171,6 +173,11 @@ class AddRegular
                 // The same entry PutOnShift records, so a shift's history shows everyone put on it however they got there.
                 ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value] + ($selfClaim ? ['via' => 'take'] : []), $assignmentChanges, about: $user);
                 $shifts->push($shift);
+
+                // A self-claim fills its requests in TakeShift's $onPutOn, which words the emails for a take.
+                if (! $selfClaim) {
+                    array_push($covered, ...CoverFill::fillForRegularsLocked($actor, $shift, [$user], $on->where('type', AssignmentType::Regular)->isEmpty()));
+                }
             }
 
             ChangeLogEntry::record($actor, 'regular.added', $regular, [
@@ -182,10 +189,10 @@ class AddRegular
                 $onPutOn($shifts, $candidates);
             }
 
-            return [$regular, $shifts->count(), $skippedOverlaps, $skippedFull];
+            return [$regular, $shifts->count(), $skippedOverlaps, $skippedFull, $covered];
         });
 
-        [$regular, $count, $skippedOverlaps, $skippedFull] = $added;
+        [$regular, $count, $skippedOverlaps, $skippedFull, $covered] = $added;
         // Not stored: how many existing shifts the person was added to, and the dates they weren't because of another shift or (for a self-claim) because the date was full, for the confirmation and TakeShift's email.
         $regular->setAttribute('added_to_shifts', $count);
         $regular->setAttribute('skipped_overlaps', $skippedOverlaps);
@@ -194,6 +201,7 @@ class AddRegular
         // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved. Someone taking a slot gets TakeShift's email instead.
         if (! $selfClaim) {
             defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));
+            CoverFill::sendAfterCommit($covered);
         }
 
         return $regular;

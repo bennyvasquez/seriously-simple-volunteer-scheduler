@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Notifications\Notification;
 
 /**
- * Filling a cover request when someone takes a released place, shared by TakeShift and PutOnShift so a coordinator filling a released shift stops the ladder and tells the releaser too. With several open requests on a shift, the oldest is filled first (decision 9), so the ladder's next run names the right releaser.
+ * Filling a cover request when someone takes a released place, shared by TakeShift and PutOnShift so a coordinator filling a released shift stops the ladder and tells the releaser too. A coordinator's change that puts regulars on shifts (AddRegular, RestoreShift bringing a shift back, UpdateWeeklySlot bringing a date back) fills them through fillForRegularsLocked(). With several open requests on a shift, the oldest is filled first (decision 9), so the ladder's next run names the right releaser.
  */
 final class CoverFill
 {
@@ -58,6 +58,45 @@ final class CoverFill
         ChangeLogEntry::record($actor, 'cover_request.filled', $lockedShift, ['cover_request_id' => $request->id], $changes, about: $person);
 
         return $request;
+    }
+
+    /**
+     * Fills the shift's oldest open cover requests for the regulars a coordinator's change just put on it, one request per person in the order given, while there are open ones, through fillOldestLocked() (so each `cover_request.filled` entry is about the new regular). Returns the notices() for them with the leads left out, since a coordinator did it, for the caller to merge with its other shifts and send after the commit with sendAfterCommit(). `$nobodyButShadowsBefore` is whether nobody but shadows was on the shift before these people joined; only the first person's notices tell the shadows, so they hear "back on" once. The caller holds the shift lock (and every earlier lock); the requests are locked here, after it.
+     *
+     * @param  iterable<User>  $people
+     * @return list<array{0: User, 1: Notification}>
+     */
+    public static function fillForRegularsLocked(?User $actor, Shift $lockedShift, iterable $people, bool $nobodyButShadowsBefore): array
+    {
+        $sends = [];
+        $first = true;
+
+        foreach ($people as $person) {
+            $request = self::fillOldestLocked($actor, $lockedShift, $person);
+
+            if ($request === null) {
+                break;
+            }
+
+            array_push($sends, ...self::notices($actor, $lockedShift, $person, $nobodyButShadowsBefore && $first, $request->releasedBy, tellLeads: false));
+            $first = false;
+        }
+
+        return $sends;
+    }
+
+    /**
+     * Sends these emails after the commit and the response, merged first so each person gets one email of a kind.
+     *
+     * @param  list<array{0: User, 1: Notification}>  $sends
+     */
+    public static function sendAfterCommit(array $sends): void
+    {
+        if ($sends === []) {
+            return;
+        }
+
+        defer(self::sender(self::merged($sends)));
     }
 
     /**

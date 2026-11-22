@@ -11,6 +11,7 @@ use App\Cover\CoverLadder;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Enums\ShadowSpotNotice;
+use App\Http\Controllers\Volunteer\HomeController;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
@@ -85,6 +86,44 @@ class CoverLadderTest extends TestCase
     private function on(Shift $shift, User $person, AssignmentType $type = AssignmentType::Regular): void
     {
         Assignment::create(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => $type]);
+    }
+
+    public function test_the_ladder_ignores_requests_beyond_the_open_places(): void
+    {
+        // Two released places on a shift that needs two, then someone put on it by a path that didn't fill a request: one place is open, so only the oldest request counts.
+        $shift = $this->released(2);
+        $this->travel(1)->minutes();
+        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $newer = CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'note' => null, 'notified_count' => 3]);
+        $this->on($shift, $this->morgan);
+        $oldest = CoverRequest::query()->where('shift_id', $shift->id)->where('released_by', $this->robin->id)->sole();
+        Notification::fake();
+
+        $this->at('2026-10-21 19:00');
+
+        $this->assertSame(['resent' => 0, 'escalated' => 1], app(CoverLadder::class)->run());
+        $this->assertNotNull($oldest->fresh()->escalated_at);
+        $this->assertNull($newer->fresh()->escalated_at);
+        $this->assertSame([$oldest->id], ChangeLogEntry::query()->ofAction('cover_request.escalated')->get()->map(fn (ChangeLogEntry $entry) => $entry->details['cover_request_id'])->all());
+
+        // Once the shift is full, no request counts, so a later run does nothing.
+        $this->on($shift, User::factory()->create(['name' => 'Jo Example']));
+        $this->assertSame(['resent' => 0, 'escalated' => 0], app(CoverLadder::class)->run());
+        $this->assertNull($newer->fresh()->escalated_at);
+    }
+
+    public function test_home_names_only_the_releasers_of_the_open_places(): void
+    {
+        $shift = $this->released(2);
+        $this->travel(1)->minutes();
+        $sam = User::factory()->create(['name' => 'Sam Example']);
+        CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'note' => null, 'notified_count' => 3]);
+        $this->on($shift, $this->morgan);
+        $jo = User::factory()->create(['name' => 'Jo Example']);
+
+        $open = app(HomeController::class)->openShifts($jo);
+
+        $this->assertSame(['Robin'], $open->firstWhere('id', $shift->id)->cover_names);
     }
 
     public function test_nothing_happens_before_72_hours(): void

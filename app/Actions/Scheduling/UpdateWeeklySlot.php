@@ -3,6 +3,7 @@
 namespace App\Actions\Scheduling;
 
 use App\Calendar\TimeFormat;
+use App\Cover\CoverFill;
 use App\Enums\AssignmentType;
 use App\Models\Area;
 use App\Models\AreaClosure;
@@ -16,6 +17,7 @@ use App\Models\WeeklySlot;
 use App\Notifications\ShiftChangedNotification;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -23,7 +25,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Saves changes to a weekly slot and brings its future shifts up to date, as far as that is safe without change notices.
  *
- * Future shifts that nobody edited on their own get the slot's new times, people needed, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), a shift nobody is on is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A shift people are on gets the slot's details only when StaffedShiftChecks finds no problem (too few shadow spots for the shadows on it, or a time that double-books someone on it); otherwise it keeps its old details. After the response, each person on a changed shift who can sign in gets one ShiftChangedNotification listing every shift of theirs whose time or title changed; a change to people needed or shadow spots alone emails nobody. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars. The generator then adds any new dates. Shifts edited on their own, shifts people are on whose date the slot no longer runs on, and shifts that failed a check keep their old details and are returned as kept with the reason, when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
+ * Future shifts that nobody edited on their own get the slot's new times, people needed, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), a shift nobody is on is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A shift people are on gets the slot's details only when StaffedShiftChecks finds no problem (too few shadow spots for the shadows on it, or a time that double-books someone on it); otherwise it keeps its old details. After the response, each person on a changed shift who can sign in gets one ShiftChangedNotification listing every shift of theirs whose time or title changed; a change to people needed or shadow spots alone emails nobody. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars, who fill any cover request still open on it (the releaser hears who is covering). The generator then adds any new dates. Shifts edited on their own, shifts people are on whose date the slot no longer runs on, and shifts that failed a check keep their old details and are returned as kept with the reason, when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
  *
  * Changing the day or how often the slot repeats (including the first date of an every-other-week slot, which sets its weeks) is refused while the slot has current or future regulars or a future shift someone is on, since that changes when they work. Switching to a rotation is refused while it has current or future regulars. The refusals are written to be shown on screen.
  *
@@ -47,8 +49,10 @@ class UpdateWeeklySlot
         $organization = Organization::current();
         // Each person who can sign in, keyed by id, with the changes to put in their one email.
         $emails = [];
+        // The "is covering" emails for cover requests filled by regulars on dates brought back.
+        $covered = [];
 
-        $result = DB::transaction(function () use ($actor, $organization, $slot, $attributes, &$emails) {
+        $result = DB::transaction(function () use ($actor, $organization, $slot, $attributes, &$emails, &$covered) {
             // The area row first, the same order CreateClosure and the generator use, so a slot save and a closure can't deadlock on the shifts.
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
             // Then the slot, so two saves of the same slot can't interleave.
@@ -136,7 +140,7 @@ class UpdateWeeklySlot
                 }
             }
 
-            $updated = [...$updated, ...$this->revive($actor, $locked, $regulars, $organization, $cancelled, $via)];
+            $updated = [...$updated, ...$this->revive($actor, $locked, $regulars, $organization, $cancelled, $via, $covered)];
             $created = $this->generator->forSlot($organization, $locked);
 
             ChangeLogEntry::record($actor, 'slot.updated', $locked, [
@@ -160,6 +164,8 @@ class UpdateWeeklySlot
                 }
             });
         }
+
+        CoverFill::sendAfterCommit($covered);
 
         return $result;
     }
@@ -205,13 +211,14 @@ class UpdateWeeklySlot
     /**
      * Brings back dates the slot runs on again whose shift an earlier slot change cancelled, when nobody is on it, no closure covers it, and it hasn't started. A slot change is recognised by the shift's most recent shift.cancelled entry having come from slot.updated, never by the reason text, so a person who typed the same words keeps their cancellation.
      *
-     * The slot's current regulars for that date (the rows handle() locked) whose accounts are still on, checked with a shared lock on each person, are all put back on it, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids.
+     * The slot's current regulars for that date (the rows handle() locked) whose accounts are still on, checked with a shared lock on each person, are all put back on it, the same way generation fills a new shift: without emails, and listed in the shift's change log entry as added_regular_ids. They fill the shift's open cover requests, oldest first, through CoverFill::fillForRegularsLocked(), and the releasers' emails are added to `$covered` for handle() to send after the commit.
      *
      * @param  EloquentCollection<int, SlotRegular>  $regulars  The slot's regulars, locked by handle().
      * @param  list<int>  $justCancelled
+     * @param  list<array{0: User, 1: Notification}>  $covered
      * @return list<int> The ids brought back.
      */
-    private function revive(User $actor, WeeklySlot $slot, EloquentCollection $regulars, Organization $organization, array $justCancelled, array $via): array
+    private function revive(User $actor, WeeklySlot $slot, EloquentCollection $regulars, Organization $organization, array $justCancelled, array $via, array &$covered): array
     {
         $candidates = $slot->shifts()->whereNotNull('cancelled_at')
             ->whereNull('area_closure_id')->whereDoesntHave('assignments')
@@ -245,14 +252,20 @@ class UpdateWeeklySlot
             // Each person is read with a shared lock (the only lock a user row may take after a shift row), so a turn-off that committed after this transaction's first read is seen, and one still in progress waits for this save, whose release then finds the shift.
             $working = $regulars
                 ->filter(fn (SlotRegular $regular) => $regular->activeOn($date) && ! $takenOff->contains($regular->user_id))
-                ->filter(fn (SlotRegular $regular) => User::query()->whereKey($regular->user_id)->sharedLock()->first()?->isActive() ?? false);
+                ->map(fn (SlotRegular $regular) => User::query()->whereKey($regular->user_id)->sharedLock()->first())
+                ->filter(fn (?User $person) => $person?->isActive() ?? false);
 
-            foreach ($working as $regular) {
-                $shift->assignments()->create(['user_id' => $regular->user_id, 'type' => AssignmentType::Regular]);
-                $added[] = $regular->user_id;
+            foreach ($working as $person) {
+                $shift->assignments()->create(['user_id' => $person->id, 'type' => AssignmentType::Regular]);
+                $added[] = $person->id;
             }
 
             ChangeLogEntry::record($actor, 'shift.updated', $shift, $via + ['added_regular_ids' => $added], $changes);
+
+            // Nobody was on it (candidates have no assignments), so there are no shadows to tell.
+            if ($working->isNotEmpty()) {
+                array_push($covered, ...CoverFill::fillForRegularsLocked($actor, $shift, $working->values(), false));
+            }
             $revived[] = $shift->id;
         }
 

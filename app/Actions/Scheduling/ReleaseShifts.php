@@ -253,8 +253,8 @@ class ReleaseShifts
             ->where('shift_id', $lockedShift->id)->where('type', AssignmentType::Shadow)->orderBy('id')->get()->pluck('user');
 
         if (self::escalatesNow($lockedShift)) {
-            // Every unescalated open request, the way the ladder would take them, so it never escalates this shift a second time.
-            $unescalated = CoverRequest::query()->open()->whereNull('escalated_at')->where('shift_id', $lockedShift->id)->orderBy('created_at')->orderBy('id')->lockForUpdate()->get();
+            // Every unescalated open request that counts, the way the ladder would take them, so it never escalates this shift a second time.
+            $unescalated = CoverLadder::openRequestsLocked($lockedShift)->whereNull('escalated_at')->values();
             $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $person);
         } else {
             $released['sends'] = $shadows->map(fn (User $shadow) => [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::OnHold, $person->firstName())])->all();
