@@ -43,7 +43,7 @@ class HomeController extends Controller
     }
 
     /**
-     * The shifts this person could take in the next `$days` days, cover requests first (each carries `cover_names`, the first names of the people who can't make it), then the rest by start time. A shift qualifies when it hasn't started, isn't cancelled, has an open place and CoverEligibility::refusal() has nothing against it. `has_no_regular` is true for a weekly slot date with no regular from then on, the dates TakeShift::choices() offers "every week" for.
+     * The shifts this person could take in the next `$days` days, cover requests first (each carries `cover_names`, the first names of the people who can't make it, "Someone" for a removed person), then the rest by start time. A shift qualifies when it hasn't started, isn't cancelled, has an open place and CoverEligibility::refusal() has nothing against it. `has_no_regular` is true for a weekly slot date with no regular from then on, the dates TakeShift::choices() offers "every week" for.
      *
      * @return Collection<int, Shift>
      */
@@ -67,7 +67,7 @@ class HomeController extends Controller
             ->filter(fn (Shift $shift) => $shift->openPlaces() > 0 && CoverEligibility::refusal($user, $shift, $mine) === null)
             ->each(function (Shift $shift) {
                 // Only the oldest openPlaces() requests stand for an open place, the same ones CoverLadder::openRequestsLocked() counts.
-                $shift->setAttribute('cover_names', $shift->coverRequests->take($shift->openPlaces())->map(fn ($request) => $request->releasedBy->firstName())->unique()->values()->all());
+                $shift->setAttribute('cover_names', $shift->coverRequests->take($shift->openPlaces())->map(fn ($request) => $request->releaserName())->unique()->values()->all());
                 $shift->setAttribute('has_no_regular', $this->hasNoRegular($shift));
             })
             ->sortBy(fn (Shift $shift) => [$shift->cover_names === [] ? 1 : 0, $shift->starts_at->getTimestamp(), $shift->id])

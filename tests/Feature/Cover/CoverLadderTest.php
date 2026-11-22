@@ -148,6 +148,24 @@ class CoverLadderTest extends TestCase
         $this->assertContains([$this->coordinator->id, CoverUrgentNotification::class], $sent->getArrayCopy());
     }
 
+    public function test_a_removed_releaser_is_someone_in_the_ladders_emails_and_on_home(): void
+    {
+        $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:30', '21:30', 1, 1, null);
+        CoverRequest::create(['shift_id' => $shift->id, 'released_by' => User::removedPerson()->id, 'note' => null, 'notified_count' => 3]);
+
+        $this->assertSame(['Someone'], app(HomeController::class)->openShifts($this->morgan)->firstWhere('id', $shift->id)->cover_names);
+
+        Notification::fake();
+        $this->at('2026-10-19 18:30');
+        app(CoverLadder::class)->run();
+        Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => $notification->stillOpen && $notification->releaserFirstName === 'Someone');
+
+        $this->at('2026-10-21 18:30');
+        app(CoverLadder::class)->run();
+        Notification::assertSentTo($this->coordinator, CoverUrgentNotification::class, fn (CoverUrgentNotification $notification) => $notification->shifts[0]['releaser'] === 'Someone');
+    }
+
     public function test_nothing_happens_before_72_hours(): void
     {
         $shift = $this->released();

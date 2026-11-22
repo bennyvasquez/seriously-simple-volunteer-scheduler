@@ -131,7 +131,7 @@ final class CoverLadder
         $area = $lockedShift->area;
         $oldest = $openRequests->first();
         $oldest->loadMissing('releasedBy');
-        $releaser = $oldest->releasedBy->firstName();
+        $releaser = $oldest->releaserName();
 
         foreach ($openRequests as $request) {
             $request->escalated_at = now();
@@ -207,7 +207,7 @@ final class CoverLadder
         }
 
         $recipients = CoverEligibility::recipients($lockedShift);
-        $notification = new CoverRequestNotification(collect([$lockedShift]), $oldest->releasedBy->firstName(), $oldest->note, stillOpen: true);
+        $notification = new CoverRequestNotification(collect([$lockedShift]), $oldest->releaserName(), $oldest->note, stillOpen: true);
 
         return CoverFill::sender($recipients->map(fn (User $person) => [$person, $notification])->values()->all());
     }
