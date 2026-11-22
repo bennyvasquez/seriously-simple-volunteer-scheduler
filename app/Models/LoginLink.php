@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class LoginLink extends Model
 {
-    protected $fillable = ['user_id', 'purpose', 'email', 'token_hash', 'expires_at', 'used_at'];
+    protected $fillable = ['user_id', 'purpose', 'email', 'destination', 'token_hash', 'expires_at', 'used_at'];
 
     protected function casts(): array
     {
@@ -25,6 +25,36 @@ class LoginLink extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** The path and query of a URL on this app's own host, or null for anything else (another host, a protocol-relative `//` address, a path that doesn't start with a single `/`, or more than 500 characters). Used so a login link can only ever lead somewhere on this site. */
+    public static function safeDestination(?string $url): ?string
+    {
+        if ($url === null || $url === '' || strlen($url) > 500) {
+            return null;
+        }
+
+        $parts = parse_url($url);
+
+        if ($parts === false) {
+            return null;
+        }
+
+        if (isset($parts['scheme']) || isset($parts['host'])) {
+            if (! isset($parts['host']) || strcasecmp($parts['host'], (string) parse_url(config('app.url'), PHP_URL_HOST)) !== 0) {
+                return null;
+            }
+        }
+
+        $path = $parts['path'] ?? '';
+
+        if (! str_starts_with($path, '/') || str_starts_with($path, '//')) {
+            return null;
+        }
+
+        $destination = $path.(isset($parts['query']) ? '?'.$parts['query'] : '');
+
+        return strlen($destination) > 500 ? null : $destination;
     }
 
     /** The link for this token if it can still be used: it exists, is one of the given kinds, is unused and unexpired, and its person can sign in. */

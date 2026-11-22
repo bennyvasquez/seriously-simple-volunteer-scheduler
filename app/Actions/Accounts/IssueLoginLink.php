@@ -8,11 +8,11 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
- * Creates a single-use link and returns its URL. Asking again cancels the previous unused link of the same kind. An email change link carries the new address in `$email`; the other kinds don't take one.
+ * Creates a single-use link and returns its URL. Asking again cancels the previous unused link of the same kind. An email change link carries the new address in `$email`; the other kinds don't take one. A sign-in link can carry a `$destination` (a path on this site, see `LoginLink::safeDestination()`) to send the person to once they're in.
  */
 class IssueLoginLink
 {
-    public function handle(User $user, LoginLinkPurpose $purpose, ?string $email = null): string
+    public function handle(User $user, LoginLinkPurpose $purpose, ?string $email = null, ?string $destination = null): string
     {
         if (($purpose === LoginLinkPurpose::EmailChange) !== ($email !== null)) {
             throw new InvalidArgumentException('Only an email change link carries an address, and it always does.');
@@ -25,6 +25,7 @@ class IssueLoginLink
         $user->loginLinks()->create([
             'purpose' => $purpose,
             'email' => $email,
+            'destination' => $destination,
             'token_hash' => hash('sha256', $token),
             'expires_at' => now()->addMinutes($purpose->lifetimeInMinutes()),
         ]);

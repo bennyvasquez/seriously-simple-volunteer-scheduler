@@ -26,9 +26,12 @@ class LoginLinkController extends Controller
 
         $user = User::query()->where('email', Str::lower($request->input('email')))->first();
 
+        // Read now: the deferred closure runs after the response, when the session may already be saved.
+        $destination = LoginLink::safeDestination($request->session()->get('url.intended'));
+
         if ($user !== null && $user->canSignIn()) {
             // After the response is sent: the answer and how long it takes must not depend on whether the address has an account, and a mail server failure must not show up only for real accounts.
-            defer(fn () => $user->notify(new LoginLinkNotification($issueLoginLink->handle($user, LoginLinkPurpose::SignIn))));
+            defer(fn () => $user->notify(new LoginLinkNotification($issueLoginLink->handle($user, LoginLinkPurpose::SignIn, destination: $destination))));
         }
 
         // login_link_sent tells the login screen to show "Check your email". Other flows also flash a plain status to that screen.
@@ -77,6 +80,11 @@ class LoginLinkController extends Controller
 
                 ChangeLogEntry::record($user, 'user.accepted_invitation', $user, changes: $changes);
             });
+        }
+
+        // The destination lives on the link, not only in the session, so it survives opening the link in a different browser. Both the normal redirect and Fortify's two-factor redirect read url.intended.
+        if ($link->destination !== null) {
+            $request->session()->put('url.intended', url($link->destination));
         }
 
         // A link login replaces any login left pending in this browser, such as someone else's password login abandoned at the code screen, so none of its markers carry over.
