@@ -17,7 +17,6 @@ use App\Notifications\ShiftTakenNotification;
 use Carbon\CarbonImmutable;
 use Closure;
 use DomainException;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -25,7 +24,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * A volunteer takes an open shift (spec section 8.1), whether it's a cover request or any other open place (decision 15). The first person to take the last open place gets it; anyone after them gets ShiftAlreadyTaken ("Someone already took this one."). Other refusals come from CoverEligibility::refusal(), checked under the locks, so someone who just took it in another tab hears "You're already on this shift." The releaser can take their own shift back while it's open (decision 7).
  *
- * "Just this date" locks the area, then the shift, reads the person with a shared lock (as PutOnShift does), adds the assignment (assignment.added with `via` "take", about the person) and fills the shift's oldest open cover request through CoverFill::fillLocked(), which locks the requests last. "Every week" and "every other week" make the person the regular from that date through AddRegular's self-claim, which locks the area, the slot, its regulars and its shifts, and fill the date's cover request inside the same transaction.
+ * "Just this date" locks the area, then the shift, reads the person with a shared lock (as PutOnShift does), adds the assignment (assignment.added with `via` "take", about the person) and fills the shift's oldest open cover request through CoverFill::fillLocked(), which locks the requests last. "Every week" and "every other week" make the person the regular from that date through AddRegular's self-claim, which locks the area, the slot, its regulars and its shifts, and fill the oldest open cover request on every date they're now on, inside the same transaction. Dates AddRegular leaves out (another shift then, or already full) are listed in the person's email.
  *
  * After the commit and the response, the person gets one email ("You're on Front desk, Thursday, October 22"), and CoverFill::notices() tells the releaser, the shadows and the area's leads, each once.
  */
@@ -94,7 +93,7 @@ class TakeShift
 
             $request = null;
             $others = CoverFill::fillLocked($current, $locked, $current, $nobodyButShadowsBefore, null, $request)
-                ?? self::sender(CoverFill::notices($current, $locked, $current, $nobodyButShadowsBefore, null));
+                ?? CoverFill::sender(CoverFill::notices($current, $locked, $current, $nobodyButShadowsBefore, null));
 
             return [$assignment, $locked, $current, $request, $others];
         });
@@ -137,22 +136,36 @@ class TakeShift
                     throw new DomainException(($again === null ? null : CoverEligibility::refusal($person, $again)) ?? 'You can take this date only.');
                 }
 
-                $locked->loadMissing('area');
-                // AddRegular has just put the person on it, so they're the only one filling a place when nobody but shadows was on it before.
-                $nobodyButShadowsBefore = $locked->filledCount() === 1;
+                // Every date the person is now on fills its oldest open request, so a slot someone gave up stops asking for cover once someone takes it every week. The leads hear once, about the date taken; the releaser and shadows get one email each listing their dates. The shifts come in date order, so the date taken is first.
+                $sends = [];
                 $request = null;
-                $others = CoverFill::fillLocked($person, $locked, $person, $nobodyButShadowsBefore, $regularHow, $request)
-                    ?? self::sender(CoverFill::notices($person, $locked, $person, $nobodyButShadowsBefore, null, $regularHow));
+
+                foreach ($putOn as $putShift) {
+                    $putShift->loadMissing('area');
+                    // AddRegular has just put the person on it, so they're the only one filling a place when nobody but shadows was on it before.
+                    $nobodyButShadowsBefore = $putShift->filledCount() === 1;
+                    $filled = CoverFill::fillOldestLocked($person, $putShift, $person);
+                    $isTaken = $putShift->id === $shift->id;
+
+                    if ($isTaken) {
+                        $request = $filled;
+                    } elseif ($filled === null) {
+                        continue;
+                    }
+
+                    array_push($sends, ...CoverFill::notices($person, $putShift, $person, $nobodyButShadowsBefore, $filled?->releasedBy, $regularHow, tellLeads: $isTaken));
+                }
+
                 $assignment = Assignment::query()->where('shift_id', $locked->id)->where('user_id', $person->id)->sole();
 
-                $taken = [$assignment, $locked, $request, $others];
+                $taken = [$assignment, $locked, $request, CoverFill::sender(CoverFill::merged($sends))];
             },
         );
 
         [$assignment, $locked, $request, $others] = $taken;
-        $skipped = collect($regular->getAttribute('skipped_overlaps'))->map(fn (string $day) => CarbonImmutable::parse($day, 'UTC')->format('l, F j'))->all();
+        $dayText = fn (string $day) => CarbonImmutable::parse($day, 'UTC')->format('l, F j');
 
-        $this->sendAfterCommit($person, $locked, $request, $others, $regularHow, $skipped);
+        $this->sendAfterCommit($person, $locked, $request, $others, $regularHow, array_map($dayText, $regular->getAttribute('skipped_overlaps')), array_map($dayText, $regular->getAttribute('skipped_full')));
 
         return $assignment;
     }
@@ -160,9 +173,10 @@ class TakeShift
     /**
      * The person's email and everyone else's, after the response.
      *
-     * @param  list<string>  $skippedDates
+     * @param  list<string>  $skippedDates  Left out because the person is on another shift then.
+     * @param  list<string>  $fullDates  Left out because they already have the people they need.
      */
-    private function sendAfterCommit(User $person, Shift $locked, ?CoverRequest $request, Closure $others, ?string $regularHow = null, array $skippedDates = []): void
+    private function sendAfterCommit(User $person, Shift $locked, ?CoverRequest $request, Closure $others, ?string $regularHow = null, array $skippedDates = [], array $fullDates = []): void
     {
         $shadows = collect(CoverFill::shadows($locked))->map(fn (User $shadow) => $shadow->firstName())->all();
         $notification = new ShiftTakenNotification(
@@ -173,21 +187,12 @@ class TakeShift
             $request !== null && $request->released_by === $person->id,
             $regularHow,
             $skippedDates,
+            $fullDates,
         );
 
         defer(function () use ($person, $notification, $others) {
             $person->notify($notification);
             $others();
         });
-    }
-
-    /** @param  list<array{0: User, 1: Notification}>  $sends */
-    private static function sender(array $sends): Closure
-    {
-        return function () use ($sends) {
-            foreach ($sends as [$recipient, $notification]) {
-                $recipient->notify($notification);
-            }
-        };
     }
 }

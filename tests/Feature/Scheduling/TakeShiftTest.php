@@ -217,8 +217,8 @@ class TakeShiftTest extends TestCase
     public function test_two_people_taking_the_last_place_at_once_only_one_gets_it(): void
     {
         $shift = $this->released();
-        // Loaded before Jordan takes it, the way Sam's request would have read it.
-        $stale = Shift::query()->findOrFail($shift->id);
+        // Loaded with its assignments before Jordan takes it, the way Sam's request would have read it, so a check on the passed model would see the place still open. Only the locked re-read can refuse Sam.
+        $stale = Shift::query()->with('assignments')->findOrFail($shift->id);
         Notification::fake();
 
         app(TakeShift::class)->handle($this->jordan, $shift, TakeHow::JustThisDate);
@@ -304,6 +304,19 @@ class TakeShiftTest extends TestCase
         Notification::assertNothingSentTo($this->coordinator);
     }
 
+    public function test_taking_an_open_place_with_no_request_sends_shadows_nothing(): void
+    {
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $casey, AssignmentType::Shadow);
+        Notification::fake();
+
+        app(TakeShift::class)->handle($this->jordan, $shift, TakeHow::JustThisDate);
+
+        Notification::assertNothingSentTo($casey);
+        Notification::assertSentTo($this->jordan, ShiftTakenNotification::class, fn (ShiftTakenNotification $notification) => str_contains($this->text($notification->toMail($this->jordan)), 'Casey is shadowing.'));
+    }
+
     public function test_a_lead_taking_a_shift_gets_only_the_taker_email(): void
     {
         $shift = $this->released();
@@ -322,6 +335,8 @@ class TakeShiftTest extends TestCase
         // Jordan is on Hosted events at the same time on October 29, so that date is left out.
         $busy = $this->shift('2026-10-29', $this->hostedEvents, from: '18:00', to: '20:00');
         $this->on($busy, $this->jordan);
+        // Sam took November 12 on its own, so it already has the people it needs and is left out too.
+        $this->on($slot->shifts()->where('local_date', '2026-11-12')->sole(), $this->sam);
         Notification::fake();
 
         $assignment = app(TakeShift::class)->handle($this->jordan, $shift, TakeHow::EveryWeek);
@@ -331,8 +346,9 @@ class TakeShiftTest extends TestCase
         $this->assertSame('2026-10-22', $regular->starts_on->toDateString());
         $this->assertNull($regular->ends_on);
         $this->assertSame(SlotFrequency::Weekly, $regular->frequency);
-        $this->assertSame(['2026-10-22', '2026-10-29', '2026-11-05', '2026-11-12', '2026-11-19', '2026-11-26', '2026-12-03'], $this->datesFor($this->jordan));
+        $this->assertSame(['2026-10-22', '2026-10-29', '2026-11-05', '2026-11-19', '2026-11-26', '2026-12-03'], $this->datesFor($this->jordan));
         $this->assertFalse($slot->shifts()->where('local_date', '2026-10-29')->sole()->assignments()->exists());
+        $this->assertSame([$this->sam->id], $slot->shifts()->where('local_date', '2026-11-12')->sole()->assignments()->pluck('user_id')->all());
 
         $entry = ChangeLogEntry::query()->about($this->jordan)->ofAction('regular.added')->sole();
         $this->assertSame($this->jordan->id, $entry->actor_id);
@@ -348,7 +364,8 @@ class TakeShiftTest extends TestCase
             return $mail->subject === 'You\'re on Front desk, Thursday, October 22'
                 && str_contains($text, 'You\'re now the Thursday regular for Front desk, starting Thursday, October 22.')
                 && str_contains($text, 'Thursday, October 22, 6:30 to 9:30pm, Front desk.')
-                && str_contains($text, 'You\'re not on Thursday, October 29 because you\'re already on another shift then.');
+                && str_contains($text, 'You\'re not on Thursday, October 29 because you\'re already on another shift then.')
+                && str_contains($text, 'You\'re not on Thursday, November 12 because they already have the people they need.');
         });
         Notification::assertSentToTimes($this->lead, ShiftTakenLeadNotification::class, 1);
         Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, function (ShiftTakenLeadNotification $notification) {
@@ -375,23 +392,53 @@ class TakeShiftTest extends TestCase
         Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, fn (ShiftTakenLeadNotification $notification) => str_contains($this->text($notification->toMail($this->lead)), 'Jordan is now the every other Thursday regular from Thursday, October 22.'));
     }
 
-    public function test_taking_every_week_on_a_given_up_slot_fills_that_dates_request(): void
+    public function test_taking_every_week_on_a_given_up_slot_fills_every_dates_request(): void
     {
+        $casey = User::factory()->create(['name' => 'Casey Example']);
         $slot = $this->thursdaySlot();
         $regular = app(AddRegular::class)->handle(null, $slot, $this->sam, '2026-10-15');
+        // Casey shadows October 29 and November 5, so both go on hold when Sam gives up the slot.
+        foreach (['2026-10-29', '2026-11-05'] as $date) {
+            $this->on($slot->shifts()->where('local_date', $date)->sole(), $casey, AssignmentType::Shadow);
+        }
         app(ReleaseShifts::class)->slot($this->sam, $regular, '2026-10-29', null);
         $shift = $slot->shifts()->where('local_date', '2026-10-29')->sole();
         $this->assertSame([TakeHow::JustThisDate, TakeHow::EveryWeek, TakeHow::EveryOtherWeek], app(TakeShift::class)->choices($shift));
+        $this->assertSame(6, CoverRequest::query()->open()->count());
         Notification::fake();
 
         app(TakeShift::class)->handle($this->jordan, $shift, TakeHow::EveryWeek);
 
         $requests = CoverRequest::query()->orderBy('id')->get();
-        $this->assertSame($this->jordan->id, $requests->firstWhere('shift_id', $shift->id)->filled_by);
-        // Only the date taken is filled here. The later dates' requests stay open for now.
-        $this->assertSame(1, $requests->whereNotNull('filled_at')->count());
-        $this->assertSame(1, ChangeLogEntry::query()->ofAction('cover_request.filled')->count());
+        $this->assertCount(6, $requests);
+        $this->assertTrue($requests->every(fn (CoverRequest $request) => $request->filled_by === $this->jordan->id && $request->filled_at !== null));
+        $filled = ChangeLogEntry::query()->ofAction('cover_request.filled')->get();
+        $this->assertCount(6, $filled);
+        $this->assertTrue($filled->every(fn (ChangeLogEntry $entry) => $entry->actor_id === $this->jordan->id && $entry->affected_user_id === $this->jordan->id && array_keys($entry->changes) === ['filled_by', 'filled_at']));
+
         Notification::assertSentToTimes($this->sam, ShiftCoveredNotification::class, 1);
+        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, function (ShiftCoveredNotification $notification) {
+            $mail = $notification->toMail($this->sam);
+            $text = $this->text($mail);
+
+            return $mail->subject === 'Jordan is covering 6 of your shifts'
+                && str_contains($text, 'Hi Sam,')
+                && str_contains($text, 'Jordan took your Front desk shifts on these dates. You don\'t need to do anything.')
+                && str_contains($text, 'Thursday, October 29')
+                && str_contains($text, 'Thursday, December 3');
+        });
+        Notification::assertSentToTimes($casey, ShadowSpotNotification::class, 1);
+        Notification::assertSentTo($casey, ShadowSpotNotification::class, function (ShadowSpotNotification $notification) use ($casey) {
+            $mail = $notification->toMail($casey);
+            $text = $this->text($mail);
+
+            return $notification->notice === ShadowSpotNotice::BackOn
+                && $mail->subject === 'Your shadow shifts on 2 dates are back on'
+                && str_contains($text, 'Jordan is covering, so you\'ll shadow Jordan on these shifts:')
+                && str_contains($text, 'Front desk, Thursday, October 29, 6:30 to 9:30pm')
+                && str_contains($text, 'Front desk, Thursday, November 5, 6:30 to 9:30pm');
+        });
+        Notification::assertSentToTimes($this->jordan, ShiftTakenNotification::class, 1);
         Notification::assertSentToTimes($this->lead, ShiftTakenLeadNotification::class, 1);
         Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, function (ShiftTakenLeadNotification $notification) {
             $mail = $notification->toMail($this->lead);

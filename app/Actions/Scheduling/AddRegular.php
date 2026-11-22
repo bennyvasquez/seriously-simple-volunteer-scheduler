@@ -31,11 +31,11 @@ use InvalidArgumentException;
  *
  * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
  *
- * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, and a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on.
+ * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on, and a `skipped_full` attribute listing the dates a self-claim left out because they already have the people they need (always empty otherwise).
  *
  * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
  *
- * A volunteer taking a slot for themselves (TakeShift, decision 15) passes `$selfClaim`: the actor has to be the person, the manager check is skipped, the slot must have no regular on or after the start date ("You can take this date only."), and a date that would go over people needed is refused ("Thursday, October 29 already has the people it needs.") instead of asking to confirm. That counts everyone already on a generated shift, not only regulars, and when the full date is the start date (the one being taken) ShiftAlreadyTaken is thrown instead. Its assignment.added entries carry `via` "take", and no "now a regular" email is sent, since TakeShift sends the person one email for the whole take. `$onPutOn` is called inside the transaction, after everything is logged, with the locked shifts the person was put on and every locked candidate shift, so TakeShift can check the date taken and fill its cover request in the same transaction.
+ * A volunteer taking a slot for themselves (TakeShift, decision 15) passes `$selfClaim`: the actor has to be the person, the manager check is skipped, the slot must have no regular on or after the start date ("You can take this date only."), and a generated shift that already has the people it needs (counting everyone on it, one-time places included) is left out, the way overlapping dates are, instead of asking to confirm. When that full date is the start date (the one being taken), ShiftAlreadyTaken is thrown instead. overDates() isn't consulted for a self-claim: it counts only regulars, a self-claim is refused whenever the slot has any regular from that date on, and people needed is at least 1, so it could never find a date. Its assignment.added entries carry `via` "take", and no "now a regular" email is sent, since TakeShift sends the person one email for the whole take. `$onPutOn` is called inside the transaction, after everything is logged, with the locked shifts the person was put on and every locked candidate shift, so TakeShift can check the date taken and fill its cover request in the same transaction.
  */
 class AddRegular
 {
@@ -116,11 +116,8 @@ class AddRegular
                 throw new DomainException('This person is already a regular on this slot for some of those dates.');
             }
 
-            $overDates = $overConfirmed ? [] : $this->overDates($slot, $regular, $overlapping);
-
-            if ($overDates !== [] && $selfClaim) {
-                throw new DomainException(self::dayText($overDates[0]['date']).' already has the people it needs.');
-            }
+            // A self-claim has no other regulars to count (refused above), so overDates() would always be empty; full dates are left out shift by shift below instead.
+            $overDates = $overConfirmed || $selfClaim ? [] : $this->overDates($slot, $regular, $overlapping);
 
             if ($overDates !== []) {
                 throw new NeedsOverConfirmation($overDates);
@@ -141,6 +138,7 @@ class AddRegular
 
             $shifts = new Collection;
             $skippedOverlaps = [];
+            $skippedFull = [];
 
             foreach ($candidates as $shift) {
                 $on = $assignments->get($shift->id, new Collection);
@@ -156,9 +154,15 @@ class AddRegular
                     continue;
                 }
 
-                // Someone taking a slot never goes over the people a date needs, counting everyone already on it, one-time places included.
+                // Someone taking a slot never goes over the people a date needs, counting everyone already on it, one-time places included. The date being taken has to have room; a later full date is left out.
                 if ($selfClaim && $on->where('type', AssignmentType::Regular)->count() >= $shift->people_needed) {
-                    throw $date === $startsOn ? new ShiftAlreadyTaken : new DomainException(self::dayText($date).' already has the people it needs.');
+                    if ($date === $startsOn) {
+                        throw new ShiftAlreadyTaken;
+                    }
+
+                    $skippedFull[] = $date;
+
+                    continue;
                 }
 
                 $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $user->id, 'type' => AssignmentType::Regular]);
@@ -178,13 +182,14 @@ class AddRegular
                 $onPutOn($shifts, $candidates);
             }
 
-            return [$regular, $shifts->count(), $skippedOverlaps];
+            return [$regular, $shifts->count(), $skippedOverlaps, $skippedFull];
         });
 
-        [$regular, $count, $skippedOverlaps] = $added;
-        // Not stored: how many existing shifts the person was added to, and the dates they weren't because of another shift, for the screen's confirmation.
+        [$regular, $count, $skippedOverlaps, $skippedFull] = $added;
+        // Not stored: how many existing shifts the person was added to, and the dates they weren't because of another shift or (for a self-claim) because the date was full, for the confirmation and TakeShift's email.
         $regular->setAttribute('added_to_shifts', $count);
         $regular->setAttribute('skipped_overlaps', $skippedOverlaps);
+        $regular->setAttribute('skipped_full', $skippedFull);
 
         // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved. Someone taking a slot gets TakeShift's email instead.
         if (! $selfClaim) {
@@ -192,12 +197,6 @@ class AddRegular
         }
 
         return $regular;
-    }
-
-    /** "Thursday, October 29" for a Y-m-d date. */
-    private static function dayText(string $date): string
-    {
-        return CarbonImmutable::parse($date, 'UTC')->format('l, F j');
     }
 
     /**

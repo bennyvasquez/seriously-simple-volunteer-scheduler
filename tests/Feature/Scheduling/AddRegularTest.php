@@ -508,21 +508,19 @@ class AddRegularTest extends TestCase
         $this->assertSame([], $this->datesFor($robin));
     }
 
-    public function test_a_self_claim_refuses_a_later_date_that_already_has_its_people(): void
+    public function test_a_self_claim_skips_a_later_date_that_already_has_its_people(): void
     {
         $robin = User::factory()->create();
         $sam = User::factory()->create();
         $later = Shift::query()->where('local_date', '2026-10-29')->sole();
         Assignment::create(['shift_id' => $later->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);
 
-        try {
-            app(AddRegular::class)->handle($robin, $this->slot, $robin, '2026-10-22', selfClaim: true);
-            $this->fail('A full date should be refused.');
-        } catch (DomainException $e) {
-            $this->assertSame('Thursday, October 29 already has the people it needs.', $e->getMessage());
-        }
+        $regular = app(AddRegular::class)->handle($robin, $this->slot, $robin, '2026-10-22', selfClaim: true);
 
-        $this->assertSame([], $this->datesFor($robin));
-        $this->assertSame(0, SlotRegular::query()->count());
+        $this->assertTrue($regular->exists);
+        $this->assertSame(['2026-10-22'], $this->datesFor($robin));
+        $this->assertSame(['2026-10-29'], $regular->skipped_full);
+        $this->assertSame([], $regular->skipped_overlaps);
+        $this->assertSame([$sam->id], $later->assignments()->pluck('user_id')->all());
     }
 }

@@ -9,7 +9,7 @@ use Illuminate\Notifications\Notification;
 use Illuminate\Support\Arr;
 
 /**
- * Tells a shadow what's happening to their spot when the people they'd shadow change (decision 6): on hold, back on, or still uncovered the day before. `$takerFirstName` is for BackOn, and `$leadText` ("Alex (Shift lead)") for StillUncovered, when the area has a lead. When one action puts several of the shadow's shifts on hold or escalates several of them, merge() folds them into one email listing them all.
+ * Tells a shadow what's happening to their spot when the people they'd shadow change (decision 6): on hold, back on, or still uncovered the day before. `$takerFirstName` is for BackOn, and `$leadText` ("Alex (Shift lead)") for StillUncovered, when the area has a lead. When one action puts several of the shadow's shifts on hold, escalates several of them, or brings several back on (someone taking a slot), merge() folds them into one email listing them all.
  */
 class ShadowSpotNotification extends Notification
 {
@@ -62,6 +62,18 @@ class ShadowSpotNotification extends Notification
             }
 
             return $mail->line('We\'ve asked other volunteers to cover them, and we\'ll email you as soon as someone does. You don\'t need to do anything.');
+        }
+
+        if ($this->notice === ShadowSpotNotice::BackOn && count($this->shifts) > 1) {
+            $mail = (new MailMessage)
+                ->subject('Your shadow shifts on '.count($this->shifts).' dates are back on')
+                ->line($this->takerFirstName.' is covering, so you\'ll shadow '.$this->takerFirstName.' on these shifts:');
+
+            foreach ($this->shifts as $shift) {
+                $mail->line($shift);
+            }
+
+            return $mail;
         }
 
         if ($this->notice === ShadowSpotNotice::StillUncovered && count($this->shifts) > 1) {

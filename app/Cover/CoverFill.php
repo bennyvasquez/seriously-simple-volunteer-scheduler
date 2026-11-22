@@ -23,9 +23,25 @@ use Illuminate\Notifications\Notification;
 final class CoverFill
 {
     /**
-     * Fills the shift's oldest open cover request (`filled_by`, `filled_at`) and logs `cover_request.filled` with the shift as the subject, about the person who took the place, with only `filled_by` and `filled_at` in its changes (RemovePerson::repointIdsInsideEntries() finds it by the person). Returns a closure that sends, after the commit, the notices() for it, or null when the shift has no open request. The caller holds the area (when it takes one) and shift locks; the request is locked here, after the shift. `$filled` receives the request filled, so the caller can name the releaser and show the note.
+     * Fills the shift's oldest open cover request through fillOldestLocked() and returns a closure that sends, after the commit, the notices() for it, or null when the shift has no open request. The caller holds the area (when it takes one) and shift locks. `$filled` receives the request filled, so the caller can name the releaser and show the note.
      */
     public static function fillLocked(?User $actor, Shift $lockedShift, User $person, bool $nobodyButShadowsBefore, ?string $regularHow = null, ?CoverRequest &$filled = null): ?Closure
+    {
+        $request = self::fillOldestLocked($actor, $lockedShift, $person);
+
+        if ($request === null) {
+            return null;
+        }
+
+        $filled = $request;
+
+        return self::sender(self::notices($actor, $lockedShift, $person, $nobodyButShadowsBefore, $request->releasedBy, $regularHow));
+    }
+
+    /**
+     * Fills the shift's oldest open cover request (`filled_by`, `filled_at`) and logs `cover_request.filled` with the shift as the subject, about the person who took the place, with only `filled_by` and `filled_at` in its changes (RemovePerson::repointIdsInsideEntries() finds it by the person). Sends nothing. Returns the request with its releaser loaded, or null when the shift has no open request. The request is locked here, after the shift the caller holds. TakeShift calls this for each shift a volunteer is put on when they take a slot, and merges the notices.
+     */
+    public static function fillOldestLocked(?User $actor, Shift $lockedShift, User $person): ?CoverRequest
     {
         $request = CoverRequest::query()->with('releasedBy')->open()->where('shift_id', $lockedShift->id)
             ->orderBy('created_at')->orderBy('id')->lockForUpdate()->first();
@@ -41,22 +57,15 @@ final class CoverFill
 
         ChangeLogEntry::record($actor, 'cover_request.filled', $lockedShift, ['cover_request_id' => $request->id], $changes, about: $person);
 
-        $filled = $request;
-        $sends = self::notices($actor, $lockedShift, $person, $nobodyButShadowsBefore, $request->releasedBy, $regularHow);
-
-        return function () use ($sends) {
-            foreach ($sends as [$recipient, $notification]) {
-                $recipient->notify($notification);
-            }
-        };
+        return $request;
     }
 
     /**
-     * Who hears that `$person` took a place on the shift, apart from the person themselves, each once: the releaser gets "{name} is covering your {date} shift" (unless they took it back), the shadows get "back on" when nobody but shadows was on it before (decision 6), and the area's active leads get the lead notice (decision 18), except when someone else (a coordinator or lead) put the person on, since they did it. `$releaser` is null for an open place that isn't a cover request.
+     * Who hears that `$person` took a place on the shift, apart from the person themselves, each once: the releaser gets "{name} is covering your {date} shift" (unless they took it back), the shadows get "back on" when a cover request was filled and nobody but shadows was on the shift before (decision 6; shadows on an open place that was never released were never told it was on hold), and the area's active leads get the lead notice (decision 18), unless `$tellLeads` is false or someone else (a coordinator or lead) put the person on, since they did it. `$releaser` is null for an open place that isn't a cover request.
      *
      * @return list<array{0: User, 1: Notification}>
      */
-    public static function notices(?User $actor, Shift $lockedShift, User $person, bool $nobodyButShadowsBefore, ?User $releaser, ?string $regularHow = null): array
+    public static function notices(?User $actor, Shift $lockedShift, User $person, bool $nobodyButShadowsBefore, ?User $releaser, ?string $regularHow = null, bool $tellLeads = true): array
     {
         $lockedShift->loadMissing('area');
         $taker = $person->firstName();
@@ -66,13 +75,13 @@ final class CoverFill
             $sends[$releaser->id] = [$releaser, new ShiftCoveredNotification($lockedShift, $taker)];
         }
 
-        if ($nobodyButShadowsBefore) {
+        if ($nobodyButShadowsBefore && $releaser !== null) {
             foreach (self::shadows($lockedShift) as $shadow) {
                 $sends[$shadow->id] ??= [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::BackOn, $releaser?->firstName() ?? '', takerFirstName: $taker)];
             }
         }
 
-        if ($actor === null || $actor->id === $person->id) {
+        if ($tellLeads && ($actor === null || $actor->id === $person->id)) {
             $leads = User::query()->people()->whereNull('deactivated_at')
                 ->whereHas('roles', fn (Builder $query) => $query->where('role', Role::AreaLead->value)->where('area_id', $lockedShift->area_id))
                 ->orderBy('id')->get();
@@ -86,6 +95,46 @@ final class CoverFill
         unset($sends[$person->id]);
 
         return array_values($sends);
+    }
+
+    /**
+     * Folds emails of the same kind to the same person into one, using the notification's merge(): the releaser's "covering" or a shadow's "back on" for several dates of a slot someone took. Kept in the order first sent.
+     *
+     * @param  list<array{0: User, 1: Notification}>  $sends
+     * @return list<array{0: User, 1: Notification}>
+     */
+    public static function merged(array $sends): array
+    {
+        $merged = [];
+
+        foreach ($sends as [$recipient, $notification]) {
+            $key = $recipient->id.' '.$notification::class.($notification instanceof ShadowSpotNotification ? ' '.$notification->notice->value : '');
+
+            if (! isset($merged[$key])) {
+                $merged[$key] = [$recipient, $notification];
+            } elseif (method_exists($merged[$key][1], 'merge')) {
+                $merged[$key][1]->merge($notification);
+            } else {
+                // A kind that can't be merged is sent as it is rather than dropped.
+                $merged[$key.' '.count($merged)] = [$recipient, $notification];
+            }
+        }
+
+        return array_values($merged);
+    }
+
+    /**
+     * A closure that sends each email, for after the commit.
+     *
+     * @param  list<array{0: User, 1: Notification}>  $sends
+     */
+    public static function sender(array $sends): Closure
+    {
+        return function () use ($sends) {
+            foreach ($sends as [$recipient, $notification]) {
+                $recipient->notify($notification);
+            }
+        };
     }
 
     /** @return list<User> The shift's shadows, in the order they were put on. */
