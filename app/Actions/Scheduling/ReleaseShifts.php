@@ -110,9 +110,15 @@ class ReleaseShifts
     }
 
     /**
-     * The shared step. Deletes the assignment through RemoveFromShift::removeLocked(), logged as assignment.removed about the person with `via` "release:{$via}". For a regular place it creates the cover request, logged as cover_request.created with the shift as the subject, about the person (so RemovePerson rewrites the ids in it), and the request's values, note included, in `changes`. Returns the request, or null for a shadow. It sends nothing and doesn't escalate; releaseAndCollectLocked() does both. The people asked are attached to the request as its `recipients` relation (not stored), so the caller emails exactly the people counted in notified_count. When the shift will be escalated at once, the urgent email's audience is left out of them, so each of those people hears about the shift once. The caller holds the area and shift locks and the assignment's row lock.
+     * The shared step. Deletes the assignment through RemoveFromShift::removeLocked(), logged as assignment.removed about the person with `via` "release:{$via}". For a regular place it creates the cover request, logged as cover_request.created with the shift as the subject, about the person (so RemovePerson rewrites the ids in it), and the request's values, note included, in `changes`. Returns the request, or null for a shadow. It sends nothing and doesn't escalate; releaseAndCollectLocked() does both. The people asked are attached to the request as its `recipients` relation (not stored), so the caller emails exactly the people counted in notified_count. Everyone who could take the shift is asked, leads and coordinators included, since this step doesn't escalate. The caller holds the area and shift locks and the assignment's row lock.
      */
     public function releaseLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): ?CoverRequest
+    {
+        return $this->releaseLockedLeavingOut($person, $lockedShift, $assignment, $note, $via, false);
+    }
+
+    /** releaseLocked(). When `$callerEscalates` is true (releaseAndCollectLocked(), which escalates a shift that escalatesNow()) and the shift escalates now, checked after the removal opens the place, the urgent email's audience is left out of the recipients, so each of those people hears about the shift once. */
+    private function releaseLockedLeavingOut(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via, bool $callerEscalates): ?CoverRequest
     {
         $note = self::cleanNote($note);
 
@@ -125,7 +131,7 @@ class ReleaseShifts
         // The request isn't saved yet, so recipients() can't leave the releaser out by their request; they're left out here.
         $leftOut = [$person->id];
 
-        if (self::escalatesNow($lockedShift)) {
+        if ($callerEscalates && self::escalatesNow($lockedShift)) {
             $leftOut = array_merge($leftOut, array_keys(CoverLadder::urgentAudience($lockedShift->loadMissing('area')->area)));
         }
 
@@ -168,7 +174,7 @@ class ReleaseShifts
      */
     protected function releaseAndCollectLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): array
     {
-        $request = $this->releaseLocked($person, $lockedShift, $assignment, $note, $via);
+        $request = $this->releaseLockedLeavingOut($person, $lockedShift, $assignment, $note, $via, true);
         $released = ['shift' => $lockedShift, 'request' => $request, 'recipients' => collect(), 'sends' => [], 'shadowsTold' => []];
 
         if ($request === null) {

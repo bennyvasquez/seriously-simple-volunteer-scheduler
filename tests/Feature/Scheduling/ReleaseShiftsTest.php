@@ -31,6 +31,7 @@ use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
@@ -356,6 +357,28 @@ class ReleaseShiftsTest extends TestCase
         foreach ([$this->morgan, $this->sam] as $person) {
             Notification::assertSentToTimes($person, CoverRequestNotification::class, 1);
         }
+    }
+
+    public function test_bare_release_locked_inside_24_hours_keeps_leads_as_recipients(): void
+    {
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $shift = $this->robinOn('2026-10-15');
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 19:00', self::TIMEZONE));
+
+        $request = DB::transaction(function () use ($shift) {
+            Area::query()->whereKey($shift->area_id)->lockForUpdate()->firstOrFail();
+            $locked = Shift::query()->with('area')->whereKey($shift->id)->lockForUpdate()->firstOrFail();
+            $assignment = Assignment::query()->with('user')->where('shift_id', $locked->id)->where('user_id', $this->robin->id)->lockForUpdate()->firstOrFail();
+
+            return app(ReleaseShifts::class)->releaseLocked($this->robin, $locked, $assignment, null, 'one');
+        });
+
+        $ids = $request->getRelation('recipients')->pluck('id')->all();
+        $this->assertContains($lead->id, $ids);
+        $this->assertContains($this->coordinator->id, $ids);
+        $this->assertSame(4, $request->notified_count);
+        $this->assertSame(4, $request->fresh()->notified_count);
+        $this->assertNull($request->fresh()->escalated_at);
     }
 
     public function test_a_range_with_two_shifts_inside_24_hours_sends_one_urgent_email_per_person(): void
