@@ -67,6 +67,8 @@ final class Describe
             'shift.restored' => 'Brought back '.self::shiftWords($entry->subject, true),
             'assignment.added' => 'Put '.$person.' on '.self::shiftWords($entry->subject, true),
             'assignment.removed' => 'Removed '.$person.' from '.self::shiftWords($entry->subject, true),
+            'cover_request.resent' => 'Cover request sent again for '.self::shiftDay($entry->subject),
+            'cover_request.escalated' => ucfirst(self::shiftDay($entry->subject)).' marked urgent',
             'closure.created' => self::closureWords($entry->subject),
             'closure.updated' => self::closureChanged($entry, $areas),
             'closure.removed' => self::closureRemoved($entry, $areas),
@@ -208,6 +210,16 @@ final class Describe
         }
 
         return ($the ? 'the ' : 'a ').($shift->area?->name ?? 'area').' shift on '.$shift->whenText();
+    }
+
+    /** "Front desk, Thursday, October 22", without the time. */
+    private static function shiftDay(mixed $shift): string
+    {
+        if (! $shift instanceof Shift) {
+            return 'a shift';
+        }
+
+        return ($shift->area?->name ?? 'area').', '.$shift->local_date->format('l, F j');
     }
 
     /** "Changed the Front desk closure to Nov 25 to Nov 28", from the days the entry saved, so it still reads right after a later change or removal. */

@@ -114,6 +114,14 @@ class DescribeTest extends TestCase
         $this->assertSame('Removed Robin Example from the Front desk shift on '.$when, $this->say(ChangeLogEntry::record($this->coordinator, 'assignment.removed', $shift, about: $this->robin)));
     }
 
+    public function test_cover_request_entries(): void
+    {
+        $shift = Shift::query()->create(['area_id' => $this->frontDesk->id, 'local_date' => '2026-10-22', 'starts_at' => '2026-10-22 22:30:00', 'ends_at' => '2026-10-23 01:30:00', 'people_needed' => 1, 'shadow_spots' => 0]);
+
+        $this->assertSame('Cover request sent again for Front desk, Thursday, October 22', $this->say(ChangeLogEntry::record(null, 'cover_request.resent', $shift, ['cover_request_id' => 1])));
+        $this->assertSame('Front desk, Thursday, October 22 marked urgent', $this->say(ChangeLogEntry::record(null, 'cover_request.escalated', $shift, ['cover_request_id' => 1])));
+    }
+
     public function test_area_closure_and_settings_entries(): void
     {
         $this->assertSame('Added the area Front desk', $this->say(ChangeLogEntry::record($this->coordinator, 'area.created', $this->frontDesk, [], ['name' => ['old' => null, 'new' => 'Front desk']])));
