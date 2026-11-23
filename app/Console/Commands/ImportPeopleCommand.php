@@ -124,7 +124,22 @@ class ImportPeopleCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info("Added {$created} ".($created === 1 ? 'person' : 'people').' as not invited yet. Nobody was emailed.');
+        $cleared = $preview->add->where('clear', true)->count() + $clears;
+        $done = [];
+
+        if ($created > 0) {
+            $done[] = "added {$created} ".($created === 1 ? 'person' : 'people').' as not invited yet';
+        }
+
+        if ($cleared > 0) {
+            $done[] = "cleared {$cleared} ".($cleared === 1 ? 'person' : 'people').' for regular shifts';
+        }
+
+        if ($done === []) {
+            $done[] = 'added membership IDs';
+        }
+
+        $this->info(ucfirst(implode(' and ', $done)).'. Nobody was emailed.');
 
         return self::SUCCESS;
     }

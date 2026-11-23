@@ -382,4 +382,25 @@ class ImportPeopleTest extends TestCase
         $this->assertCount(0, $wrongCase->add->where('makeLead', true));
         $this->assertCount(0, $wrongCase->add->where('clear', true));
     }
+
+    public function test_the_final_message_says_what_was_cleared_on_a_re_import(): void
+    {
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org'])
+            ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
+            ->assertSuccessful();
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag'])
+            ->expectsConfirmation('Clear 2 people for regular shifts? Nobody will be emailed.', 'yes')
+            ->expectsOutputToContain('Cleared 2 people for regular shifts. Nobody was emailed.')
+            ->doesntExpectOutputToContain('Added 0')
+            ->assertSuccessful();
+    }
+
+    public function test_the_final_message_says_what_was_added_and_cleared(): void
+    {
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag'])
+            ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
+            ->expectsOutputToContain('Added 3 people as not invited yet and cleared 2 people for regular shifts. Nobody was emailed.')
+            ->assertSuccessful();
+    }
 }
