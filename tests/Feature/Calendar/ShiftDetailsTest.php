@@ -394,6 +394,64 @@ class ShiftDetailsTest extends TestCase
         Notification::assertSentTo($robin, PutOnShiftNotification::class);
     }
 
+    public function test_the_search_lists_a_shadow_as_shadowing_and_leaves_out_regulars(): void
+    {
+        $shift = $this->shiftWithPerson('Sam Example', shadow: 'Sam Shadow');
+        $regular = User::query()->where('name', 'Sam Example')->sole();
+        $shadow = User::query()->where('name', 'Sam Shadow')->sole();
+
+        $response = $this->actingAs($this->coordinator())->get(route('calendar.shift', [$shift, 'q' => 'sam']))->assertOk();
+
+        // Each match is its own form with the person's id, so the regular on the panel's people list doesn't count as a match.
+        $response->assertDontSee('name="person" value="'.$regular->id.'"', false)
+            ->assertSee('name="person" value="'.$shadow->id.'"', false)
+            ->assertSee('<span class="tag">Shadowing</span>', false)
+            ->assertSee('aria-label="Put Sam Shadow on this shift"', false)
+            // They're already in the shadow spot, so there's no Shadow button for them.
+            ->assertDontSee('aria-label="Put Sam Shadow on this shift as a shadow"', false);
+    }
+
+    public function test_putting_a_shadow_on_from_the_panel_changes_their_place(): void
+    {
+        Notification::fake();
+        $shift = $this->shiftWithPerson('Sam Example', shadow: 'Robin Example');
+        $shift->update(['people_needed' => 2]);
+        $robin = User::query()->where('name', 'Robin Example')->sole();
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular', 'areas' => [$this->frontDesk->id]])
+            ->assertRedirect(route('calendar.shift', [$shift, 'areas' => [$this->frontDesk->id]]))
+            ->assertSessionHas('status', 'Robin is on this shift instead of shadowing it. They were emailed.');
+
+        $this->assertSame(AssignmentType::Regular, $shift->assignments()->where('user_id', $robin->id)->sole()->type);
+        $this->assertTrue(ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.type_changed')->about($robin)->exists());
+
+        // Picking them as a shadow again is still refused.
+        $other = $this->shiftWithPerson('Alex Example', shadow: 'Jamie Example');
+        $jamie = User::query()->where('name', 'Jamie Example')->sole();
+        $this->actingAs($coordinator)->post(route('calendar.shift.assign', $other), ['person' => $jamie->id, 'type' => 'shadow'])
+            ->assertSessionHasErrors(['shift' => 'Jamie is already on this shift.']);
+    }
+
+    public function test_a_shadow_on_a_full_shift_goes_through_the_confirm_step(): void
+    {
+        $shift = $this->shiftWithPerson('Sam Example', shadow: 'Robin Example');
+        $robin = User::query()->where('name', 'Robin Example')->sole();
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular'])
+            ->assertRedirect(route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $robin->id, 'type' => 'regular']));
+
+        $this->actingAs($coordinator)->get(route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $robin->id, 'type' => 'regular']))
+            ->assertOk()
+            ->assertSee('This puts Thursday, October 22 at 2 people. It needs 1.')
+            ->assertSee('Put Robin on anyway');
+
+        $this->actingAs($coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular', 'over_confirmed' => 1])
+            ->assertSessionHas('status', 'Robin is on this shift instead of shadowing it. They were emailed.');
+        $this->assertSame(AssignmentType::Regular, $shift->assignments()->where('user_id', $robin->id)->sole()->type);
+    }
+
     public function test_a_refusal_comes_back_on_the_panel(): void
     {
         $shift = $this->shiftWithPerson();

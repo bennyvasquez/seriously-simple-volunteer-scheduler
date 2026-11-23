@@ -54,7 +54,11 @@ class ShiftController extends Controller
         $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         // A regular can always be put on (past the people needed after a confirmation), so putting someone on is open to anyone who can assign.
         $canPut = $canAssign;
-        $search = PersonSearch::find($user, (string) $request->query('q', ''), $byEmail, $shift->assignments->pluck('user_id'), $canPut);
+        // Only people in a regular place are left out. A shadow is listed as "Shadowing", and putting them on moves them to a regular place (#21).
+        $regularIds = $shift->assignments->where('type', AssignmentType::Regular)->pluck('user_id');
+        $shadowIds = $shift->assignments->where('type', AssignmentType::Shadow)->pluck('user_id');
+        $search = PersonSearch::find($user, (string) $request->query('q', ''), $byEmail, $regularIds, $canPut);
+        $search['matches']->each(fn (User $match) => $match->setAttribute('shadowing', $shadowIds->contains($match->id)));
         $canEdit = $open && Gate::forUser($user)->allows('update', $shift);
         $canEditSlot = $canEdit && $shift->weeklySlot !== null && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         $edit = $canEdit ? (string) $request->query('edit', '') : '';
@@ -72,7 +76,7 @@ class ShiftController extends Controller
 
         // The confirm step for going over the people needed, from the person and type the coordinator picked.
         $over = $canPut && $request->boolean('confirm') && $request->query('type') === 'regular' && $shift->openPlaces() === 0
-            ? User::query()->whereNull('deactivated_at')->whereNotIn('id', $shift->assignments->pluck('user_id'))->find((int) $request->query('person'))
+            ? User::query()->whereNull('deactivated_at')->whereNotIn('id', $regularIds)->find((int) $request->query('person'))
             : null;
         $over?->setAttribute('display_name', PersonSearch::displayName($user, $over));
 
@@ -126,17 +130,22 @@ class ShiftController extends Controller
         $person = User::query()->findOrFail($data['person']);
 
         try {
-            $putOnShift->handle($request->user(), $shift, $person, AssignmentType::from($data['type']), $request->boolean('over_confirmed'));
+            $assignment = $putOnShift->handle($request->user(), $shift, $person, AssignmentType::from($data['type']), $request->boolean('over_confirmed'));
         } catch (NeedsOverConfirmation) {
             return redirect()->route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $person->id, 'type' => $data['type']] + $areaQuery);
         } catch (DomainException $e) {
             return redirect()->route('calendar.shift', [$shift] + $areaQuery)->withErrors(['shift' => $e->getMessage()]);
         }
 
-        $first = $person->firstName();
+        // An assignment that wasn't just created is a shadow place PutOnShift turned into a regular one.
+        $placed = match (true) {
+            $data['type'] === 'shadow' => ' is shadowing this shift.',
+            ! $assignment->wasRecentlyCreated => ' is on this shift instead of shadowing it.',
+            default => ' is on this shift.',
+        };
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
-            ->with('status', $first.($data['type'] === 'shadow' ? ' is shadowing this shift.' : ' is on this shift.').($person->canSignIn() ? ' They were emailed.' : ''));
+            ->with('status', $person->firstName().$placed.($person->canSignIn() ? ' They were emailed.' : ''));
     }
 
     /** The confirmation page for removing one person from this shift, or from their shifts across a range of dates (neither choice picked to start with). "Check which shifts" comes back here with ?check=1 and the dates, so it works without JavaScript. */
