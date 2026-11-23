@@ -59,6 +59,62 @@ Volunteer-run organizations keep a shared calendar, a chat channel, and a lot of
 
 One person can hold several roles. Nobody sees schedule details until a coordinator has invited them and they've accepted. Each area can name its leads (for example "Shift lead" for Front desk), and an area with no name set says "Area lead". Only the label changes: the role is still area lead.
 
+### What each role can do
+
+These tables describe what's built today, checked against the code's policies and gates. Anything that changes who can do what updates them in the same pull request. "Volunteer" means someone who can sign in and holds no role. Admins can do everything coordinators can, but the emails that go to "the Coordinator role" reach an admin only if they also hold that role. Someone who isn't invited yet, or whose account is turned off, can't sign in and gets none of this.
+
+**Signing in**
+
+| | Volunteer | Area lead | Coordinator | Admin |
+|---|---|---|---|---|
+| Must have a password and two-factor before using anything else | No | Yes | Yes | Yes |
+
+**Their own shifts**
+
+| | Volunteer | Area lead | Coordinator | Admin |
+|---|---|---|---|---|
+| Home, All my shifts and the Emails setting | Yes | Yes | Yes | Yes |
+| Release a shift they're on (one date, a range of dates, or giving up a weekly slot) | Yes | Yes | Yes | Yes |
+| Take an open shift, or become the regular ("Every Thursday") on a slot with no regular | Yes | Yes | Yes | Yes |
+| Get cover request emails (when turned on, not already on the shift, not on an overlapping shift, and not the person who released it) | Yes | Yes | Yes | Yes |
+
+**The calendar**
+
+| | Volunteer | Area lead | Coordinator | Admin |
+|---|---|---|---|---|
+| See the coordinator calendar | No | Yes | Yes | Yes |
+| Weekly slots, one-time shifts and regulars; putting people on and taking them off shifts; editing, cancelling and bringing back shifts | No | Their areas | All areas | All areas |
+| Create and edit areas, including the lead name | No | No | Yes | Yes |
+| Closures | No | No | Yes | Yes |
+| Organization settings | No | No | No | Yes |
+
+**People**
+
+| | Volunteer | Area lead | Coordinator | Admin |
+|---|---|---|---|---|
+| People list and person pages | No | People with a shift or regular slot in their areas, and themselves | Everyone | Everyone |
+| Invite someone, and "Invite everyone not invited yet" | No | No | Yes | Yes |
+| Turn off or remove someone (never themselves; only an admin can do it to an admin) | No | No | Yes | Yes |
+| Grant or revoke roles | No | No | Area lead only | Any role |
+| Reset someone's two-factor | No | No | No | Yes |
+| Change log | No | No | Yes | Yes |
+
+**Emails that go out because of a role**
+
+| Email | Who gets it |
+|---|---|
+| Urgent: a shift still open 24 hours before it starts | The area's active leads and everyone with the Coordinator role |
+| "Covered" or "{First name} took", when a volunteer takes a shift | The area's active leads |
+| "{First name} can't make their shadow shift" | Everyone with the Coordinator role |
+
+`ssvs:setup` and `ssvs:import-people` run on the server, so they need server access, not a role.
+
+**Promised in this spec but not built yet**
+
+- Volunteers seeing the full schedule and who's on each shift (the Schedule tab, section 13's "Who sees what"). Today only people with a role see the calendar.
+- Clearance and shadowing (section 9): only cleared volunteers take shifts and get cover requests, not-cleared volunteers sign up for shadow spots, and coordinators clear people or move them back.
+- Skills (granted by leads, required by some shifts) and event organizers.
+
 ## 7. Scheduling model
 
 - **Weekly slots generate shifts** a set number of weeks ahead (setting, default 8). Each generated shift copies the slot's details and fills in its regulars, leaving out anyone whose account is turned off. All of a slot's regulars for that date go on, even when that is more than the shift's people needed.
