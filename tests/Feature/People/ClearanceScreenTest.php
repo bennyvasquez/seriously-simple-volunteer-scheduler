@@ -269,4 +269,32 @@ class ClearanceScreenTest extends TestCase
         $addRegular->assertSeeText('Jamie Example Not cleared yet');
         $addRegular->assertDontSeeText('Jamie Cleared Not cleared yet');
     }
+
+    public function test_shadow_shifts_from_before_a_move_back_say_so(): void
+    {
+        $this->shadowShift('2026-10-01', '18:30', '21:30');
+        $this->shadowShift('2026-10-06', '15:30', '18:30');
+        $this->jamie->forceFill(['shadowing_since' => CarbonImmutable::parse('2026-10-07 09:00', 'America/Detroit')])->save();
+        $this->shadowShift('2026-10-08', '18:30', '21:30');
+
+        $this->actingAs($this->coordinator)->get(route('people.show', $this->jamie))
+            ->assertOk()
+            ->assertSeeText('Shadow shifts done: 1 of 2')
+            ->assertSeeTextInOrder([
+                'Thu Oct 8, Front desk 6:30 to 9:30pm, with Sam. Done',
+                'Tue Oct 6, Front desk 3:30 to 6:30pm, with Sam. Done (before moving back)',
+                'Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam. Done (before moving back)',
+            ]);
+    }
+
+    public function test_a_note_that_isnt_text_is_treated_as_no_note(): void
+    {
+        $this->actingAs($this->coordinator)
+            ->post(route('people.clear', $this->jamie), ['note' => ['x']])
+            ->assertRedirect(route('people.show', $this->jamie));
+
+        $this->assertTrue($this->jamie->fresh()->isCleared());
+        $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->where('subject_id', $this->jamie->id)->sole();
+        $this->assertArrayNotHasKey('note', $entry->changes);
+    }
 }

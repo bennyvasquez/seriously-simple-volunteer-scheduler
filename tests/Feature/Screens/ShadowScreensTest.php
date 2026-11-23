@@ -121,7 +121,7 @@ class ShadowScreensTest extends TestCase
         $this->actingAs($this->avery)->get('/')->assertOk()
             ->assertSee('Shadow shifts done: 0 of 3')
             ->assertSee('After 3, a coordinator reviews and clears you to take regular shifts.')
-            ->assertSee('You\'re not signed up for a shadow shift yet.', false)
+            ->assertSee('No shadow shifts in the next two weeks.', false)
             ->assertSee('No shadow spots open in the next two weeks.');
     }
 

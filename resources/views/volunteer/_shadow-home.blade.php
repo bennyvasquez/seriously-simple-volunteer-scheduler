@@ -14,7 +14,7 @@
 @if ($nextShadow)
 @include('volunteer._shift-card', ['shift' => $nextShadow, 'action' => 'release', 'tag' => $nextShadow->card_tag, 'note' => $nextShadow->shadowing_with === '' ? null : 'You\'ll shadow '.$nextShadow->shadowing_with])
 @else
-<p class="muted">You're not signed up for a shadow shift yet.</p>
+<p class="muted">No shadow shifts in the next two weeks.</p>
 @endif
 @if ($next->isEmpty())
 <a class="btn" href="{{ route('my-shifts') }}">All my shifts</a>

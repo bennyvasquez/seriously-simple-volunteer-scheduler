@@ -23,7 +23,9 @@ class ClearanceController extends Controller
         $person = $this->clearable($request, $user);
 
         try {
-            $clearPerson->handle($request->user(), $person, (string) $request->input('note', ''));
+            $note = $request->input('note');
+            // Anything but text (a posted array, say) is no note, the same as moveBack().
+            $clearPerson->handle($request->user(), $person, is_string($note) ? $note : null);
         } catch (DomainException $e) {
             return back()->withInput($request->only('note'))->withErrors(['clear' => $e->getMessage()]);
         }

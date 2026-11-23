@@ -173,7 +173,7 @@ class PersonController extends Controller
     /**
      * The "Shadowing and clearance" panel (screen 9), for everyone who can see the page (spec section 13). `canClear` is whether to show the "Clear for regular shifts" form: coordinators can clear someone before they're ready (section 9), but not someone cleared or turned off.
      *
-     * @return array{clearedSince: ?string, done: int, required: int, ready: bool, history: Collection<int, array{text: string, status: string}>, canClear: bool}
+     * @return array{clearedSince: ?string, done: int, required: int, ready: bool, history: Collection<int, array{text: string, status: string}> (status is Done, Done (before moving back), No-show or Cancelled), canClear: bool}
      */
     private function clearance(User $viewer, User $person, Organization $organization): array
     {
@@ -194,6 +194,8 @@ class PersonController extends Controller
                 'status' => match (true) {
                     $shift->cancelled_at !== null => 'Cancelled',
                     $shadow->no_show_at !== null => 'No-show',
+                    // Someone moved back starts over (ShadowProgress), so a shift that ended before then says so instead of contradicting the count.
+                    $person->shadowing_since !== null && $shift->ends_at->lessThanOrEqualTo($person->shadowing_since) => 'Done (before moving back)',
                     default => 'Done',
                 },
             ];

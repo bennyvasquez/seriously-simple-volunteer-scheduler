@@ -27,14 +27,14 @@ class ShadowingTest extends DuskTestCase
             $browser->loginAs($trainee)->visit('/')
                 ->assertSee('Shadow shifts done: 0 of 2')
                 ->assertSee('After 2, a coordinator reviews and clears you to take regular shifts.')
-                ->assertSee('You\'re not signed up for a shadow shift yet.')
+                ->assertSee('No shadow shifts in the next two weeks.')
                 ->clickLink('Shadow this shift')
                 ->waitForText('Can you shadow this one?')
                 ->assertSee($date)
                 ->press('Shadow this shift')
                 ->waitForText('You\'re shadowing '.$area.' on '.$date.'.')
                 ->assertPathIs('/')
-                ->assertDontSee('You\'re not signed up for a shadow shift yet.');
+                ->assertDontSee('No shadow shifts in the next two weeks.');
 
             // The first section on the not-cleared Home is "Your next shadow shift", and it now holds this shift.
             $browser->with('main section.shift-section', function (Browser $section) use ($date, $area) {
