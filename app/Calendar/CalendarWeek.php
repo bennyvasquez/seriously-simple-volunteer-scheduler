@@ -210,7 +210,7 @@ final class CalendarWeek
     /**
      * What a shift block says, for the grid and the phone list.
      *
-     * @return array{time: string, area: string, lines: list<string>, classes: string, label: string}
+     * @return array{date: string, time: string, area: string, lines: list<string>, classes: string}
      */
     public function describe(Shift $shift, CarbonImmutable $now): array
     {
@@ -276,12 +276,9 @@ final class CalendarWeek
 
         $time = TimeFormat::range($shift->starts_at->setTimezone($timezone), $shift->ends_at->setTimezone($timezone));
 
-        // The visible spans run together for screen readers, so the block gets one name read as a sentence.
-        $spoken = array_map(fn (string $line) => preg_replace_callback('/^(Shadows?): /', fn (array $match) => strtolower($match[1]).' ', $line), $lines);
-        $label = implode(', ', [$shift->area->name, $shift->local_date->format('l, F j'), $time, ...$spoken]);
-
+        // The block's accessible name is its visible text, so speech input users can say what they see (WCAG 2.5.3). The date isn't shown on the block, so the views add it as hidden text.
         return [
-            'label' => $label,
+            'date' => $shift->local_date->format('l, F j'),
             'time' => $time,
             'area' => $shift->area->name,
             'lines' => $lines,

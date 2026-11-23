@@ -111,7 +111,8 @@ class CalendarViewTest extends TestCase
             ->assertOk()
             ->assertSee('6:30 to 9:30pm')
             ->assertSee('Cancelled: Power outage')
-            ->assertSee('Front desk, Thursday, October 15, 6:30 to 9:30pm, Cancelled: Power outage', false)
+            // Screen readers hear "Cancelled" from the visible line, which is part of the block's name, not only the strike-through.
+            ->assertSee('<span class="vh">, </span><span>Cancelled: Power outage</span>', false)
             ->assertSee('class="ev area-blue cancelled"', false)
             ->assertDontSee('1 open')
             ->assertDontSee('urgent')
@@ -193,7 +194,9 @@ class CalendarViewTest extends TestCase
 
         $this->actingAs($this->coordinator())->get(route('calendar.week', ['date' => '2026-10-22']))
             ->assertSeeInOrder(['6:30 to 9:30pm', 'Front desk', 'Laser class helper', 'Sam', 'Shadow: Robin', '1 shadow spot open'])
-            ->assertSee('aria-label="Front desk, Thursday, October 22, 6:30 to 9:30pm, Laser class helper, Sam, shadow Robin, 1 shadow spot open"', false)
+            // The block's name is its visible text (so speech input users can say what they see), plus the date, which is hidden.
+            ->assertDontSee('aria-label="Front desk', false)
+            ->assertSee('<span class="vh">, Thursday, October 22</span>', false)
             ->assertDontSee('1 open');
     }
 

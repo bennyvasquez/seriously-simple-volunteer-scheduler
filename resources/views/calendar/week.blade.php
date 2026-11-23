@@ -81,7 +81,7 @@
 @endforeach
 @foreach ($shifts as $shift)
 @php($info = $week->describe($shift, $now))
-<a class="{{ $info['classes'] }}" aria-label="{{ $info['label'] }}" href="{{ route('calendar.shift', [$shift] + $areaQuery) }}"><strong>{{ $info['time'] }}, {{ $info['area'] }}</strong>@foreach ($info['lines'] as $line)<span>{{ $line }}</span>@endforeach</a>
+<a class="{{ $info['classes'] }}" href="{{ route('calendar.shift', [$shift] + $areaQuery) }}"><strong>{{ $info['time'] }}, {{ $info['area'] }}</strong><span class="vh">, {{ $info['date'] }}</span>@foreach ($info['lines'] as $line)<span class="vh">, </span><span>{{ $line }}</span>@endforeach</a>
 @endforeach
 @endif
 @endforeach

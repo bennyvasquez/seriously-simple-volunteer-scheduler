@@ -519,6 +519,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-11-22 | Running the import again with `--cleared-tag` leaves alone people a coordinator moved back to shadowing and people who are turned off, so the tag never undoes a coordinator's decision. The preview lists the moved-back ones under "Moved back to shadowing, left alone", and "Already here, left alone" no longer lists people being cleared. This narrows the earlier 2026-11-22 row on clearing by category. |
 | 2026-11-22 | The moved back email lists the released shifts in two groups: "You're off these shifts, and other volunteers were asked to cover them:" and "You're off these shifts too. They still have the people they need, so nobody was asked:", leaving out a group with no shifts. |
 | 2026-11-22 | A coordinator who moves someone back and releases a shift inside 24 hours doesn't get the urgent email about it, following the 2026-11-21 rule for a lead or coordinator who releases a shift themselves. The area's leads and the other coordinators still get it. |
+| 2026-11-23 | A shift block on the calendar has no separate screen reader label: its name is its visible text, in the order it's shown (time, area, then the lines under them), with the date and the commas between lines added as hidden text. A speech input user can say what they see to open it (WCAG 2.5.3, label in name). This replaces the earlier label that started with the area and date. |
 
 ## 19. Open questions
 
