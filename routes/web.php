@@ -69,6 +69,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/shifts/{shift}/assign', [ShiftController::class, 'assign'])->name('calendar.shift.assign');
         Route::get('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePerson'])->name('calendar.shift.remove-person');
         Route::post('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePersonStore'])->name('calendar.shift.remove-person.store');
+        Route::post('/calendar/shifts/{shift}/no-show', [ShiftController::class, 'noShow'])->name('calendar.shift.no-show');
         Route::post('/calendar/shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('calendar.shift.cancel');
         Route::post('/calendar/shifts/{shift}/restore', [ShiftController::class, 'restore'])->name('calendar.shift.restore');
         Route::post('/calendar/shifts/{shift}', [ShiftController::class, 'update'])->name('calendar.shift.update');
@@ -91,6 +92,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/change-log', [ChangeLogController::class, 'index'])->middleware('can:view-change-log')->name('change-log.index');
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings');
     Route::put('/settings', [SettingsController::class, 'update']);
+    Route::put('/settings/shadowing', [SettingsController::class, 'updateShadowing'])->name('settings.shadowing');
     Route::get('/people', [PeopleController::class, 'index'])->middleware('can:viewAny,App\Models\User')->name('people.index');
     Route::middleware('can:invite,App\Models\User')->group(function () {
         Route::get('/people/invite', [InviteController::class, 'create'])->name('people.invite');

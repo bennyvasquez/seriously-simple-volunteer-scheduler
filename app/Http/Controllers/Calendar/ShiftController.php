@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Calendar;
 
 use App\Actions\Scheduling\CancelShift;
+use App\Actions\Scheduling\MarkNoShow;
 use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Actions\Scheduling\PutOnShift;
 use App\Actions\Scheduling\RemoveFromShift;
@@ -264,6 +265,25 @@ class ShiftController extends Controller
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)->with('status', 'Saved the changes to this shift.');
     }
 
+    public function noShow(Request $request, MarkNoShow $markNoShow, Shift $shift): RedirectResponse
+    {
+        Gate::forUser($request->user())->authorize('update', $shift);
+
+        $data = $request->validate(['assignment' => ['required', 'integer'], 'no_show' => ['required', 'boolean']]);
+        $assignment = Assignment::query()->where('shift_id', $shift->id)->findOrFail($data['assignment']);
+
+        try {
+            $markNoShow->handle($request->user(), $assignment, (bool) $data['no_show']);
+        } catch (DomainException $e) {
+            return redirect()->route('calendar.shift', [$shift] + $this->areaQuery($request))->withErrors(['shift' => $e->getMessage()]);
+        }
+
+        $name = PersonSearch::displayName($request->user(), $assignment->user);
+
+        return redirect()->route('calendar.shift', [$shift] + $this->areaQuery($request))
+            ->with('status', $data['no_show'] ? 'Marked '.$name.' as a no-show.' : 'Undid the no-show for '.$name.'.');
+    }
+
     public function cancel(Request $request, CancelShift $cancelShift, Shift $shift): RedirectResponse
     {
         Gate::forUser($request->user())->authorize('cancel', $shift);
@@ -346,7 +366,7 @@ class ShiftController extends Controller
         return 'Repeats '.$every.', since '.$slot->valid_from->format('M j').'. '.($slot->valid_until === null ? 'No end date.' : 'Ends '.$slot->valid_until->format('M j').'.');
     }
 
-    /** @return Collection<int, array{name: string, role: string, remove: ?string, end: ?string}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
+    /** @return Collection<int, array{name: string, role: string, remove: ?string, end: ?string, assignment: int, noShow: bool, canMark: bool}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
     private function people(Shift $shift, User $viewer, bool $canManageSlot): Collection
     {
         $date = $shift->local_date->toDateString();
@@ -356,11 +376,14 @@ class ShiftController extends Controller
         $canRemove = $shift->starts_at->greaterThan(now()) && Gate::forUser($viewer)->allows('removePerson', $shift);
         $remove = fn (Assignment $assignment) => $canRemove ? route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id] + $this->areaQuery(request())) : null;
 
-        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer, $remove, $canManageSlot) {
+        // Shadows on a shift that has ended can be marked a no-show, or have it undone, by anyone who can edit the shift.
+        $canMark = $shift->cancelled_at === null && $shift->ends_at->lessThanOrEqualTo(now()) && Gate::forUser($viewer)->allows('update', $shift);
+
+        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer, $remove, $canManageSlot, $canMark) {
             $name = PersonSearch::displayName($viewer, $assignment->user);
 
             if ($assignment->type === AssignmentType::Shadow) {
-                return ['name' => $name, 'role' => 'Shadowing', 'remove' => $remove($assignment), 'end' => null];
+                return ['name' => $name, 'role' => 'Shadowing', 'remove' => $remove($assignment), 'end' => null, 'assignment' => $assignment->id, 'noShow' => $assignment->no_show_at !== null, 'canMark' => $canMark];
             }
 
             $regular = $slot?->regulars->first(fn (SlotRegular $regular) => $regular->user_id === $assignment->user_id && $regular->activeOn($date));

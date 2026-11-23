@@ -5,10 +5,16 @@ namespace Tests\Feature\Accounts;
 use App\Actions\Accounts\ClearPerson;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\RevokeRole;
+use App\Actions\UpdateShadowingSettings;
 use App\ChangeLog\Describe;
+use App\Cover\ShadowProgress;
+use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Models\Area;
+use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\Organization;
+use App\Models\Shift;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,5 +117,89 @@ class ClearanceTest extends TestCase
         }
 
         $this->assertSame(0, app(ClearPerson::class)->clearRoleHolders());
+    }
+
+    /** A shift in the given hours (UTC) on the day of the frozen clock (2026-10-14 13:00 UTC), with the person as a shadow. */
+    private function shadowShift(User $person, string $starts, string $ends, bool $cancelled = false, bool $noShow = false): Assignment
+    {
+        $shift = Shift::create([
+            'area_id' => $this->frontDesk->id, 'local_date' => CarbonImmutable::parse($starts, 'UTC')->toDateString(),
+            'starts_at' => CarbonImmutable::parse($starts, 'UTC'), 'ends_at' => CarbonImmutable::parse($ends, 'UTC'),
+            'people_needed' => 1, 'shadow_spots' => 1,
+            'cancelled_at' => $cancelled ? now() : null, 'cancel_reason' => $cancelled ? 'Power outage' : null,
+        ]);
+        $assignment = Assignment::create(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => AssignmentType::Shadow]);
+
+        if ($noShow) {
+            $assignment->forceFill(['no_show_at' => now()])->save();
+        }
+
+        return $assignment;
+    }
+
+    public function test_only_finished_uncancelled_shadow_shifts_count(): void
+    {
+        $avery = User::factory()->create(['name' => 'Avery Trainee']);
+
+        $this->shadowShift($avery, '2026-10-12 10:00', '2026-10-12 12:00');
+        $this->shadowShift($avery, '2026-10-11 10:00', '2026-10-11 12:00', cancelled: true);
+        $this->shadowShift($avery, '2026-10-10 10:00', '2026-10-10 12:00', noShow: true);
+        $this->shadowShift($avery, '2026-10-14 12:00', '2026-10-14 14:00');
+        $this->shadowShift($avery, '2026-10-15 10:00', '2026-10-15 12:00');
+        // A place the person left: the assignment is deleted, so it's gone.
+        $this->shadowShift($avery, '2026-10-09 10:00', '2026-10-09 12:00')->delete();
+
+        $this->assertSame(1, ShadowProgress::done($avery));
+
+        $history = ShadowProgress::history($avery);
+        $this->assertCount(3, $history);
+        $this->assertSame(['2026-10-12', '2026-10-11', '2026-10-10'], $history->map(fn (Assignment $a) => $a->shift->local_date->toDateString())->all());
+        $this->assertTrue($history->every(fn (Assignment $a) => $a->shift->relationLoaded('area')));
+    }
+
+    public function test_changing_the_required_number_never_unclears_anyone(): void
+    {
+        Organization::factory()->create();
+        $coordinator = User::factory()->create(['name' => 'Chris Coordinator']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+        $cleared = User::factory()->cleared()->create(['name' => 'Sam Example']);
+        $two = User::factory()->create(['name' => 'Avery Trainee']);
+        $one = User::factory()->create(['name' => 'Quinn Trainee']);
+        $this->shadowShift($cleared, '2026-10-10 10:00', '2026-10-10 12:00');
+        $this->shadowShift($two, '2026-10-10 10:00', '2026-10-10 12:00');
+        $this->shadowShift($two, '2026-10-11 10:00', '2026-10-11 12:00');
+        $this->shadowShift($one, '2026-10-10 10:00', '2026-10-10 12:00');
+
+        $ready = fn () => ShadowProgress::readyForReview()->pluck('name')->all();
+
+        $this->assertSame(['Avery Trainee'], $ready());
+
+        app(UpdateShadowingSettings::class)->handle($coordinator, 3);
+        $this->assertSame([], $ready());
+        $this->assertTrue($cleared->fresh()->isCleared());
+
+        app(UpdateShadowingSettings::class)->handle($coordinator, 1);
+        $this->assertEqualsCanonicalizing(['Avery Trainee', 'Quinn Trainee'], $ready());
+        $this->assertTrue($cleared->fresh()->isCleared());
+    }
+
+    public function test_ready_for_review_skips_turned_off_people_and_is_one_query(): void
+    {
+        Organization::factory()->create();
+        $off = User::factory()->create(['name' => 'Robin Example', 'deactivated_at' => now()]);
+        $this->shadowShift($off, '2026-10-10 10:00', '2026-10-10 12:00');
+        $this->shadowShift($off, '2026-10-11 10:00', '2026-10-11 12:00');
+        $on = User::factory()->create(['name' => 'Avery Trainee']);
+        $this->shadowShift($on, '2026-10-10 10:00', '2026-10-10 12:00');
+        $this->shadowShift($on, '2026-10-11 10:00', '2026-10-11 12:00');
+
+        \DB::enableQueryLog();
+        $names = ShadowProgress::readyForReview()->pluck('name')->all();
+        $queries = \DB::getQueryLog();
+        \DB::disableQueryLog();
+
+        $this->assertSame(['Avery Trainee'], $names);
+        // One for the required number, one for the people.
+        $this->assertLessThanOrEqual(2, count($queries));
     }
 }

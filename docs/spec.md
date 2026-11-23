@@ -86,7 +86,9 @@ These tables describe what's built today, checked against the code's policies an
 | Weekly slots, one-time shifts and regulars; putting people on and taking them off shifts; editing, cancelling and bringing back shifts | No | Their areas | All areas | All areas |
 | Create and edit areas, including the lead name | No | No | Yes | Yes |
 | Closures | No | No | Yes | Yes |
-| Organization settings | No | No | No | Yes |
+| Organization settings (name, time zone, weeks ahead) | No | No | No | Yes |
+| Shadowing setting (shadow shifts before review) | No | No | Yes | Yes |
+| Mark a shadow's no-show | No | Their areas | All areas | All areas |
 
 **People**
 
@@ -213,8 +215,8 @@ SSVS is the record of volunteer hours.
 
 - New volunteers are invited like everyone else and can see the full schedule, but **start not cleared**. The flag is worded positively ("Cleared for regular shifts") so that forgetting to change it is the safe mistake.
 - **Shadow spots** are added to existing shifts by a lead or coordinator, so a trainee always has someone to learn from. Not-cleared volunteers see a "Shadow this shift" button and a list of open shadow spots on their home screen.
-- **A shadow shift counts once it ends**, unless the person shadowed or the lead marks a no-show.
-- **Required shadow shifts is a coordinator setting** (default 2). Changing it never un-clears anyone; it only changes when the "ready for review" prompt appears.
+- **A shadow shift counts once it ends**, unless it was cancelled or a lead (in their area) or a coordinator marks the shadow a no-show. Marking is only offered once the shift has ended, can be undone, and is logged as `assignment.no_show`. A shadow place someone left never counts.
+- **Required shadow shifts is a coordinator setting** (default 2, from 1 to 10, in the Shadowing section of Settings, which coordinators can reach; the rest of Settings stays admin-only). Changing it never un-clears anyone; it only changes when the "ready for review" prompt appears.
 - When a volunteer reaches the required number, coordinators see **"Ready for review"** with the shadow history. Clearing is always a coordinator decision; the app never clears anyone automatically.
 - **Coordinators can override in both directions:** clear someone early, or move a cleared volunteer back to shadowing. Every change records who made it, when, and an optional note.
 - **Moving someone back** asks the coordinator what to do with that person's upcoming regular shifts: keep them, or release them through the normal cover flow.
@@ -315,7 +317,7 @@ When someone stops volunteering, a coordinator turns their account off. That rem
 
 ## 14. Settings
 
-Organization: name, time zone, weeks to generate ahead, required shadow shifts, reminder timing, public calendar on or off, "become a volunteer" link. Built so far: name, time zone and weeks to generate ahead (1 to 26), changed by admins only. The rest come with their features.
+Organization: name, time zone, weeks to generate ahead, required shadow shifts, reminder timing, public calendar on or off, "become a volunteer" link. Built so far: name, time zone and weeks to generate ahead (1 to 26), changed by admins only, and required shadow shifts (1 to 10), changed by coordinators and admins in a Shadowing section. The rest come with their features.
 Per area: name, escalation timings, chat webhook, whether it appears on the public calendar. The per-area escalation timings aren't built yet: every area uses the defaults, 72 hours for the second request and 24 hours for the urgent alert (section 8.3).
 Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours export, Google Calendar.
 
@@ -484,6 +486,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-11-21 | Home lists the next 14 days, the same window as Needs attention: "Your next shifts" and "Open shifts you can take" (cover requests first, tagged "Needs cover", then by date; slots with no regular tagged "No regular"). "All my shifts" lists every future shift the person is on, by month. Both lists keep the person's cancelled shifts, since cancelled shifts stay visible, tagged "Cancelled" with the reason and no "Can't make it" button. |
 | 2026-11-21 | The release note is up to 500 characters, trimmed, shown as plain text to people taking the shift and in the emails. It stays on the cover request when the releaser's account is removed, the same as a closure's reason. Removing a person repoints `cover_requests.released_by` and `filled_by` to the shared Removed person record and rewrites those ids inside change log entries about them. Once the releaser is removed, the take page, Home and the ladder's "Still open" and urgent emails call them "Someone". |
 | 2026-11-21 | When a shift is taken, the area's active leads get "Covered" (for a cover request) or "{First name} took" (for any other open place), following section 8.1. |
+| 2026-11-22 | Leads (in their areas) and coordinators mark a shadow's no-show, once the shift has ended; the person shadowed doesn't. Coordinators and admins change the required shadow shifts (1 to 10, default 2) in a Shadowing section of Settings; the rest of Settings stays admin-only. Lowering it shows people who now meet it as Ready for review right away, and raising it never un-clears anyone. |
 
 ## 19. Open questions
 

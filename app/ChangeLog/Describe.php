@@ -78,6 +78,7 @@ final class Describe
                 default => 'Put '.$person.' on ',
             }.self::shiftWords($entry->subject, true),
             'assignment.removed' => self::assignmentRemoved($entry, $details, $self ? 'their' : $possessive, $person),
+            'assignment.no_show' => isset($changes['no_show_at']['new']) ? 'Marked '.$person.' as a no-show for '.self::shiftWords($entry->subject, true) : 'Undid the no-show for '.$person.' on '.self::shiftWords($entry->subject, true),
             'cover_request.created' => 'Cover request sent for '.self::shiftDay($entry->subject),
             'cover_request.resent' => 'Cover request sent again for '.self::shiftDay($entry->subject),
             'cover_request.filled' => 'Cover request for '.self::shiftDay($entry->subject).' filled by '.$person,

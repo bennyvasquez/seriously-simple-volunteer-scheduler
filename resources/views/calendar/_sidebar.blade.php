@@ -43,6 +43,6 @@
 <div>Thick border: open within 24 hours</div>
 </section>
 
-@can('manage-settings')
+@can('manage-shadowing')
 <a href="{{ route('settings', $areaQuery) }}" class="muted">Settings</a>
 @endcan

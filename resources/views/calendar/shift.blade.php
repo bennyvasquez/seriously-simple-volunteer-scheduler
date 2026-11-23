@@ -33,7 +33,22 @@
 @endif
 <div aria-label="People on this shift" role="group">
 @forelse ($people as $person)
-<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif</div>
+<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif
+@if (($person['noShow'] ?? false) || ($person['canMark'] ?? false))
+@if ($person['noShow'])<b>No-show</b>@endif
+@if ($person['canMark'])
+<form method="POST" action="{{ route('calendar.shift.no-show', $shift) }}" class="inline-form">
+@csrf
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<input type="hidden" name="assignment" value="{{ $person['assignment'] }}">
+<input type="hidden" name="no_show" value="{{ $person['noShow'] ? 0 : 1 }}">
+<button type="submit" class="btn btn-small" aria-label="{{ $person['noShow'] ? 'Undo no-show for' : 'Mark no-show for' }} {{ $person['name'] }}">{{ $person['noShow'] ? 'Undo no-show' : 'Mark no-show' }}</button>
+</form>
+@endif
+@endif
+</div>
 @empty
 <p class="muted">Nobody is on this shift yet.</p>
 @endforelse
