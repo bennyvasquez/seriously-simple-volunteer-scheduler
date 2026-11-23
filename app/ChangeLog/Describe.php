@@ -72,7 +72,11 @@ final class Describe
             'shift.updated' => 'Changed '.self::shiftWords($entry->subject, true),
             'shift.cancelled' => 'Cancelled '.self::shiftWords($entry->subject, true),
             'shift.restored' => 'Brought back '.self::shiftWords($entry->subject, true),
-            'assignment.added' => (($details['via'] ?? null) === 'take' ? 'Took ' : 'Put '.$person.' on ').self::shiftWords($entry->subject, true),
+            'assignment.added' => match ($details['via'] ?? null) {
+                'take' => 'Took ',
+                'shadow_signup' => 'Signed up to shadow ',
+                default => 'Put '.$person.' on ',
+            }.self::shiftWords($entry->subject, true),
             'assignment.removed' => self::assignmentRemoved($entry, $details, $self ? 'their' : $possessive, $person),
             'cover_request.created' => 'Cover request sent for '.self::shiftDay($entry->subject),
             'cover_request.resent' => 'Cover request sent again for '.self::shiftDay($entry->subject),

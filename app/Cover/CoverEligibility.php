@@ -67,14 +67,20 @@ final class CoverEligibility
             return self::NOT_CLEARED;
         }
 
+        return self::overlapRefusal($person, $shift, $mine);
+    }
+
+    /**
+     * "You're already on {Area}, {when}." for another active shift the person is on at an overlapping time, or null. Shared by taking a shift and signing up for a shadow spot. `$mine` works the same way as in refusal().
+     *
+     * @param  Collection<int, Shift>|null  $mine
+     */
+    public static function overlapRefusal(User $person, Shift $shift, ?Collection $mine = null): ?string
+    {
         $overlapping = $mine === null
             ? PutOnShift::overlappingShift($person, $shift)
             : $mine->where('id', '!=', $shift->id)->filter(fn (Shift $other) => $other->starts_at < $shift->ends_at && $other->ends_at > $shift->starts_at)->sortBy('starts_at')->first();
 
-        if ($overlapping !== null) {
-            return 'You\'re already on '.$overlapping->area->name.', '.$overlapping->whenText().'.';
-        }
-
-        return null;
+        return $overlapping === null ? null : 'You\'re already on '.$overlapping->area->name.', '.$overlapping->whenText().'.';
     }
 }

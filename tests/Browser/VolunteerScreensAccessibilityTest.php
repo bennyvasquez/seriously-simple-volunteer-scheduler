@@ -2,6 +2,7 @@
 
 namespace Tests\Browser;
 
+use App\Http\Controllers\Volunteer\HomeController;
 use App\Models\CoverRequest;
 use App\Models\Shift;
 use App\Models\User;
@@ -12,7 +13,7 @@ use Tests\Browser\Concerns\ChecksAccessibility;
 use Tests\DuskTestCase;
 
 /**
- * An automated accessibility check of the volunteer's Home, All my shifts and Emails screens, and of releasing and taking a shift, which find what a tool can find and don't replace trying them with a keyboard and a screen reader.
+ * An automated accessibility check of the volunteer's Home (cleared or not), All my shifts and Emails screens, and of releasing, taking and shadowing a shift, which find what a tool can find and don't replace trying them with a keyboard and a screen reader.
  */
 class VolunteerScreensAccessibilityTest extends DuskTestCase
 {
@@ -25,6 +26,35 @@ class VolunteerScreensAccessibilityTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($volunteer) {
             $browser->loginAs($volunteer)->visit('/')->assertSee('Your next shifts')->assertSee('Open shifts you can take');
 
+            $this->assertAccessible($browser);
+        });
+    }
+
+    public function test_home_for_someone_not_cleared(): void
+    {
+        $trainee = User::where('email', ExampleOrganizationSeeder::TRAINEE)->firstOrFail();
+
+        $this->browse(function (Browser $browser) use ($trainee) {
+            $browser->loginAs($trainee)->visit('/')->assertSee('Shadow shifts done: 0 of 2')->assertSee('Shadow spots open')->assertDontSee('Open shifts you can take');
+
+            $this->assertAccessible($browser);
+        });
+    }
+
+    public function test_the_shadow_page_and_signing_up(): void
+    {
+        $trainee = User::where('email', ExampleOrganizationSeeder::TRAINEE)->firstOrFail();
+        $shift = app(HomeController::class)->openShadowSpots($trainee)->firstOrFail();
+
+        $this->browse(function (Browser $browser) use ($trainee, $shift) {
+            $browser->loginAs($trainee)->visit(route('shifts.shadow', $shift))->assertSee('Can you shadow this one?');
+            $this->assertAccessible($browser);
+
+            $browser->press('Shadow this shift')->waitForText('You\'re shadowing')->assertSee('Your next shadow shift');
+            $this->assertAccessible($browser);
+
+            // Coming back to it now explains why there's nothing to press, with the other spots.
+            $browser->visit(route('shifts.shadow', $shift))->assertSee('You\'re shadowing this shift.')->assertSee('Other shadow spots open');
             $this->assertAccessible($browser);
         });
     }

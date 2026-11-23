@@ -21,6 +21,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\Volunteer\EmailSettingsController;
 use App\Http\Controllers\Volunteer\HomeController;
 use App\Http\Controllers\Volunteer\ReleaseController;
+use App\Http\Controllers\Volunteer\ShadowController;
 use App\Http\Controllers\Volunteer\TakeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,6 +45,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/shifts/{shift}/take', [TakeController::class, 'show'])->name('shifts.take');
         Route::post('/shifts/{shift}/take', [TakeController::class, 'store']);
         Route::get('/shifts/{shift}/taken', [TakeController::class, 'taken'])->name('shifts.taken');
+        Route::get('/shifts/{shift}/shadow', [ShadowController::class, 'show'])->name('shifts.shadow');
+        Route::post('/shifts/{shift}/shadow', [ShadowController::class, 'store']);
     });
     Route::get('/shifts/released', [ReleaseController::class, 'released'])->name('shifts.released');
     Route::get('/account/emails', [EmailSettingsController::class, 'edit'])->name('account.emails');
