@@ -43,7 +43,7 @@ class EmailSettingsTest extends TestCase
     public function test_turning_cover_requests_off_and_on(): void
     {
         Organization::factory()->create(['timezone' => 'UTC']);
-        $sam = User::factory()->create(['name' => 'Sam Example'])->fresh();
+        $sam = User::factory()->cleared()->create(['name' => 'Sam Example'])->fresh();
         $coordinator = User::factory()->create();
         app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
         $shift = app(CreateOneTimeShift::class)->handle($coordinator, Area::factory()->create(), now()->addDays(3)->toDateString(), '18:00', '20:00', 1, 0, null);

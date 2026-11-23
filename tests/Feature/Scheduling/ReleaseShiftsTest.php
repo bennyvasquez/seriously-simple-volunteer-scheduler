@@ -74,9 +74,9 @@ class ReleaseShiftsTest extends TestCase
         $this->frontDesk = Area::factory()->create(['name' => 'Front desk', 'lead_name' => 'Shift lead']);
         $this->hostedEvents = Area::factory()->create(['name' => 'Hosted events']);
         $this->coordinator = $this->withRole('Chris Coordinator', Role::Coordinator);
-        $this->robin = User::factory()->create(['name' => 'Robin Example']);
-        $this->morgan = User::factory()->create(['name' => 'Morgan Example']);
-        $this->sam = User::factory()->create(['name' => 'Sam Example']);
+        $this->robin = User::factory()->cleared()->create(['name' => 'Robin Example']);
+        $this->morgan = User::factory()->cleared()->create(['name' => 'Morgan Example']);
+        $this->sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
     }
 
     private function withRole(string $name, Role $role, ?Area $area = null): User
@@ -530,7 +530,7 @@ class ReleaseShiftsTest extends TestCase
 
     public function test_shadows_are_told_only_when_nobody_but_shadows_is_left(): void
     {
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $shift = $this->robinOn('2026-10-22', peopleNeeded: 2);
         $this->on($shift, $this->morgan);
         $this->on($shift, $casey, AssignmentType::Shadow);
@@ -553,7 +553,7 @@ class ReleaseShiftsTest extends TestCase
 
     public function test_a_shadow_on_several_released_dates_gets_one_email(): void
     {
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $first = $this->robinOn('2026-10-22');
         $second = $this->robinOn('2026-10-29');
         $this->on($first, $casey, AssignmentType::Shadow);
@@ -578,7 +578,7 @@ class ReleaseShiftsTest extends TestCase
     public function test_releasing_inside_24_hours_escalates_at_once_and_only_once(): void
     {
         $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $shift = $this->robinOn('2026-10-15');
         $this->on($shift, $casey, AssignmentType::Shadow);
         Notification::fake();
@@ -648,7 +648,7 @@ class ReleaseShiftsTest extends TestCase
     public function test_a_range_with_two_shifts_inside_24_hours_sends_one_urgent_email_per_person(): void
     {
         $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $morning = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->hostedEvents, '2026-10-15', '10:00', '12:00', 1, 1, null);
         $this->on($morning, $this->robin);
         $evening = $this->robinOn('2026-10-15');
@@ -888,7 +888,7 @@ class ReleaseShiftsTest extends TestCase
     public function test_releasing_inside_24_hours_after_people_needed_was_lowered_doesnt_crash(): void
     {
         $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $shift = $this->robinOn('2026-10-15', peopleNeeded: 2);
         $this->on($shift, $this->morgan);
         $this->on($shift, $casey, AssignmentType::Shadow);

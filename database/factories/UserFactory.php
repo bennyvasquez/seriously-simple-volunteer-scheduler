@@ -57,6 +57,12 @@ class UserFactory extends Factory
         return $this->state(fn () => ['invited_at' => null, 'email_verified_at' => null]);
     }
 
+    /** Cleared for regular shifts, so they can take shifts and get cover requests. People aren't cleared by default, the same as a real new volunteer. */
+    public function cleared(): static
+    {
+        return $this->state(fn () => ['cleared_at' => now()]);
+    }
+
     public function deactivated(): static
     {
         return $this->state(fn () => ['deactivated_at' => now()]);

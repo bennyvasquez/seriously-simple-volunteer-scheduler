@@ -587,8 +587,8 @@ class EditScheduleTest extends TestCase
 
         $this->assertEquals($slotBefore, $slot->fresh()->getAttributes());
         $this->assertEquals($shiftsBefore, Shift::query()->orderBy('id')->get()->map->getAttributes()->all());
-        // Only the coordinator made for the call was logged.
-        $this->assertSame($entriesBefore + 1, ChangeLogEntry::query()->count());
+        // Only the coordinator made for the call was logged: their role, and the clearance holding it brings.
+        $this->assertSame($entriesBefore + 2, ChangeLogEntry::query()->count());
         $this->assertFalse(ChangeLogEntry::query()->ofAction('slot.updated')->exists());
     }
 

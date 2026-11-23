@@ -472,7 +472,7 @@ class AddRegularTest extends TestCase
     {
         $this->withoutDefer();
         Notification::fake();
-        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $robin = User::factory()->cleared()->create(['name' => 'Robin Example']);
 
         $regular = app(AddRegular::class)->handle($robin, $this->slot, $robin, '2026-10-22', selfClaim: true);
 
@@ -494,7 +494,7 @@ class AddRegularTest extends TestCase
 
     public function test_a_self_claim_is_refused_on_a_slot_with_a_current_or_future_regular(): void
     {
-        $robin = User::factory()->create();
+        $robin = User::factory()->cleared()->create();
         $sam = User::factory()->create();
         app(AddRegular::class)->handle(null, $this->slot, $sam, '2026-11-05');
 
@@ -510,7 +510,7 @@ class AddRegularTest extends TestCase
 
     public function test_a_self_claim_skips_a_later_date_that_already_has_its_people(): void
     {
-        $robin = User::factory()->create();
+        $robin = User::factory()->cleared()->create();
         $sam = User::factory()->create();
         $later = Shift::query()->where('local_date', '2026-10-29')->sole();
         Assignment::create(['shift_id' => $later->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);

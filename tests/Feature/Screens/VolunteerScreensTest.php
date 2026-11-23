@@ -58,8 +58,8 @@ class VolunteerScreensTest extends TestCase
         $this->coordinator = User::factory()->create(['name' => 'Chris Coordinator']);
         app(GrantRole::class)->handle(null, $this->coordinator, Role::Coordinator);
         $this->enableTwoFactor($this->coordinator);
-        $this->sam = User::factory()->create(['name' => 'Sam Example']);
-        $this->robin = User::factory()->create(['name' => 'Robin Example']);
+        $this->sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
+        $this->robin = User::factory()->cleared()->create(['name' => 'Robin Example']);
     }
 
     private function shift(string $date, string $from = '18:30', string $to = '21:30', int $needed = 1, ?Area $area = null): Shift
@@ -556,7 +556,7 @@ class VolunteerScreensTest extends TestCase
         app(ReleaseShifts::class)->one($this->robin, $shift, null);
         $this->page($this->sam, route('shifts.take', $shift))->assertSee('Can you cover this one?');
 
-        $jo = User::factory()->create(['name' => 'Jo Example']);
+        $jo = User::factory()->cleared()->create(['name' => 'Jo Example']);
         app(TakeShift::class)->handle($jo, $shift, TakeHow::JustThisDate);
 
         $this->actingAs($this->sam)->post(route('shifts.take', $shift), ['how' => 'date'])->assertRedirect(route('shifts.take', $shift));

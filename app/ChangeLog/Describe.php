@@ -38,6 +38,12 @@ final class Describe
             'user.invited' => 'Invited '.$person,
             'user.invitation_resent' => 'Sent '.$person.' a new invitation',
             'user.accepted_invitation' => 'Accepted '.($self ? 'their' : $possessive).' invitation',
+            'user.cleared' => 'Cleared '.$person.' for regular shifts'.match ($details['via'] ?? null) {
+                'role.granted' => ' (with a role)',
+                'import' => ' (from the import)',
+                'migration' => ' (already held a role)',
+                default => '',
+            },
             'user.deactivated' => 'Turned off '.$possessive.' account',
             'user.removed' => 'Removed a person\'s account',
             'user.email_changed' => 'Changed '.($self ? 'their' : $possessive).' email address',

@@ -57,8 +57,8 @@ class CoverLadderTest extends TestCase
         $this->frontDesk = Area::factory()->create(['name' => 'Front desk', 'lead_name' => 'Shift lead']);
         $this->hostedEvents = Area::factory()->create(['name' => 'Hosted events']);
         $this->coordinator = $this->withRole('Chris Coordinator', Role::Coordinator);
-        $this->robin = User::factory()->create(['name' => 'Robin Example']);
-        $this->morgan = User::factory()->create(['name' => 'Morgan Example']);
+        $this->robin = User::factory()->cleared()->create(['name' => 'Robin Example']);
+        $this->morgan = User::factory()->cleared()->create(['name' => 'Morgan Example']);
     }
 
     private function withRole(string $name, Role $role, ?Area $area = null): User
@@ -94,7 +94,7 @@ class CoverLadderTest extends TestCase
         // Two released places on a shift that needs two, then someone put on it by a path that didn't fill a request: one place is open, so only the oldest request counts.
         $shift = $this->released(2);
         $this->travel(1)->minutes();
-        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
         $newer = CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'note' => null, 'notified_count' => 3]);
         $this->on($shift, $this->morgan);
         $oldest = CoverRequest::query()->where('shift_id', $shift->id)->where('released_by', $this->robin->id)->sole();
@@ -108,7 +108,7 @@ class CoverLadderTest extends TestCase
         $this->assertSame([$oldest->id], ChangeLogEntry::query()->ofAction('cover_request.escalated')->get()->map(fn (ChangeLogEntry $entry) => $entry->details['cover_request_id'])->all());
 
         // Once the shift is full, no request counts, so a later run does nothing.
-        $this->on($shift, User::factory()->create(['name' => 'Jo Example']));
+        $this->on($shift, User::factory()->cleared()->create(['name' => 'Jo Example']));
         $this->assertSame(['resent' => 0, 'escalated' => 0], app(CoverLadder::class)->run());
         $this->assertNull($newer->fresh()->escalated_at);
     }
@@ -117,10 +117,10 @@ class CoverLadderTest extends TestCase
     {
         $shift = $this->released(2);
         $this->travel(1)->minutes();
-        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
         CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'note' => null, 'notified_count' => 3]);
         $this->on($shift, $this->morgan);
-        $jo = User::factory()->create(['name' => 'Jo Example']);
+        $jo = User::factory()->cleared()->create(['name' => 'Jo Example']);
 
         $open = app(HomeController::class)->openShifts($jo);
 
@@ -298,7 +298,7 @@ class CoverLadderTest extends TestCase
     {
         $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
         $stillCovered = $this->released(peopleNeeded: 2);
-        $this->on($stillCovered, User::factory()->create(['name' => 'Sam Regular']));
+        $this->on($stillCovered, User::factory()->cleared()->create(['name' => 'Sam Regular']));
         $coveredShadow = User::factory()->create(['name' => 'Kim Shadow']);
         $this->on($stillCovered, $coveredShadow, AssignmentType::Shadow);
 
@@ -400,7 +400,7 @@ class CoverLadderTest extends TestCase
 
         // Sam releases the other place 50 hours before the start.
         $this->at('2026-10-20 16:30');
-        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
         $second = CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'notified_count' => 2]);
 
         $this->at('2026-10-20 16:40');
@@ -415,7 +415,7 @@ class CoverLadderTest extends TestCase
     {
         $shift = $this->released(peopleNeeded: 2);
         $this->travelTo(now()->addHour());
-        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
         CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'note' => 'Sorry!', 'notified_count' => 2]);
         Notification::fake();
 

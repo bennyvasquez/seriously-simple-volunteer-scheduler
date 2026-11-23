@@ -24,7 +24,7 @@ class Organization extends Model
 
     protected function casts(): array
     {
-        return ['weeks_ahead' => 'integer'];
+        return ['weeks_ahead' => 'integer', 'required_shadow_shifts' => 'integer'];
     }
 
     protected static function booted(): void
