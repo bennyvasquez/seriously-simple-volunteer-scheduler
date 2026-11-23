@@ -17,12 +17,16 @@ final class ShadowProgress
     /** The person's shadow shifts that count so far. */
     public static function done(User $person): int
     {
+        return self::counting()->where('assignments.user_id', $person->id)->count();
+    }
+
+    /** The one rule for what counts: a shadow place, not marked a no-show, on a shift that has ended and isn't cancelled. done() and readyForReview() both build on it. */
+    private static function counting(): Builder
+    {
         return Assignment::query()
-            ->where('user_id', $person->id)
-            ->where('type', AssignmentType::Shadow)
-            ->whereNull('no_show_at')
-            ->whereHas('shift', fn ($shifts) => $shifts->active()->where('ends_at', '<=', now()))
-            ->count();
+            ->where('assignments.type', AssignmentType::Shadow)
+            ->whereNull('assignments.no_show_at')
+            ->whereHas('shift', fn ($shifts) => $shifts->active()->where('ends_at', '<=', now()));
     }
 
     /**
@@ -53,12 +57,7 @@ final class ShadowProgress
     {
         $required = (int) Organization::current()->required_shadow_shifts;
 
-        $done = Assignment::query()
-            ->selectRaw('count(*)')
-            ->whereColumn('assignments.user_id', 'users.id')
-            ->where('assignments.type', AssignmentType::Shadow)
-            ->whereNull('assignments.no_show_at')
-            ->whereHas('shift', fn ($shifts) => $shifts->active()->where('ends_at', '<=', now()));
+        $done = self::counting()->selectRaw('count(*)')->whereColumn('assignments.user_id', 'users.id');
 
         return User::query()
             ->whereNull('deactivated_at')
