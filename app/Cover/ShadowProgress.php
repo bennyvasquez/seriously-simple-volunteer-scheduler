@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
- * How far someone has got with shadowing (spec section 9): a shadow shift counts once it has ended, unless it was cancelled or the person was marked a no-show. A shadow place someone left is gone, so it never counts.
+ * How far someone has got with shadowing (spec section 9): a shadow shift counts once it has ended, unless it was cancelled or the person was marked a no-show. A shadow place someone left is gone, so it never counts. Someone moved back to shadowing starts over: only shadow shifts that ended after their `shadowing_since` count, though history() still lists every one.
  */
 final class ShadowProgress
 {
@@ -20,13 +20,16 @@ final class ShadowProgress
         return self::counting()->where('assignments.user_id', $person->id)->count();
     }
 
-    /** The one rule for what counts: a shadow place, not marked a no-show, on a shift that has ended and isn't cancelled. done() and readyForReview() both build on it. */
+    /** The one rule for what counts: a shadow place, not marked a no-show, on a shift that has ended, isn't cancelled, and ended after the person's `shadowing_since` when they were moved back. done() and readyForReview() both build on it. The person's row is read under the alias `shadowers`, so it stays correlated inside readyForReview()'s own query on `users`. */
     private static function counting(): Builder
     {
         return Assignment::query()
             ->where('assignments.type', AssignmentType::Shadow)
             ->whereNull('assignments.no_show_at')
-            ->whereHas('shift', fn ($shifts) => $shifts->active()->where('ends_at', '<=', now()));
+            ->whereHas('shift', fn ($shifts) => $shifts->active()->where('ends_at', '<=', now())
+                ->whereExists(fn ($people) => $people->selectRaw('1')->from('users as shadowers')
+                    ->whereColumn('shadowers.id', 'assignments.user_id')
+                    ->where(fn ($since) => $since->whereNull('shadowers.shadowing_since')->orWhereColumn('shadowers.shadowing_since', '<', 'shifts.ends_at'))));
     }
 
     /**

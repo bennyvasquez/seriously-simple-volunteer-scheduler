@@ -9,6 +9,7 @@ use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\GenerateShifts;
 use App\ChangeLog\Describe;
 use App\Cover\CoverLadder;
+use App\Cover\ShadowProgress;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Models\Area;
@@ -131,6 +132,8 @@ class MoveBackTest extends TestCase
         $this->assertSame(['release' => false], $entry->details);
         $this->assertNotNull($entry->changes['cleared_at']['old']);
         $this->assertNull($entry->changes['cleared_at']['new']);
+        $this->assertSame(['old' => null, 'new' => now()->toDateTimeString()], $entry->changes['shadowing_since']);
+        $this->assertTrue($this->morgan->fresh()->shadowing_since->equalTo(now()));
         $this->assertSame(['old' => null, 'new' => 'Needs more practice.'], $entry->changes['note']);
         $this->assertSame('Moved Morgan Example back to shadowing', Describe::entry($entry, $this->coordinator));
         $this->assertSame('Note: Needs more practice.', Describe::changes($entry));
@@ -251,6 +254,40 @@ class MoveBackTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-10-14 19:10', self::TIMEZONE));
         $this->assertSame(['resent' => 0, 'escalated' => 0], app(CoverLadder::class)->run());
         Notification::assertSentToTimes($lead, CoverUrgentNotification::class, 1);
+    }
+
+    /** A shadow shift for Morgan on Front desk that ended at `$endsAt`, made directly since the actions refuse dates in the past. */
+    private function finishedShadowShift(string $startsAt, string $endsAt): void
+    {
+        $shift = Shift::create(['area_id' => $this->frontDesk->id, 'local_date' => substr($startsAt, 0, 10), 'starts_at' => CarbonImmutable::parse($startsAt, self::TIMEZONE)->utc(), 'ends_at' => CarbonImmutable::parse($endsAt, self::TIMEZONE)->utc(), 'people_needed' => 1, 'shadow_spots' => 1]);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->morgan->id, 'type' => AssignmentType::Shadow]);
+    }
+
+    public function test_shadow_progress_starts_over_after_a_move_back(): void
+    {
+        $this->finishedShadowShift('2026-10-03 18:30', '2026-10-03 21:30');
+        $this->finishedShadowShift('2026-10-10 18:30', '2026-10-10 21:30');
+        $this->assertSame(2, ShadowProgress::done($this->morgan));
+
+        app(MoveBackToShadowing::class)->handle($this->coordinator, $this->morgan, false, null);
+
+        $this->assertSame(0, ShadowProgress::done($this->morgan));
+        $this->assertNotContains($this->morgan->id, ShadowProgress::readyForReview()->pluck('id')->all());
+        $this->actingAs($this->morgan)->get(route('home'))->assertOk()->assertSeeText('Shadow shifts done: 0 of 2');
+        // The person page still lists both earlier shadow shifts.
+        $this->assertCount(2, ShadowProgress::history($this->morgan));
+
+        // Thursday, October 15, 10pm: one more shadow shift has ended since the move back.
+        $this->travelTo(CarbonImmutable::parse('2026-10-15 22:00', self::TIMEZONE));
+        $this->finishedShadowShift('2026-10-15 18:30', '2026-10-15 21:30');
+
+        $this->assertSame(1, ShadowProgress::done($this->morgan));
+        $this->assertNotContains($this->morgan->id, ShadowProgress::readyForReview()->pluck('id')->all());
+        $this->actingAs($this->morgan)->get(route('home'))->assertOk()->assertSeeText('Shadow shifts done: 1 of 2');
+
+        // A second one makes them Ready for review again.
+        $this->finishedShadowShift('2026-10-15 17:00', '2026-10-15 18:00');
+        $this->assertContains($this->morgan->id, ShadowProgress::readyForReview()->pluck('id')->all());
     }
 
     public function test_someone_with_a_role_cant_be_moved_back(): void

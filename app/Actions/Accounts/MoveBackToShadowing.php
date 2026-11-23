@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * A coordinator moves a cleared volunteer back to shadowing (spec section 9, screen 10), keeping or releasing their upcoming regular shifts. The same people who clear someone can move them back (UserPolicy::clear()). Someone who holds a role stays cleared (decision 4), so they're refused until their role is removed.
  *
- * Moving back commits first, in its own transaction, the way turning someone off does: it locks the person's row, sets `cleared_at` to null and logs `user.moved_back` about them, with `cleared_at` old and new and the coordinator's note (if any) in `changes` and the choice in `details.release`. From then on CoverEligibility leaves them out of cover requests and refuses their takes. Releasing runs after that commit, through ReleaseFutureSchedule::releaseRegularPlaces(). If the release fails after the move back committed, the person stays not cleared with their shifts and regulars kept, and the coordinator can release them through the calendar.
+ * Moving back commits first, in its own transaction, the way turning someone off does: it locks the person's row, sets `cleared_at` to null and `shadowing_since` to now (so their shadow progress starts over, see ShadowProgress) and logs `user.moved_back` about them, with both columns' old and new values and the coordinator's note (if any) in `changes` and the choice in `details.release`. From then on CoverEligibility leaves them out of cover requests and refuses their takes. Releasing runs after that commit, through ReleaseFutureSchedule::releaseRegularPlaces(). If the release fails after the move back committed, the person stays not cleared with their shifts and regulars kept, and the coordinator can release them through the calendar.
  *
  * The person gets one email after the response, "You've been moved back to shadowing", listing what was released, and no "You're off" email. The note stays in the change log and isn't emailed.
  */
@@ -71,7 +71,7 @@ class MoveBackToShadowing
     }
 
     /**
-     * Moves them back, and with `$release` releases their upcoming regular places and ends their regulars. The note is trimmed and kept up to 500 characters (ReleaseShifts::cleanNote()). `$person` reads as not cleared afterwards.
+     * Moves them back, and with `$release` releases their upcoming regular places and ends their regulars. The note is trimmed and kept up to 500 characters (ReleaseShifts::cleanNote()). `$person` reads as not cleared, with its new `shadowing_since`, afterwards.
      *
      * @return Collection<int, Shift> The shifts released, in time order, with their areas.
      */
@@ -89,7 +89,7 @@ class MoveBackToShadowing
                 throw new DomainException($refusal);
             }
 
-            $locked->forceFill(['cleared_at' => null]);
+            $locked->forceFill(['cleared_at' => null, 'shadowing_since' => now()]);
             $changes = ChangeLogEntry::changesOf($locked);
             $locked->save();
 
@@ -102,7 +102,7 @@ class MoveBackToShadowing
             return $locked;
         });
 
-        $person->forceFill(['cleared_at' => null])->syncOriginalAttribute('cleared_at');
+        $person->forceFill(['cleared_at' => null, 'shadowing_since' => $locked->shadowing_since])->syncOriginalAttributes(['cleared_at', 'shadowing_since']);
 
         $shifts = collect();
         $noLongerRegularOn = [];
