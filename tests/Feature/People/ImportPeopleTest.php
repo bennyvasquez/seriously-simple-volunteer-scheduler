@@ -403,4 +403,54 @@ class ImportPeopleTest extends TestCase
             ->expectsOutputToContain('Added 3 people as not invited yet and cleared 2 people for regular shifts. Nobody was emailed.')
             ->assertSuccessful();
     }
+
+    public function test_the_cleared_tag_leaves_people_moved_back_to_shadowing_alone(): void
+    {
+        $blake = User::factory()->create(['name' => 'Blake Example', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2', 'shadowing_since' => now()]);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertCount(0, $preview->clearExisting);
+        $this->assertSame(['Blake Example'], $preview->movedBack->pluck('row.name')->all());
+        $this->assertCount(0, $preview->leftAlone());
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag', '--no-interaction' => true])
+            ->expectsOutputToContain('Moved back to shadowing, left alone (1)')
+            ->expectsOutputToContain('Already here, left alone (0)')
+            ->doesntExpectOutputToContain('already here will be cleared')
+            ->assertSuccessful();
+
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+
+        $this->assertFalse($blake->fresh()->isCleared());
+        $this->assertSame(0, ChangeLogEntry::query()->where('action', 'user.cleared')->where('subject_id', $blake->id)->count());
+    }
+
+    public function test_the_cleared_tag_leaves_people_who_are_turned_off_alone(): void
+    {
+        $blake = User::factory()->deactivated()->create(['name' => 'Blake Example', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2']);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertCount(0, $preview->clearExisting);
+        $this->assertSame(['Blake Example'], $preview->leftAlone()->pluck('row.name')->all());
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+
+        $this->assertFalse($blake->fresh()->isCleared());
+    }
+
+    public function test_people_being_cleared_arent_listed_as_left_alone(): void
+    {
+        User::factory()->create(['name' => 'Avery Example', 'email' => 'avery@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f1']);
+        User::factory()->create(['name' => 'Blake Example', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2']);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertSame(['Avery Example'], $preview->leftAlone()->pluck('row.name')->all());
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag', '--no-interaction' => true])
+            ->expectsOutputToContain('Already here, left alone (1)')
+            ->expectsOutputToContain('1 person already here will be cleared.')
+            ->assertSuccessful();
+    }
 }

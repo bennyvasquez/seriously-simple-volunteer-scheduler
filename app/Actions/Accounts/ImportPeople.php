@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * Adds the people in a Hello Club export as "not invited yet". Only name, email and membership ID are kept, and nobody is emailed. People who already exist are left alone, except that someone matched by email with no membership ID yet gets it filled in.
+ * Adds the people in a Hello Club export as "not invited yet". Only name, email and membership ID are kept, and nobody is emailed. People who already exist are left alone, except that someone matched by email with no membership ID yet gets it filled in, and, with a cleared tag, someone with the tag who isn't cleared gets cleared. The tag never clears someone turned off or someone a coordinator moved back to shadowing.
  */
 class ImportPeople
 {
@@ -30,6 +30,7 @@ class ImportPeople
         $add = new Collection;
         $existing = new Collection;
         $clearExisting = new Collection;
+        $movedBack = new Collection;
         $problems = new Collection;
 
         foreach ($rows as $row) {
@@ -45,7 +46,7 @@ class ImportPeople
 
             if ($byMemberId !== null) {
                 $existing->push((object) ['row' => $row, 'user' => $byMemberId, 'fillMemberId' => false]);
-                $this->noteClearing($clearExisting, $row, $byMemberId, $clearedTag);
+                $this->noteClearing($clearExisting, $movedBack, $row, $byMemberId, $clearedTag);
 
                 continue;
             }
@@ -56,16 +57,16 @@ class ImportPeople
                 $add->push((object) ['row' => $row, 'makeLead' => $this->hasTag($row, $leadTag), 'clear' => $this->hasTag($row, $clearedTag)]);
             } elseif ($byEmail->member_id === null) {
                 $existing->push((object) ['row' => $row, 'user' => $byEmail, 'fillMemberId' => $row->memberId !== '']);
-                $this->noteClearing($clearExisting, $row, $byEmail, $clearedTag);
+                $this->noteClearing($clearExisting, $movedBack, $row, $byEmail, $clearedTag);
             } elseif ($byEmail->member_id === $row->memberId) {
                 $existing->push((object) ['row' => $row, 'user' => $byEmail, 'fillMemberId' => false]);
-                $this->noteClearing($clearExisting, $row, $byEmail, $clearedTag);
+                $this->noteClearing($clearExisting, $movedBack, $row, $byEmail, $clearedTag);
             } else {
                 $problems->push((object) ['row' => $row, 'reason' => 'Matches someone by email, but their membership ID is different']);
             }
         }
 
-        return new ImportPreview($add, $existing, $problems, $clearExisting);
+        return new ImportPreview($add, $existing, $problems, $clearExisting, $movedBack);
     }
 
     /**
@@ -121,7 +122,8 @@ class ImportPeople
             foreach ($preview->clearExisting as $item) {
                 $person = User::query()->whereKey($item->user->id)->lockForUpdate()->first();
 
-                if ($person !== null) {
+                // Checked again under the lock, in case they were turned off or moved back since the preview.
+                if ($person !== null && $person->isActive() && $person->shadowing_since === null) {
                     app(ClearPerson::class)->clearLocked($admin, $person, 'import');
                 }
             }
@@ -139,11 +141,20 @@ class ImportPeople
     }
 
     /**
+     * Notes someone already here who has the cleared tag and isn't cleared. A coordinator's move back to shadowing wins over the tag, so those people go in `$movedBack` and stay as they are. Someone turned off isn't cleared either; they stay in the "left alone" group.
+     *
      * @param  Collection<int, object>  $clearExisting
+     * @param  Collection<int, object>  $movedBack
      */
-    private function noteClearing(Collection $clearExisting, ImportRow $row, User $user, ?string $clearedTag): void
+    private function noteClearing(Collection $clearExisting, Collection $movedBack, ImportRow $row, User $user, ?string $clearedTag): void
     {
-        if (! $user->isCleared() && $this->hasTag($row, $clearedTag)) {
+        if ($user->isCleared() || ! $this->hasTag($row, $clearedTag) || ! $user->isActive()) {
+            return;
+        }
+
+        if ($user->shadowing_since !== null) {
+            $movedBack->push((object) ['row' => $row, 'user' => $user]);
+        } else {
             $clearExisting->push((object) ['row' => $row, 'user' => $user]);
         }
     }
