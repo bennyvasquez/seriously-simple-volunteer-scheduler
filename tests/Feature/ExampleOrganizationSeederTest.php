@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\ChangeLog\Describe;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Models\Area;
@@ -77,12 +78,12 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertTrue($released->shift->assignments->contains('type', AssignmentType::Shadow));
         $this->assertTrue(WeeklySlot::query()->whereDoesntHave('regulars')->exists());
 
-        // Four staff, fifteen volunteers, one not invited yet, one turned off and the shared record a removed person's history moves onto.
-        $this->assertSame(22, User::query()->count());
+        // Four staff, sixteen volunteers (one of them a trainee who isn't cleared), one not invited yet, one turned off and the shared record a removed person's history moves onto.
+        $this->assertSame(23, User::query()->count());
         $this->assertSame(1, User::query()->where('is_removed_person', true)->count());
         $this->assertSame(1, User::query()->whereNull('invited_at')->where('is_removed_person', false)->count());
         $this->assertSame(1, User::query()->whereNotNull('deactivated_at')->where('is_removed_person', false)->count());
-        $this->assertSame(19, User::query()->whereNotNull('email_verified_at')->whereNull('deactivated_at')->count());
+        $this->assertSame(20, User::query()->whereNotNull('email_verified_at')->whereNull('deactivated_at')->count());
         $this->assertTrue(User::query()->where('name', 'Sunny')->exists());
         $this->assertTrue(User::query()->where('name', 'like', '%Ł%')->exists());
         $this->assertTrue(User::query()->where('name', 'like', '%Ş%')->exists());
@@ -112,7 +113,7 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertTrue($volunteer->regulars()->exists());
 
         // Built through the app's actions, so the change log has the same entries a live install would.
-        foreach (['organization.created', 'user.created', 'user.invited', 'user.accepted_invitation', 'user.password_set', 'two_factor.enabled', 'role.granted', 'area.created', 'area.updated', 'slot.created', 'regular.added', 'assignment.added', 'shift.created', 'closure.created', 'shift.cancelled', 'cover_request.created', 'user.deactivated', 'user.removed'] as $action) {
+        foreach (['organization.created', 'user.created', 'user.invited', 'user.accepted_invitation', 'user.password_set', 'two_factor.enabled', 'role.granted', 'user.cleared', 'area.created', 'area.updated', 'slot.created', 'regular.added', 'assignment.added', 'shift.created', 'closure.created', 'shift.cancelled', 'cover_request.created', 'user.deactivated', 'user.removed'] as $action) {
             $this->assertTrue(ChangeLogEntry::query()->where('action', $action)->exists(), "The change log has a {$action} entry.");
         }
     }
@@ -138,6 +139,33 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertNull($shift->cancelled_at);
     }
 
+    public function test_example_regulars_are_cleared_and_the_trainee_isnt(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-18 09:00', 'America/Detroit'));
+
+        $this->seed(ExampleOrganizationSeeder::class);
+
+        $regulars = User::query()->whereHas('regulars')->where('is_removed_person', false)->get();
+        $this->assertNotEmpty($regulars);
+
+        foreach ($regulars as $regular) {
+            $this->assertTrue($regular->isCleared(), $regular->email.' is cleared.');
+            $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->about($regular)->sole();
+            $this->assertSame(['via' => 'example_seed'], $entry->details, $regular->email);
+            $this->assertSame('Cleared '.$regular->name.' for regular shifts (example data)', Describe::entry($entry, $regular));
+        }
+
+        foreach ([ExampleOrganizationSeeder::ADMIN, ExampleOrganizationSeeder::COORDINATOR, ExampleOrganizationSeeder::AREA_LEAD, ExampleOrganizationSeeder::NEEDS_SETUP] as $email) {
+            $this->assertTrue(User::query()->where('email', $email)->sole()->isCleared(), $email.' holds a role, so is cleared.');
+        }
+
+        $trainee = User::query()->where('email', ExampleOrganizationSeeder::TRAINEE)->sole();
+        $this->assertFalse($trainee->isCleared());
+        $this->assertTrue($trainee->canSignIn());
+        $this->assertFalse($trainee->regulars()->exists());
+        $this->assertFalse(ChangeLogEntry::query()->where('action', 'user.cleared')->about($trainee)->exists());
+    }
+
     public function test_it_seeds_at_any_time_of_day(): void
     {
         // Late in the evening, after that day's shifts have started, so the seeder has to skip today's dates.
@@ -145,7 +173,7 @@ class ExampleOrganizationSeederTest extends TestCase
 
         $this->seed(ExampleOrganizationSeeder::class);
 
-        $this->assertSame(22, User::query()->count());
+        $this->assertSame(23, User::query()->count());
         $this->assertSame(1, Shift::query()->whereNotNull('cancelled_at')->whereNull('area_closure_id')->count());
     }
 

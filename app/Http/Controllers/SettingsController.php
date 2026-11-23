@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\UpdateSettings;
+use App\Actions\UpdateShadowingSettings;
 use App\Http\Controllers\Calendar\KeepsAreaFilter;
 use App\Models\Organization;
 use DateTimeZone;
@@ -13,7 +14,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * Organization settings (screen 38): name, time zone and weeks ahead. Admins only.
+ * Organization settings (screen 38): name, time zone and weeks ahead (admins only), and the Shadowing section (how many shadow shifts before review), which coordinators can reach too.
  */
 class SettingsController extends Controller
 {
@@ -21,12 +22,13 @@ class SettingsController extends Controller
 
     public function edit(Request $request): View
     {
-        Gate::forUser($request->user())->authorize('manage-settings');
+        Gate::forUser($request->user())->authorize('manage-shadowing');
 
         $organization = Organization::current();
 
         return view('settings', [
             'organization' => $organization,
+            'isAdmin' => Gate::forUser($request->user())->allows('manage-settings'),
             'timezones' => $this->groupedTimezones(),
             'areaQuery' => $this->areaQuery($request),
             'backDate' => $organization->today()->toDateString(),
@@ -50,6 +52,21 @@ class SettingsController extends Controller
         ]);
 
         $updateSettings->handle($request->user(), (string) $request->input('name'), (string) $request->input('timezone'), (int) $request->input('weeks_ahead'));
+
+        return redirect()->route('settings', $this->areaQuery($request))->with('status', 'Saved the settings.');
+    }
+
+    public function updateShadowing(Request $request, UpdateShadowingSettings $updateShadowing): RedirectResponse
+    {
+        Gate::forUser($request->user())->authorize('manage-shadowing');
+
+        $request->validate([
+            'required_shadow_shifts' => ['required', 'integer', 'between:1,10'],
+        ], [
+            'required_shadow_shifts.*' => 'Choose a number from 1 to 10.',
+        ]);
+
+        $updateShadowing->handle($request->user(), (int) $request->input('required_shadow_shifts'));
 
         return redirect()->route('settings', $this->areaQuery($request))->with('status', 'Saved the settings.');
     }

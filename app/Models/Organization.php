@@ -17,14 +17,14 @@ class Organization extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'timezone', 'weeks_ahead'];
+    protected $fillable = ['name', 'timezone', 'weeks_ahead', 'required_shadow_shifts'];
 
     /** Matches the column default, so a new model has it before it's reloaded. */
     protected $attributes = ['weeks_ahead' => 8];
 
     protected function casts(): array
     {
-        return ['weeks_ahead' => 'integer'];
+        return ['weeks_ahead' => 'integer', 'required_shadow_shifts' => 'integer'];
     }
 
     protected static function booted(): void

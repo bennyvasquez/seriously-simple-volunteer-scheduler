@@ -180,12 +180,13 @@ class ReleaseShifts
         return $this->releaseLockedLeavingOut($person, $lockedShift, $assignment, $note, $via, false);
     }
 
-    /** releaseLocked(). When `$callerEscalates` is true (releaseAndCollectLocked(), which escalates a shift that escalatesNow()) and the shift escalates now, checked after the removal opens the place, the urgent email's audience is left out of the recipients, so each of those people hears about the shift once. */
-    private function releaseLockedLeavingOut(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via, bool $callerEscalates): ?CoverRequest
+    /** releaseLocked(). When `$callerEscalates` is true (releaseAndCollectLocked(), which escalates a shift that escalatesNow()) and the shift escalates now, checked after the removal opens the place, the urgent email's audience is left out of the recipients, so each of those people hears about the shift once. `$actor` is who the removal and the cover request are logged as made by: the person, unless someone else released their place for them (moving them back to shadowing). */
+    private function releaseLockedLeavingOut(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via, bool $callerEscalates, ?User $actor = null): ?CoverRequest
     {
         $note = self::cleanNote($note);
+        $actor ??= $person;
 
-        $this->remover->removeLocked($person, $lockedShift, $assignment, ['via' => 'release:'.$via]);
+        $this->remover->removeLocked($actor, $lockedShift, $assignment, ['via' => 'release:'.$via]);
 
         // A shadow doesn't hold a place, and a shift that had more people than it needs still has them all, so neither opens a place to cover.
         if ($assignment->type === AssignmentType::Shadow || $lockedShift->openPlaces() === 0) {
@@ -205,7 +206,7 @@ class ReleaseShifts
         $changes = ChangeLogEntry::changesOf($request);
         $request->save();
 
-        ChangeLogEntry::record($person, 'cover_request.created', $lockedShift, ['cover_request_id' => $request->id], $changes, about: $person);
+        ChangeLogEntry::record($actor, 'cover_request.created', $lockedShift, ['cover_request_id' => $request->id], $changes, about: $person);
 
         return $request->setRelation('recipients', $recipients);
     }
@@ -236,11 +237,13 @@ class ReleaseShifts
      *
      * `nobodyAsked` is true for a regular place on a shift that still has the people it needs, where nobody is asked and nothing escalates.
      *
+     * Public for ReleaseFutureSchedule::releaseRegularPlaces(), which releases a person's places when a coordinator moves them back to shadowing: it passes the coordinator as `$actor`, so the removal, the cover request and any escalation are logged as theirs, while the request, the emails and any escalation still name the person as the releaser, the way any release does. The caller holds the area and shift locks and the assignment's row lock.
+     *
      * @return array{shift: Shift, request: ?CoverRequest, nobodyAsked: bool, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}
      */
-    protected function releaseAndCollectLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via): array
+    public function releaseAndCollectLocked(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via, ?User $actor = null): array
     {
-        $request = $this->releaseLockedLeavingOut($person, $lockedShift, $assignment, $note, $via, true);
+        $request = $this->releaseLockedLeavingOut($person, $lockedShift, $assignment, $note, $via, true, $actor);
         $released = ['shift' => $lockedShift, 'request' => $request, 'nobodyAsked' => $request === null && $assignment->type === AssignmentType::Regular, 'recipients' => collect(), 'sends' => [], 'shadowsTold' => []];
 
         if ($request === null) {
@@ -257,12 +260,15 @@ class ReleaseShifts
             // Every unescalated open request that counts, the way the ladder would take them, so it never escalates this shift a second time.
             $unescalated = CoverLadder::openRequestsLocked($lockedShift)->whereNull('escalated_at')->values();
 
+            // Whoever released is left out of the urgent email about their own release: the person, or the coordinator who released for them when moving them back to shadowing (the person never holds a role then, so leaving them out would do nothing).
+            $leftOut = $actor ?? $person;
+
             if ($unescalated->isNotEmpty()) {
-                $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $person);
+                $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $actor ?? $person, $leftOut);
             } elseif ($shadows->isNotEmpty()) {
                 // Every request that counts was already escalated (people needed was lowered after an escalated release, say), so the leads and coordinators already know and aren't emailed again. This release took off the last regular, so the shadows' spot goes on hold now and they haven't heard "still nobody" for it yet: they get that, not "on hold" as well.
                 $audience = CoverLadder::urgentAudience($lockedShift->area);
-                unset($audience[$person->id]);
+                unset($audience[$leftOut->id]);
                 $released['sends'] = array_values(CoverLadder::stillUncoveredSends($lockedShift, $audience, $person->firstName()));
             }
         } else {
@@ -279,10 +285,12 @@ class ReleaseShifts
      *
      * When the person gave up their weekly slot, `$gaveUpSlot` holds the slot's weekday and the first date they're no longer the regular ("Thursday, October 29"): the cover requests use the "giving up their weekly slot" wording, and the person's email says they're no longer the regular, sent even when nothing was released.
      *
+     * With `$tellReleaser` false the person gets no "You're off" email, because the caller sends them its own (ReleaseFutureSchedule::releaseRegularPlaces(), whose caller sends "You've been moved back to shadowing"). Everything else goes out as usual.
+     *
      * @param  list<array{shift: Shift, request: ?CoverRequest, nobodyAsked: bool, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}>  $released
      * @param  array{weekday: string, from: string}|null  $gaveUpSlot
      */
-    protected function sendAfterCommit(User $person, array $released, ?string $note, ?array $gaveUpSlot = null): void
+    public function sendAfterCommit(User $person, array $released, ?string $note, ?array $gaveUpSlot = null, bool $tellReleaser = true): void
     {
         $releaser = $person->firstName();
         $regularPlaces = array_values(array_filter($released, fn (array $place) => $place['request'] !== null || $place['nobodyAsked']));
@@ -299,7 +307,7 @@ class ReleaseShifts
             }
         }
 
-        if ($regularPlaces !== [] || $gaveUpSlot !== null) {
+        if ($tellReleaser && ($regularPlaces !== [] || $gaveUpSlot !== null)) {
             $regularShifts = collect($regularPlaces)->pluck('shift');
             $sends[] = [$person, new ShiftsReleasedNotification(
                 collect($released)->pluck('shift'),

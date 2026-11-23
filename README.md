@@ -6,7 +6,7 @@ Volunteers see their shifts, take open ones, and release the ones they can't mak
 
 ## Status
 
-Built so far: the foundation and shift generation, accounts and sign-in with their screens (roles, invitations, email-link and password login, two-factor), the coordinator calendar, the people pages and change log, and the volunteer screens (Home, releasing a shift, taking one, and the Emails setting). To run it locally, see [DEVELOPMENT.md](DEVELOPMENT.md). The spec is in [docs/spec.md](docs/spec.md), and what each role can do is in its [section 6](docs/spec.md#6-roles-and-permissions). Why it exists and what else we considered: [docs/background.md](docs/background.md).
+Built so far: the foundation and shift generation, accounts and sign-in with their screens (roles, invitations, email-link and password login, two-factor), the coordinator calendar, the people pages and change log, the volunteer screens (Home, releasing a shift, taking one, and the Emails setting), and clearance and shadowing (shadow spots and progress for new volunteers, Ready for review, clearing and moving back). To run it locally, see [DEVELOPMENT.md](DEVELOPMENT.md). The spec is in [docs/spec.md](docs/spec.md), and what each role can do is in its [section 6](docs/spec.md#6-roles-and-permissions). Why it exists and what else we considered: [docs/background.md](docs/background.md).
 
 ## What it does
 

@@ -15,7 +15,7 @@ class Assignment extends Model
 
     protected function casts(): array
     {
-        return ['type' => AssignmentType::class];
+        return ['type' => AssignmentType::class, 'no_show_at' => 'datetime'];
     }
 
     public function shift(): BelongsTo

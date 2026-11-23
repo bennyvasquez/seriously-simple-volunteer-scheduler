@@ -42,20 +42,20 @@ Volunteer-run organizations keep a shared calendar, a chat channel, and a lot of
 | Shift | One dated occurrence. Generated from a weekly slot, or created on its own (one-time shifts and event shifts). |
 | Regular | A person attached to a weekly slot, with a start date, an optional end date, and whether they work every week or every other week (with an anchor date). Regulars are filled into each generated shift they cover automatically. |
 | Assignment | A person on a specific shift. Type is regular or shadow. |
-| Shadow spot | An optional extra place on a shift for someone in training. It never counts toward the shift's people needed and never triggers cover requests. |
+| Shadow spot | An optional extra place on a shift for someone in training. It never counts toward the shift's people needed and never triggers cover requests. Volunteers who aren't cleared sign up for one only on a shift with at least one regular on it, so there's someone to learn from. |
 | Skill | A qualification a lead grants, such as "Blacksmithing demos". A shift can require one. |
 | Closure | A date or date range when an area is closed. Cancels shifts on those dates. |
-| Cleared | A flag on a volunteer meaning they can take regular shifts. Off until a coordinator turns it on. |
+| Cleared | A flag on a volunteer meaning they can take regular shifts and get cover requests. Off until a coordinator clears them, they're given a role, or the people import clears them by category (`--cleared-tag`), and a coordinator can move them back to shadowing. |
 
 ## 6. Roles and permissions
 
 | Role | Scope | Can do |
 |---|---|---|
 | Admin | Everything | Manage the install, settings, integrations, and all users. |
-| Coordinator | All areas | Invite and remove volunteers, clear or un-clear them, create areas, events, slots and shifts, assign anyone, add closures. |
-| Area lead | One or more areas | Create and edit slots and shifts in their areas, assign people, add shadow spots, grant skills, mark no-shows. |
+| Coordinator | All areas | Invite and remove volunteers, clear them or move them back to shadowing, create areas, events, slots and shifts, assign anyone, add closures, set how many shadow shifts come before review. |
+| Area lead | One or more areas | Create and edit slots and shifts in their areas, assign people, add shadow spots, grant skills, mark shadows' no-shows. |
 | Event organizer | One event | Edit that event's shifts and see its roster. |
-| Volunteer | Themselves | See the full schedule, take open shifts (once cleared), release their own shifts, sign up for shadow spots, manage notification settings. |
+| Volunteer | Themselves | See the full schedule, take open shifts (once cleared), release their own shifts, sign up for shadow spots (until cleared), manage notification settings. |
 
 One person can hold several roles. Nobody sees schedule details until a coordinator has invited them and they've accepted. Each area can name its leads (for example "Shift lead" for Front desk), and an area with no name set says "Area lead". Only the label changes: the role is still area lead.
 
@@ -73,20 +73,25 @@ These tables describe what's built today, checked against the code's policies an
 
 | | Volunteer | Area lead | Coordinator | Admin |
 |---|---|---|---|---|
-| Home, All my shifts and the Emails setting | Yes | Yes | Yes | Yes |
+| Home, All my shifts and the Emails setting (Home shows shadow progress and open shadow spots to someone who isn't cleared) | Yes | Yes | Yes | Yes |
 | Release a shift they're on (one date, a range of dates, or giving up a weekly slot) | Yes | Yes | Yes | Yes |
-| Take an open shift, or become the regular ("Every Thursday") on a slot with no regular | Yes | Yes | Yes | Yes |
-| Get cover request emails (when turned on, not already on the shift, not on an overlapping shift, and not the person who released it) | Yes | Yes | Yes | Yes |
+| Take an open shift, or become the regular ("Every Thursday") on a slot with no regular | Cleared volunteers | Yes | Yes | Yes |
+| Get cover request emails (when turned on, not already on the shift, not on an overlapping shift, and not the person who released it) | Cleared volunteers | Yes | Yes | Yes |
+| Sign up for a shadow spot ("Shadow this shift") on a shift with a regular on it | Volunteers who aren't cleared | No | No | No |
 
 **The calendar**
 
 | | Volunteer | Area lead | Coordinator | Admin |
 |---|---|---|---|---|
 | See the coordinator calendar | No | Yes | Yes | Yes |
-| Weekly slots, one-time shifts and regulars; putting people on and taking them off shifts; editing, cancelling and bringing back shifts | No | Their areas | All areas | All areas |
+| Weekly slots, one-time shifts and regulars; putting people on and taking them off shifts (anyone, cleared or not); editing, cancelling and bringing back shifts | No | Their areas | All areas | All areas |
+| Make someone shadowing a shift its regular, for one date (the shift panel) or every week ("Add a regular"), turning their shadow places into regular places | No | Their areas | All areas | All areas |
 | Create and edit areas, including the lead name | No | No | Yes | Yes |
 | Closures | No | No | Yes | Yes |
-| Organization settings | No | No | No | Yes |
+| Organization settings (name, time zone, weeks ahead) | No | No | No | Yes |
+| Shadowing setting (shadow shifts before review) | No | No | Yes | Yes |
+| Mark a shadow's no-show | No | Their areas | All areas | All areas |
+| "Ready for review" in Needs attention | No | No | Yes | Yes |
 
 **People**
 
@@ -94,6 +99,9 @@ These tables describe what's built today, checked against the code's policies an
 |---|---|---|---|---|
 | People list and person pages | No | People with a shift or regular slot in their areas, and themselves | Everyone | Everyone |
 | Invite someone, and "Invite everyone not invited yet" | No | No | Yes | Yes |
+| Clearance status and shadow history on a person page | No | People they can see | Everyone | Everyone |
+| Clear someone for regular shifts, with an optional note for the change log | No | No | Yes | Yes |
+| Move someone back to shadowing (never someone with a role), keeping or releasing their upcoming regular shifts, with an optional note for the change log | No | No | Yes | Yes |
 | Turn off or remove someone (never themselves; only an admin can do it to an admin) | No | No | Yes | Yes |
 | Grant or revoke roles | No | No | Area lead only | Any role |
 | Reset someone's two-factor | No | No | No | Yes |
@@ -106,13 +114,13 @@ These tables describe what's built today, checked against the code's policies an
 | Urgent: a shift still open 24 hours before it starts | The area's active leads and everyone with the Coordinator role |
 | "Covered" or "{First name} took", when a volunteer takes a shift | The area's active leads |
 | "{First name} can't make their shadow shift" | Everyone with the Coordinator role |
+| "{First name} is shadowing {Area}, {date}", when a volunteer signs up for a shadow spot | The area's active leads |
 
 `ssvs:setup` and `ssvs:import-people` run on the server, so they need server access, not a role.
 
 **Promised in this spec but not built yet**
 
 - Volunteers seeing the full schedule and who's on each shift (the Schedule tab, section 13's "Who sees what"). Today only people with a role see the calendar.
-- Clearance and shadowing (section 9): only cleared volunteers take shifts and get cover requests, not-cleared volunteers sign up for shadow spots, and coordinators clear people or move them back.
 - Skills (granted by leads, required by some shifts) and event organizers.
 
 ## 7. Scheduling model
@@ -138,12 +146,12 @@ Taking a shift needs a login. The "Take this shift" button in a cover request em
 
 1. The volunteer opens the shift from Home, "All my shifts", or the link in a cover request email. Home lists the next 14 days: "Your next shifts" and "Open shifts you can take" (cover requests first, tagged "Needs cover", then by date; slots with no regular are tagged "No regular"). "Your next shifts" and "All my shifts" keep the person's cancelled shifts, tagged "Cancelled" with the reason and no "Can't make it" button.
 2. For a cover request the take page asks "Can you cover this one?" with a "Just this date" button. For an open place in a weekly slot with no current or future regular, it asks "How long do you want it?": "Just this date", "Every [weekday]" or "Every other [weekday]". "Every other [weekday]" is offered only on a slot that repeats every week, and neither is offered on a rotation. Taking "every week" makes the person the regular from that date, which puts them on each date that has room and doesn't overlap another of their shifts, and fills the cover request on each of those dates. The email to them says which dates were skipped. It uses the same take page for any other open place, such as a one-time shift or a rotation date.
-3. Skills and clearance aren't built yet, so any active person can take a shift for now. When they are, a shift that requires a skill the volunteer doesn't have says so and doesn't offer the button, and a volunteer who isn't cleared sees "You'll be able to take shifts once a coordinator clears you", plus any shadow spots on that shift. Both plug into `CoverEligibility`.
+3. Only people cleared for regular shifts (section 9) can take a shift. A volunteer who isn't cleared sees "You'll be able to take shifts once a coordinator clears you." with no button, and this is checked again under the shift lock, so a take that lands after a coordinator moves them back is refused the same way. Skills aren't built yet; when they are, a shift that requires a skill the volunteer doesn't have will say so and not offer the button. Both checks live in `CoverEligibility`.
 4. A person can't take a shift they're already on (as a regular or a shadow), one that has started or been cancelled, or one that overlaps another active shift they're on. The page says why in plain words.
 5. **The first person to take it gets it.** The oldest open cover request on the shift is filled, so when two people released the same shift, each releaser hears who covered for them. Someone who loses the race, or follows an old link, sees "Someone already took this one" with other open shifts they could take. Pressing take twice lands on "It's yours".
 6. On success, the volunteer gets "It's yours" and an email. The releaser gets "{First name} is covering your shift". Shadows get "back on" when their spot had been on hold (section 8.2). The area's active leads get "Covered" for a cover request, or "{First name} took" for any other open place. The organizer of an event shift is told too once events exist. Calendars update.
 7. The person who released a shift doesn't get the cover request for it, but can take it back from Home while it's still open. A coordinator or area lead who puts someone on a released shift fills the cover request the same way: the releaser and shadows are told, but the leads aren't, since a lead or coordinator did it. So does every other change that puts a regular on a shift: a coordinator adding a regular to a weekly slot, bringing a cancelled shift back, or a closure or weekly slot change bringing a date back with its regulars. Each regular put on a shift fills its oldest open cover request, and each releaser gets one email listing their dates.
-8. **Who gets the cover request email.** Everyone who can sign in, has "Email me when someone can't make a shift I could take" turned on (the default, changed on the Emails page and logged as `user.email_settings_changed`), isn't on the shift, isn't on an overlapping active shift and didn't release it. The email names the releaser by first name, shows the note if there is one, and keeps the area's name as it's stored ("Can you cover Front desk on Thursday, October 22?"). The link at the bottom of each one goes to the Emails page, which needs a login. This one check is `CoverEligibility`; the clearance plan adds "cleared" and skills to it.
+8. **Who gets the cover request email.** Everyone who can sign in, is cleared for regular shifts, has "Email me when someone can't make a shift I could take" turned on (the default, changed on the Emails page and logged as `user.email_settings_changed`), isn't on the shift, isn't on an overlapping active shift and didn't release it. The email names the releaser by first name, shows the note if there is one, and keeps the area's name as it's stored ("Can you cover Front desk on Thursday, October 22?"). The link at the bottom of each one goes to the Emails page, which needs a login. This one check is `CoverEligibility`; skills will join it when they're built.
 
 ### 8.2 "I can't make it"
 
@@ -211,14 +219,21 @@ SSVS is the record of volunteer hours.
 
 ## 9. New volunteers, shadowing and clearance
 
-- New volunteers are invited like everyone else and can see the full schedule, but **start not cleared**. The flag is worded positively ("Cleared for regular shifts") so that forgetting to change it is the safe mistake.
-- **Shadow spots** are added to existing shifts by a lead or coordinator, so a trainee always has someone to learn from. Not-cleared volunteers see a "Shadow this shift" button and a list of open shadow spots on their home screen.
-- **A shadow shift counts once it ends**, unless the person shadowed or the lead marks a no-show.
-- **Required shadow shifts is a coordinator setting** (default 2). Changing it never un-clears anyone; it only changes when the "ready for review" prompt appears.
-- When a volunteer reaches the required number, coordinators see **"Ready for review"** with the shadow history. Clearing is always a coordinator decision; the app never clears anyone automatically.
-- **Coordinators can override in both directions:** clear someone early, or move a cleared volunteer back to shadowing. Every change records who made it, when, and an optional note.
-- **Moving someone back** asks the coordinator what to do with that person's upcoming regular shifts: keep them, or release them through the normal cover flow.
-- Not-cleared volunteers don't receive cover requests.
+- New volunteers are invited like everyone else, but **start not cleared**. The flag is worded positively ("Cleared for regular shifts") so that forgetting to change it is the safe mistake. Only cleared people take shifts and get cover requests (section 8.1). Coordinators and area leads can still put anyone on a shift from the calendar, and the person picker tags someone who isn't cleared "Not cleared yet". Seeing the full schedule comes with the Schedule tab (section 6).
+- **Holding a role clears you.** Granting any role clears someone who isn't cleared yet, logged as `user.cleared` with `via` `role.granted`. Taking the role away leaves them cleared, so a former lead stays cleared. When clearance was added, everyone who already held a role was cleared by the system (`via` `migration`).
+- **Shadow spots** are added to existing shifts by a lead or coordinator. Not-cleared volunteers see their progress ("Shadow shifts done: 1 of 2"), their next shadow shift and the open shadow spots for the next 14 days on Home, each with a "Shadow this shift" button that opens a page with one button to confirm. A shadow spot is offered only on a shift with at least one regular on it, so a trainee always has someone to learn from: a shift with shadow spots but nobody in a regular place (a slot with no regular, or a released shift) isn't listed and refuses sign-up with "Nobody is on this shift to shadow yet." The card says who they'd shadow ("With Jamie"). Two people pressing it for the last spot get it once; the other sees "There's no shadow spot left on this shift." Signing up is logged as `assignment.added` with `via` `shadow_signup`, the person gets "You're shadowing {Area} on {date}", and the area's active leads get "{First name} is shadowing {Area}, {date}".
+- **Cleared people don't take shadow spots.** They see "Shadow spots are for people who aren't cleared yet. You can take shifts instead."
+- **A shadow shift counts once it ends**, unless it was cancelled or a lead (in their area) or a coordinator marks the shadow a no-show. Marking is offered on the shift panel only once the shift has ended, only for shadow places (no-shows for regular places come with volunteer hours, phase 4), can be undone, and is logged as `assignment.no_show`. A shadow place someone left never counts, and neither does a shift still in progress.
+- **Required shadow shifts is a coordinator setting** ("Shadow shifts before review", default 2, from 1 to 10, in the Shadowing section of Settings, which coordinators can reach; the rest of Settings stays admin-only). Changing it never un-clears anyone; it only changes when the "Ready for review" prompt appears. Lowering it shows people who now meet it as Ready for review right away.
+- When a volunteer reaches the required number, coordinators and admins see **"Ready for review: {First name}"** in the calendar's Needs attention list, whatever areas are shown, linking to the person page. The person page's "Shadowing and clearance" section shows their progress and shadow history (each ended shadow shift, with who they shadowed and whether it was done, a no-show or cancelled) to everyone who can see the page. Clearing is always a coordinator decision; the app never clears anyone automatically, and marking a no-show takes someone off Ready for review.
+- **Coordinators can override in both directions:** clear someone early with "Clear for regular shifts", or move a cleared volunteer back to shadowing. Each takes an optional note (up to 500 characters) that goes only in the change log, never in an email. Clearing is logged as `user.cleared` with `via` `person_page` and emails the person "You're cleared for regular shifts". Someone turned off can't be cleared until they're turned back on.
+- **Clearing keeps someone's upcoming shadow places.** They can keep shadowing or release them with "Can't make it".
+- **Moving someone back** is refused for anyone who holds a role ("Remove their role first."). It's a page of its own that asks what to do with that person's upcoming regular shifts, when they have any or are a weekly regular: keep them, or release them. Releasing ends their regulars yesterday, so they're no longer the regular on any date from today and the nightly generator doesn't put them back, and releases each future regular place through the normal cover flow: each one becomes a cover request naming them, and one inside 24 hours escalates at once, with the coordinator who moved them back left out of the urgent email. A shift that still has the people it needs once they're off it gets no cover request. Releasing also takes them off their cancelled future shifts quietly, with no cover request. Those releases are logged as the coordinator's. The person gets one "You've been moved back to shadowing" email listing what was released, split into the shifts other volunteers were asked to cover and the ones that still have the people they need, instead of "You're off". It's logged as `user.moved_back`, with the keep or release choice. Their shadow places stay.
+- **Moving back starts the shadow count over.** Only shadow shifts that end after the move back (`users.shadowing_since`) count toward review again, while the shadow history still lists every one, with the ones that ended before the move back marked "Done (before moving back)".
+- **The import never undoes a move back.** Running `ssvs:import-people --cleared-tag` again leaves alone anyone a coordinator moved back to shadowing, listed in the preview under "Moved back to shadowing, left alone", and anyone turned off.
+- **A shadow who becomes the regular** has their shadow place turned into a regular place on the same assignment, freeing the shadow spot, logged as `assignment.type_changed`. That happens on the slot's shifts from the start date, ones that haven't started and aren't cancelled, when a coordinator or lead makes them the regular from the weekly "Add a regular" screen, or for one date from the shift panel, which lists people shadowing the shift in its person search tagged "Shadowing".
+- Clearing and moving back are under the change log's Clearance kind; no-shows and a shadow made the regular are under Schedule.
+- Skills (granted by leads, required by some shifts) are planned later.
 
 ## 10. Notifications
 
@@ -259,7 +274,7 @@ Volunteers trust the organization with their contact details and their whereabou
 - **Changing your email address.** Anyone can change their own address after confirming who they are again: with their password (plus their app code, for area leads and up), or with a link emailed to their current address if they have no password. We then email a link to the new address, and the change happens only when that link is opened, so a typo can't lock anyone out; until then the old address keeps working. The old address gets an email saying the login address changed, showing the new one partly hidden, so the real owner hears about a change they didn't make. The change logs the person out on every other device, keeps the one they used signed in, and goes in the change log. An address another account already uses gets the same answer on screen, so the form never reveals who has an account. Typing your own current address gets a plain "That's already your address.", since that says nothing about anyone else.
 - **Not invited yet.** A person who has been added but not yet invited (`invited_at` is empty) gets no email of any kind and can't sign in by link, password or password reset. Every screen answers for them exactly as it does for an address with no account, so nothing reveals the difference. Inviting them is what changes that. Accounts that existed before this status was added count as invited. Coordinators and admins invite one person from the person page or the invite form, or everyone not invited yet from the people list.
 - **First-run setup:** `php artisan ssvs:setup` creates the organization and its first admin, and prints that admin's invitation link so an install works before email is configured.
-- **Importing the volunteer list:** `php artisan ssvs:import-people {file} --as=<admin email>` reads a Hello Club members export, shows who it would add, who already exists and who it skipped (with the reason), and saves nothing until the admin says yes. It reads only the Full name, Email and Profile ID columns (and Categories, which it reads but uses only when `--lead-tag` is given) and never stores, logs or prints anything else. New people are added as not invited yet, so nobody is emailed. People who already exist are left alone, except that someone matched by email with no membership ID gets it filled in, logged as `user.member_id_added`. `--lead-tag` with `--lead-area` makes everyone with that category an area lead of that area.
+- **Importing the volunteer list:** `php artisan ssvs:import-people {file} --as=<admin email>` reads a Hello Club members export, shows who it would add, who already exists and who it skipped (with the reason), and saves nothing until the admin says yes. It reads only the Full name, Email and Profile ID columns (and Categories, which it reads but uses only when `--lead-tag` or `--cleared-tag` is given) and never stores, logs or prints anything else. New people are added as not invited yet, so nobody is emailed. People who already exist are left alone, except that someone matched by email with no membership ID gets it filled in, logged as `user.member_id_added`. `--lead-tag` with `--lead-area` makes everyone with that category an area lead of that area. `--cleared-tag` clears everyone with that category for regular shifts (section 9), new people and people already imported, logged as `user.cleared` with `via` `import`; people who are already cleared are not logged again. Categories are matched exactly, the same way for both options.
 - **Change log** for every change to stored data, including clearance, roles, accounts and the schedule. Each entry says who made the change (a person, or the system for automatic jobs), what changed, with the old and new values where there are any (secrets show only that they changed), and when. Coordinators and admins can filter it by who made a change, who it was about, which record, which kind of change and a date range. Entries are never edited. Password hashes, tokens and two-factor secrets are never copied into it.
 
 ### Who sees what
@@ -269,7 +284,7 @@ Volunteers trust the organization with their contact details and their whereabou
 | The schedule and first names on shifts | Yes | Yes | Yes | No |
 | Email addresses and phone numbers | Their own | Yes | Yes | No |
 | Notification settings | Their own | No | Admins only | No |
-| Clearance status and shadow history | Their own | Yes | Yes | No |
+| Clearance status and shadow history | Their own shadow progress count, on Home (not the history list) | Yes | Yes | No |
 | Last login and last seen | Their own | Yes | Yes | No |
 | Volunteer hours and credit requests | Their own | Hours in their areas | Yes | No |
 | Open shifts and "needs N more" counts | Yes | Yes | Yes | Only areas and events marked public, never names |
@@ -315,7 +330,7 @@ When someone stops volunteering, a coordinator turns their account off. That rem
 
 ## 14. Settings
 
-Organization: name, time zone, weeks to generate ahead, required shadow shifts, reminder timing, public calendar on or off, "become a volunteer" link. Built so far: name, time zone and weeks to generate ahead (1 to 26), changed by admins only. The rest come with their features.
+Organization: name, time zone, weeks to generate ahead, required shadow shifts, reminder timing, public calendar on or off, "become a volunteer" link. Built so far: name, time zone and weeks to generate ahead (1 to 26), changed by admins only, and "Shadow shifts before review" (the required shadow shifts, 1 to 10, default 2), changed by coordinators and admins in a Shadowing section (section 9). The rest come with their features.
 Per area: name, escalation timings, chat webhook, whether it appears on the public calendar. The per-area escalation timings aren't built yet: every area uses the defaults, 72 hours for the second request and 24 hours for the urgent alert (section 8.3).
 Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours export, Google Calendar.
 
@@ -484,6 +499,26 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-11-21 | Home lists the next 14 days, the same window as Needs attention: "Your next shifts" and "Open shifts you can take" (cover requests first, tagged "Needs cover", then by date; slots with no regular tagged "No regular"). "All my shifts" lists every future shift the person is on, by month. Both lists keep the person's cancelled shifts, since cancelled shifts stay visible, tagged "Cancelled" with the reason and no "Can't make it" button. |
 | 2026-11-21 | The release note is up to 500 characters, trimmed, shown as plain text to people taking the shift and in the emails. It stays on the cover request when the releaser's account is removed, the same as a closure's reason. Removing a person repoints `cover_requests.released_by` and `filled_by` to the shared Removed person record and rewrites those ids inside change log entries about them. Once the releaser is removed, the take page, Home and the ladder's "Still open" and urgent emails call them "Someone". |
 | 2026-11-21 | When a shift is taken, the area's active leads get "Covered" (for a cover request) or "{First name} took" (for any other open place), following section 8.1. |
+| 2026-11-22 | Leads (in their areas) and coordinators mark a shadow's no-show, once the shift has ended; the person shadowed doesn't. Coordinators and admins change the required shadow shifts (1 to 10, default 2) in a Shadowing section of Settings; the rest of Settings stays admin-only. Lowering it shows people who now meet it as Ready for review right away, and raising it never un-clears anyone (benny, 2026-11-22). |
+| 2026-11-22 | "Ready for review: {First name}" is in the calendar's Needs attention list for coordinators and admins only, whatever areas are shown, and links to the person page. The person page's "Shadowing and clearance" section (screen 9) shows clearance status, progress and shadow history to everyone who can see the page, and the "Clear for regular shifts" form, with an optional note, to coordinators and admins. Moving back is a page of its own (screen 10), so it works without JavaScript. This replaces the 2026-10-17 row's "Ready for review waits for clearance". |
+| 2026-11-22 | Skills (granted by leads, required by some shifts) are planned later, not in the clearance plan, so screen 9's Skills block is left out for now (benny, 2026-11-22). |
+| 2026-11-22 | Only people cleared for regular shifts take shifts and get cover requests, through `CoverEligibility`, which reads the person again under the shift lock, so a take that lands after a move back is refused with "You'll be able to take shifts once a coordinator clears you." This replaces the 2026-11-21 row's "until the clearance plan, any active person can take a shift". Coordinators and area leads can still put anyone on a shift from the calendar, and the person picker tags someone who isn't cleared "Not cleared yet". |
+| 2026-11-22 | Cleared volunteers can't take shadow spots, which are for people who aren't cleared yet (benny, 2026-11-22). |
+| 2026-11-22 | Holding a role clears you. Granting any role clears someone who isn't cleared yet, logged as `user.cleared` with `via` `role.granted`, and revoking a role leaves them cleared, so a former lead stays cleared. Moving someone who holds a role back to shadowing is refused with "Remove their role first." The migration that added clearance cleared everyone who already held a role, by the system, with `via` `migration` (benny, 2026-11-22). |
+| 2026-11-22 | Marking volunteers as good to be shadowed waits until after the MVP, as issue #61 (benny, 2026-11-22). |
+| 2026-11-22 | A shadow spot needs a regular on the shift. "Shadow this shift" is offered only when at least one regular is on the shift, and the card says who ("With Jamie"), so a trainee always has someone to learn from. A shift with shadow spots but nobody in a regular place isn't listed and refuses sign-up. |
+| 2026-11-22 | The people import clears people by category: `ssvs:import-people --cleared-tag="Example Cleared Tag"` clears new and already imported people with that category, logged as `user.cleared` with `via` `import`, so LMN's front desk volunteers come in cleared whether or not its test copy was imported before clearance existed (#29). |
+| 2026-11-22 | "Release them", when moving someone back to shadowing, also ends their regulars yesterday, so the nightly generator doesn't put them straight back on every new date. Each released place becomes a cover request naming the person, the way any release does, and the release and any escalation are logged as the coordinator's. The person gets one "You've been moved back to shadowing" email listing what was released, instead of "You're off". |
+| 2026-11-22 | Clearing keeps someone's upcoming shadow places; they can release them with "Can't make it" or keep shadowing. A shadow who becomes the regular on a slot has their shadow places on that slot's shifts (from the start date, not started, not cancelled) turned into regular places on the same assignments, logged as `assignment.type_changed` (#21). |
+| 2026-11-22 | The shift panel's person search lists people shadowing that shift, tagged "Shadowing", so a coordinator or lead can put one on in a regular place for that date. Their shadow place becomes the regular place, logged as `assignment.type_changed`, and the panel says "{First name} is on this shift instead of shadowing it." |
+| 2026-11-22 | New emails: "You're cleared for regular shifts" and "You've been moved back to shadowing" to the person, "You're shadowing {Area} on {date}" to a volunteer who signs up for a shadow spot, and "{First name} is shadowing {Area}, {date}" to the area's active leads. A coordinator's note when clearing or moving someone back stays in the change log and isn't emailed. Clearing through a role, the import or the example data sends no email. |
+| 2026-11-22 | Moving someone back to shadowing starts their shadow count over: it sets `users.shadowing_since`, and only shadow shifts that end after it count toward Ready for review, while the person page's shadow history still lists every one. |
+| 2026-11-22 | The change log has a Clearance kind of change, covering `user.cleared` and `user.moved_back`, with the coordinator's note shown on the entry. `assignment.no_show` and `assignment.type_changed` are under the Schedule kind. This adds to the kinds listed in the 2026-11-03 row. |
+| 2026-11-22 | The example seeder clears its example regulars as the system, logged as `user.cleared` with `via` `example_seed`, which the change log shows as "(example data)". Everyone with a role or a regular slot in the example data is cleared, and the trainee (trainee@example.org) isn't. |
+| 2026-11-22 | LMN volunteers reviewed wireframes 6, 9 and 10 in October 2026, and building went ahead on them (benny, 2026-11-22). |
+| 2026-11-22 | Running the import again with `--cleared-tag` leaves alone people a coordinator moved back to shadowing and people who are turned off, so the tag never undoes a coordinator's decision. The preview lists the moved-back ones under "Moved back to shadowing, left alone", and "Already here, left alone" no longer lists people being cleared. This narrows the earlier 2026-11-22 row on clearing by category. |
+| 2026-11-22 | The moved back email lists the released shifts in two groups: "You're off these shifts, and other volunteers were asked to cover them:" and "You're off these shifts too. They still have the people they need, so nobody was asked:", leaving out a group with no shifts. |
+| 2026-11-22 | A coordinator who moves someone back and releases a shift inside 24 hours doesn't get the urgent email about it, following the 2026-11-21 rule for a lead or coordinator who releases a shift themselves. The area's leads and the other coordinators still get it. |
 
 ## 19. Open questions
 

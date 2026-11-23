@@ -75,9 +75,9 @@ class TakeShiftTest extends TestCase
         $this->hostedEvents = Area::factory()->create(['name' => 'Hosted events']);
         $this->coordinator = $this->withRole('Chris Coordinator', Role::Coordinator);
         $this->lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
-        $this->robin = User::factory()->create(['name' => 'Robin Example']);
-        $this->jordan = User::factory()->create(['name' => 'Jordan Example']);
-        $this->sam = User::factory()->create(['name' => 'Sam Example']);
+        $this->robin = User::factory()->cleared()->create(['name' => 'Robin Example']);
+        $this->jordan = User::factory()->cleared()->create(['name' => 'Jordan Example']);
+        $this->sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
     }
 
     private function withRole(string $name, Role $role, ?Area $area = null): User
@@ -143,7 +143,7 @@ class TakeShiftTest extends TestCase
 
     public function test_taking_a_released_shift_fills_its_cover_request(): void
     {
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $shift = $this->shift('2026-10-22');
         $this->on($shift, $this->robin);
         $this->on($shift, $casey, AssignmentType::Shadow);
@@ -291,7 +291,7 @@ class TakeShiftTest extends TestCase
         Notification::assertSentTo($this->robin, ShiftCoveredNotification::class);
         Notification::assertNotSentTo($this->sam, ShiftCoveredNotification::class);
 
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         app(TakeShift::class)->handle($casey, $shift, TakeHow::JustThisDate);
 
         $this->assertSame($casey->id, $sams->fresh()->filled_by);
@@ -321,7 +321,7 @@ class TakeShiftTest extends TestCase
 
     public function test_taking_an_open_place_with_no_request_sends_shadows_nothing(): void
     {
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $shift = $this->shift('2026-10-22');
         $this->on($shift, $casey, AssignmentType::Shadow);
         Notification::fake();
@@ -409,7 +409,7 @@ class TakeShiftTest extends TestCase
 
     public function test_taking_every_week_on_a_given_up_slot_fills_every_dates_request(): void
     {
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $slot = $this->thursdaySlot();
         $regular = app(AddRegular::class)->handle(null, $slot, $this->sam, '2026-10-15');
         // Casey shadows October 29 and November 5, so both go on hold when Sam gives up the slot.
@@ -585,7 +585,7 @@ class TakeShiftTest extends TestCase
 
     public function test_a_coordinator_filling_a_released_shift_fills_its_request(): void
     {
-        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
         $shift = $this->shift('2026-10-22');
         $this->on($shift, $this->robin);
         $this->on($shift, $casey, AssignmentType::Shadow);

@@ -8,6 +8,7 @@
 @endif
 <h1>{{ trim('Hi '.$user->firstName()) }}</h1>
 
+@if ($user->isCleared())
 <section class="shift-section">
 <h2>Your next shifts</h2>
 @forelse ($next as $shift)
@@ -19,6 +20,9 @@
 </section>
 
 @include('volunteer._open-shifts')
+@else
+@include('volunteer._shadow-home')
+@endif
 
 <section class="shift-section">
 <h2>Your account</h2>

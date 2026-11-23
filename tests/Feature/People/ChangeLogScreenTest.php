@@ -125,6 +125,29 @@ class ChangeLogScreenTest extends TestCase
             ->assertSee('4 changes')->assertDontSee('Sam Example');
     }
 
+    public function test_the_clearance_kind_holds_clearing_and_moving_back(): void
+    {
+        $this->entry($this->coordinator, 'user.cleared', $this->robin, '2026-10-10 10:00', ['via' => 'person_page']);
+        $this->entry($this->coordinator, 'user.moved_back', $this->robin, '2026-10-11 10:00', ['release' => false]);
+        $this->entry($this->admin, 'user.invited', $this->sam, '2026-10-11 11:00');
+
+        $this->actingAs($this->coordinator)->get(route('change-log.index', ['kind' => 'clearance']))
+            ->assertSee('2 changes')
+            ->assertSee('Cleared Robin Example for regular shifts')
+            ->assertSee('Moved Robin Example back to shadowing')
+            ->assertDontSee('Sam Example');
+        $this->actingAs($this->coordinator)->get(route('change-log.index'))->assertSee('<option value="clearance"', false);
+    }
+
+    public function test_the_schedule_kind_includes_no_shows(): void
+    {
+        $this->entry($this->lead, 'assignment.no_show', $this->robin, '2026-10-10 10:00', [], ['no_show_at' => ['old' => null, 'new' => '2026-10-10 10:00:00']]);
+        $this->entry($this->admin, 'user.invited', $this->sam, '2026-10-11 11:00');
+
+        $this->actingAs($this->coordinator)->get(route('change-log.index', ['kind' => 'schedule']))
+            ->assertSee('1 change ')->assertDontSee('Sam Example');
+    }
+
     public function test_the_to_date_includes_the_end_of_the_day_in_the_organization_time_zone(): void
     {
         $this->entry($this->admin, 'user.invited', $this->robin, '2026-10-11 23:30');

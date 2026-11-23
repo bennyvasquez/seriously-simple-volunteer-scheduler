@@ -33,7 +33,22 @@
 @endif
 <div aria-label="People on this shift" role="group">
 @forelse ($people as $person)
-<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif</div>
+<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif
+@if (($person['noShow'] ?? false) || ($person['canMark'] ?? false))
+@if ($person['noShow'])<b>No-show</b>@endif
+@if ($person['canMark'])
+<form method="POST" action="{{ route('calendar.shift.no-show', $shift) }}" class="inline-form">
+@csrf
+@foreach ($areaQuery['areas'] ?? [] as $areaId)
+<input type="hidden" name="areas[]" value="{{ $areaId }}">
+@endforeach
+<input type="hidden" name="assignment" value="{{ $person['assignment'] }}">
+<input type="hidden" name="no_show" value="{{ $person['noShow'] ? 0 : 1 }}">
+<button type="submit" class="btn btn-small" aria-label="{{ $person['noShow'] ? 'Undo no-show for' : 'Mark no-show for' }} {{ $person['name'] }}">{{ $person['noShow'] ? 'Undo no-show' : 'Mark no-show' }}</button>
+</form>
+@endif
+@endif
+</div>
 @empty
 <p class="muted">Nobody is on this shift yet.</p>
 @endforelse
@@ -78,14 +93,14 @@
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
 <input type="hidden" name="person" value="{{ $match->id }}">
-<div class="row"><span>{{ $match->display_name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
+<div class="row"><span>{{ $match->display_name }}@if ($match->shadowing) <span class="tag">Shadowing</span>@endif @unless ($match->isCleared()) <span class="tag">Not cleared yet</span>@endunless<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
 <div class="add-actions">
 <button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->display_name }} on this shift">Put on shift</button>
-@if ($shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->display_name }} on this shift as a shadow">Shadow</button>@endif
+@if (! $match->shadowing && $shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->display_name }} on this shift as a shadow">Shadow</button>@endif
 </div>
 </form>
 @empty
-<p class="muted">Nobody matches "{{ $search['query'] }}". Only people with an active account who aren't already on this shift are listed.</p>
+<p class="muted">Nobody matches "{{ $search['query'] }}". Only people with an active account who don't already have a place on this shift are listed.</p>
 @endforelse
 @endif
 @endif

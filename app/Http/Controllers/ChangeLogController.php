@@ -29,6 +29,7 @@ class ChangeLogController extends Controller
         'invitations' => ['Invitations and accounts', ['user.created', 'user.invited', 'user.invitation_resent', 'user.accepted_invitation', 'user.deactivated', 'user.removed', 'user.email_changed', 'user.email_settings_changed', 'user.member_id_added']],
         'passwords' => ['Passwords and two-factor', ['user.password_set', 'user.password_changed', 'user.password_reset', 'user.signed_out_everywhere', 'two_factor.*']],
         'schedule' => ['Schedule', ['area.*', 'slot.*', 'shift.*', 'assignment.*', 'regular.*', 'closure.*', 'cover_request.*']],
+        'clearance' => ['Clearance', ['user.cleared', 'user.moved_back']],
         'generation' => ['Shift generation', ['shifts.generated']],
         'settings' => ['Settings', ['organization.*']],
     ];

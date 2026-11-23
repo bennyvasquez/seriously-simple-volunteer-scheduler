@@ -7,6 +7,8 @@ use App\Actions\Scheduling\CreateArea;
 use App\Actions\Scheduling\CreateWeeklySlot;
 use App\Actions\Scheduling\UpdateArea;
 use App\Actions\UpdateSettings;
+use App\Actions\UpdateShadowingSettings;
+use App\ChangeLog\Describe;
 use App\Enums\AreaColor;
 use App\Enums\Role;
 use App\Models\Area;
@@ -169,22 +171,21 @@ class AreasAndSettingsTest extends TestCase
         $this->actingAs($coordinator)->get(route('calendar.areas.create'))->assertDontSee('Weekly slots');
     }
 
-    public function test_the_sidebar_links_areas_to_their_edit_page_and_shows_settings_only_to_admins(): void
+    public function test_the_sidebar_links_areas_to_their_edit_page_and_shows_settings_to_coordinators(): void
     {
         $area = app(CreateArea::class)->handle($this->coordinator(), 'Front desk');
 
         $coordinator = $this->actingAs($this->coordinator())->get(route('calendar.week'));
-        $coordinator->assertSee(route('calendar.areas.edit', $area), false)->assertSee('Add an area')->assertDontSee(route('settings'), false);
+        $coordinator->assertSee(route('calendar.areas.edit', $area), false)->assertSee('Add an area')->assertSee(route('settings'), false);
 
         $this->actingAs($this->withRole(Role::Admin))->get(route('calendar.week'))->assertSee(route('settings'), false);
 
         $lead = $this->actingAs($this->withRole(Role::AreaLead, $area))->get(route('calendar.week'));
-        $lead->assertDontSee(route('calendar.areas.edit', $area), false)->assertDontSee('Add an area');
+        $lead->assertDontSee(route('calendar.areas.edit', $area), false)->assertDontSee('Add an area')->assertDontSee(route('settings'), false);
     }
 
     public function test_settings_are_admin_only_and_validated(): void
     {
-        $this->actingAs($this->withRole(Role::Coordinator))->get(route('settings'))->assertForbidden();
         $this->actingAs($this->withRole(Role::Coordinator))->put(route('settings'), ['name' => 'X', 'timezone' => 'America/Detroit', 'weeks_ahead' => 4])->assertForbidden();
 
         $this->actingAs($this->withRole(Role::Admin))->put(route('settings'), ['name' => 'Example Makerspace', 'timezone' => 'Mars/Olympus', 'weeks_ahead' => 0])
@@ -199,6 +200,73 @@ class AreasAndSettingsTest extends TestCase
         $this->actingAs($this->withRole(Role::Admin))->put(route('settings'), ['name' => 'Example Makers', 'timezone' => 'America/Chicago', 'weeks_ahead' => 6])->assertRedirect(route('settings'));
         $organization = Organization::current();
         $this->assertSame(['Example Makers', 'America/Chicago', 6], [$organization->name, $organization->timezone, $organization->weeks_ahead]);
+    }
+
+    public function test_coordinators_change_the_required_shadow_shifts(): void
+    {
+        $coordinator = $this->coordinator();
+        $this->assertSame(2, Organization::current()->required_shadow_shifts);
+
+        $this->actingAs($coordinator)->put(route('settings.shadowing'), ['required_shadow_shifts' => 4])->assertRedirect(route('settings'))->assertSessionHas('status', 'Saved the settings.');
+
+        $this->assertSame(4, Organization::current()->required_shadow_shifts);
+        $entry = ChangeLogEntry::query()->where('action', 'organization.updated')->sole();
+        $this->assertSame($coordinator->id, $entry->actor_id);
+        $this->assertSame(['required_shadow_shifts' => ['old' => 2, 'new' => 4]], $entry->changes);
+        $this->assertSame('Changed the settings', Describe::entry($entry, $coordinator));
+
+        $trainee = User::factory()->create();
+        $this->actingAs($trainee)->get('/')->assertOk()->assertSee('Shadow shifts done: 0 of 4');
+
+        // Saving the same number again changes nothing and logs nothing.
+        app(UpdateShadowingSettings::class)->handle($coordinator, 4);
+        $this->assertSame(1, ChangeLogEntry::query()->where('action', 'organization.updated')->count());
+    }
+
+    public function test_coordinators_see_only_the_shadowing_section(): void
+    {
+        $this->actingAs($this->coordinator())->get(route('settings'))->assertOk()
+            ->assertSee('Shadow shifts before review')
+            ->assertSee("Coordinators review someone once they've done this many. Changing it never un-clears anyone.")
+            ->assertDontSee('Time zone')->assertDontSee('Make shifts this many weeks ahead')->assertDontSee('Save settings');
+
+        $this->actingAs($this->withRole(Role::Admin))->get(route('settings'))->assertOk()
+            ->assertSee('Shadow shifts before review')->assertSee('Time zone')->assertSee('Make shifts this many weeks ahead');
+    }
+
+    public function test_the_number_must_be_1_to_10(): void
+    {
+        $coordinator = $this->coordinator();
+
+        foreach ([0, 11, 'x', ''] as $bad) {
+            $this->actingAs($coordinator)->put(route('settings.shadowing'), ['required_shadow_shifts' => $bad])->assertSessionHasErrors(['required_shadow_shifts' => 'Choose a number from 1 to 10.']);
+        }
+
+        $this->assertSame(2, Organization::current()->required_shadow_shifts);
+
+        try {
+            app(UpdateShadowingSettings::class)->handle($coordinator, 11);
+            $this->fail('Eleven should be refused.');
+        } catch (ValidationException $e) {
+            $this->assertSame('Choose a number from 1 to 10.', $e->errors()['required_shadow_shifts'][0]);
+        }
+
+        $this->actingAs($coordinator)->put(route('settings.shadowing'), ['required_shadow_shifts' => 10])->assertSessionHasNoErrors();
+        $this->assertSame(10, Organization::current()->required_shadow_shifts);
+    }
+
+    public function test_a_volunteer_cant_reach_settings(): void
+    {
+        $volunteer = User::factory()->create();
+        $lead = $this->withRole(Role::AreaLead, app(CreateArea::class)->handle($this->coordinator(), 'Front desk'));
+
+        foreach ([$volunteer, $lead] as $person) {
+            $this->actingAs($person)->get(route('settings'))->assertForbidden();
+            $this->actingAs($person)->put(route('settings.shadowing'), ['required_shadow_shifts' => 3])->assertForbidden();
+        }
+
+        $this->expectException(AuthorizationException::class);
+        app(UpdateShadowingSettings::class)->handle($volunteer, 3);
     }
 
     public function test_the_time_zone_list_is_grouped_with_the_united_states_first(): void

@@ -38,6 +38,14 @@ final class Describe
             'user.invited' => 'Invited '.$person,
             'user.invitation_resent' => 'Sent '.$person.' a new invitation',
             'user.accepted_invitation' => 'Accepted '.($self ? 'their' : $possessive).' invitation',
+            'user.cleared' => 'Cleared '.$person.' for regular shifts'.match ($details['via'] ?? null) {
+                'role.granted' => ' (with a role)',
+                'import' => ' (from the import)',
+                'migration' => ' (already held a role)',
+                'example_seed' => ' (example data)',
+                default => '',
+            },
+            'user.moved_back' => 'Moved '.$person.' back to shadowing',
             'user.deactivated' => 'Turned off '.$possessive.' account',
             'user.removed' => 'Removed a person\'s account',
             'user.email_changed' => 'Changed '.($self ? 'their' : $possessive).' email address',
@@ -66,8 +74,14 @@ final class Describe
             'shift.updated' => 'Changed '.self::shiftWords($entry->subject, true),
             'shift.cancelled' => 'Cancelled '.self::shiftWords($entry->subject, true),
             'shift.restored' => 'Brought back '.self::shiftWords($entry->subject, true),
-            'assignment.added' => (($details['via'] ?? null) === 'take' ? 'Took ' : 'Put '.$person.' on ').self::shiftWords($entry->subject, true),
+            'assignment.added' => match ($details['via'] ?? null) {
+                'take' => 'Took ',
+                'shadow_signup' => 'Signed up to shadow ',
+                default => 'Put '.$person.' on ',
+            }.self::shiftWords($entry->subject, true),
+            'assignment.type_changed' => ($self ? 'Moved' : 'Moved '.$person).' from shadowing to a regular place on '.self::shiftWords($entry->subject, true),
             'assignment.removed' => self::assignmentRemoved($entry, $details, $self ? 'their' : $possessive, $person),
+            'assignment.no_show' => isset($changes['no_show_at']['new']) ? 'Marked '.$person.' as a no-show for '.self::shiftWords($entry->subject, true) : 'Undid the no-show for '.$person.' on '.self::shiftWords($entry->subject, true),
             'cover_request.created' => 'Cover request sent for '.self::shiftDay($entry->subject),
             'cover_request.resent' => 'Cover request sent again for '.self::shiftDay($entry->subject),
             'cover_request.filled' => 'Cover request for '.self::shiftDay($entry->subject).' filled by '.$person,
@@ -81,7 +95,7 @@ final class Describe
         };
     }
 
-    /** The grey line under a sentence: what a field changed from and to, where showing that is safe. */
+    /** The grey line under a sentence: what a field changed from and to, or the note a coordinator left when clearing someone, where showing that is safe. */
     public static function changes(ChangeLogEntry $entry): ?string
     {
         $changes = $entry->changes ?? [];
@@ -94,6 +108,10 @@ final class Describe
             $name = fn (?string $value) => $value ?: 'Area lead';
 
             return 'From '.$name($changes['lead_name']['old'] ?? null).' to '.$name($changes['lead_name']['new'] ?? null);
+        }
+
+        if (in_array($entry->action, ['user.cleared', 'user.moved_back'], true) && isset($changes['note']['new'])) {
+            return 'Note: '.$changes['note']['new'];
         }
 
         if (collect($changes)->contains(fn ($change) => ($change['hidden'] ?? false) === true)) {

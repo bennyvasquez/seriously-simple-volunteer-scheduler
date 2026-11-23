@@ -8,16 +8,22 @@ use App\Actions\Accounts\InvitePerson;
 use App\Actions\Accounts\RemovePerson;
 use App\Actions\Accounts\RevokeRole;
 use App\Actions\Scheduling\ReleaseFutureSchedule;
+use App\Calendar\TimeFormat;
 use App\ChangeLog\Describe;
+use App\Cover\ShadowProgress;
+use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Models\Area;
+use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -33,7 +39,8 @@ class PersonController extends Controller
         $viewer = $request->user();
         $person = $this->visible($viewer, $user);
         $canManage = $viewer->can('manage', $person);
-        $timezone = Organization::current()->timezone;
+        $organization = Organization::current();
+        $timezone = $organization->timezone;
         $status = $person->invitationStatus();
         $when = fn ($time) => $time ? $time->setTimezone($timezone)->format('M j, g:ia') : 'Never';
 
@@ -67,6 +74,7 @@ class PersonController extends Controller
             ]),
             'changesPager' => $changes,
             'changeLogUrl' => route('change-log.index', ['about' => $person->name]),
+            'clearance' => $this->clearance($viewer, $person, $organization),
         ]);
     }
 
@@ -160,6 +168,49 @@ class PersonController extends Controller
         }
 
         return redirect()->route('people.index')->with('status', $firstName.' was removed.');
+    }
+
+    /**
+     * The "Shadowing and clearance" panel (screen 9), for everyone who can see the page (spec section 13). `canClear` is whether to show the "Clear for regular shifts" form: coordinators can clear someone before they're ready (section 9), but not someone cleared or turned off.
+     *
+     * @return array{clearedSince: ?string, done: int, required: int, ready: bool, history: Collection<int, array{text: string, status: string}> (status is Done, Done (before moving back), No-show or Cancelled), canClear: bool}
+     */
+    private function clearance(User $viewer, User $person, Organization $organization): array
+    {
+        $timezone = $organization->timezone;
+        $done = ShadowProgress::done($person);
+        $required = (int) $organization->required_shadow_shifts;
+
+        $history = ShadowProgress::history($person)->load('shift.assignments.user')->map(function (Assignment $shadow) use ($person, $timezone) {
+            $shift = $shadow->shift;
+            $starts = $shift->starts_at->setTimezone($timezone);
+            $regulars = $shift->assignments
+                ->filter(fn (Assignment $assignment) => $assignment->type === AssignmentType::Regular && $assignment->user_id !== $person->id)
+                ->map(fn (Assignment $assignment) => $assignment->user->firstName())
+                ->values()->all();
+
+            return [
+                'text' => $starts->format('D M j').', '.$shift->area->name.' '.TimeFormat::range($starts, $shift->ends_at->setTimezone($timezone)).($regulars === [] ? '' : ', with '.ReleaseController::names($regulars)).'.',
+                'status' => match (true) {
+                    $shift->cancelled_at !== null => 'Cancelled',
+                    $shadow->no_show_at !== null => 'No-show',
+                    // Someone moved back starts over (ShadowProgress), so a shift that ended before then says so instead of contradicting the count.
+                    $person->shadowing_since !== null && $shift->ends_at->lessThanOrEqualTo($person->shadowing_since) => 'Done (before moving back)',
+                    default => 'Done',
+                },
+            ];
+        });
+
+        return [
+            'clearedSince' => $person->cleared_at?->setTimezone($timezone)->format('M j'),
+            'done' => $done,
+            'required' => $required,
+            'ready' => $done >= $required,
+            'history' => $history,
+            'canClear' => ! $person->isCleared() && $person->isActive() && $viewer->can('clear', $person),
+            // Holding a role keeps someone cleared (decision 4), so they're never offered it.
+            'canMoveBack' => $person->isCleared() && ! $person->roles()->exists() && $viewer->can('clear', $person),
+        ];
     }
 
     /** The person, or a 404 when the viewer can't see them or they don't exist. */

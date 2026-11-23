@@ -1,4 +1,4 @@
-{{-- Screen 27: one person. Area leads see Roles and Login only; coordinators and admins also get the controls (including turning off and removing) and the changes about the person. --}}
+{{-- Screen 27: one person. Area leads see Roles, Login and Shadowing and clearance (screen 9) only; coordinators and admins also get the controls (including turning off and removing) and the changes about the person. --}}
 @extends('layouts.app')
 
 @section('title', $person->name)
@@ -72,6 +72,8 @@
 </form>
 @endif
 </section>
+
+@include('people._clearance')
 
 @if ($canManage && $person->isActive())
 <section class="panel" aria-labelledby="turn-off-heading">

@@ -319,4 +319,138 @@ class ImportPeopleTest extends TestCase
     {
         $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--lead-tag' => 'Example Lead Tag'])->assertFailed();
     }
+
+    public function test_the_cleared_tag_clears_new_people(): void
+    {
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Cleared Tag');
+
+        $this->assertTrue($preview->add->firstWhere('row.name', 'Casey Example')->clear);
+        $this->assertFalse($preview->add->firstWhere('row.name', 'Avery Example')->clear);
+
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+
+        $this->assertTrue(User::query()->where('email', 'casey@example.org')->sole()->isCleared());
+        $this->assertFalse(User::query()->where('email', 'avery@example.org')->sole()->isCleared());
+        $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->where('details->via', 'import')->sole();
+        $this->assertSame('import', $entry->details['via']);
+        $this->assertSame($this->admin->id, $entry->actor_id);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages()->all());
+    }
+
+    public function test_the_cleared_tag_clears_people_already_imported(): void
+    {
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org'])
+            ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
+            ->assertSuccessful();
+        $blake = User::query()->where('email', 'blake@example.org')->sole();
+        $before = $blake->fresh()->only(['name', 'email', 'member_id', 'invited_at']);
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag'])
+            ->expectsOutputToContain('2 people already here will be cleared.')
+            ->expectsConfirmation('Clear 2 people for regular shifts? Nobody will be emailed.', 'yes')
+            ->assertSuccessful();
+
+        $this->assertTrue($blake->fresh()->isCleared());
+        $this->assertTrue(User::query()->where('email', 'casey@example.org')->sole()->isCleared());
+        $this->assertFalse(User::query()->where('email', 'avery@example.org')->sole()->isCleared());
+        $this->assertSame($before, $blake->fresh()->only(['name', 'email', 'member_id', 'invited_at']));
+        $this->assertSame(2, ChangeLogEntry::query()->where('action', 'user.cleared')->where('details->via', 'import')->count());
+    }
+
+    public function test_people_already_cleared_arent_logged_again(): void
+    {
+        User::factory()->cleared()->create(['name' => 'Blake Kept', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2']);
+        User::factory()->create(['name' => 'Casey Kept', 'email' => 'casey@example.org']);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertCount(1, $preview->clearExisting);
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+        app(ImportPeople::class)->apply($this->admin, app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag'), null);
+
+        $this->assertSame(1, ChangeLogEntry::query()->where('action', 'user.cleared')->where('details->via', 'import')->count());
+    }
+
+    public function test_tags_are_matched_the_same_way_as_the_lead_tag(): void
+    {
+        $rows = HelloClubExport::read($this->fixture());
+        $lead = app(ImportPeople::class)->preview($rows, 'Example Cleared Tag');
+        $cleared = app(ImportPeople::class)->preview($rows, null, 'Example Cleared Tag');
+        $wrongCase = app(ImportPeople::class)->preview($rows, 'example cleared tag', 'example cleared tag');
+
+        $this->assertSame($lead->add->where('makeLead', true)->pluck('row.name')->all(), $cleared->add->where('clear', true)->pluck('row.name')->all());
+        $this->assertCount(0, $wrongCase->add->where('makeLead', true));
+        $this->assertCount(0, $wrongCase->add->where('clear', true));
+    }
+
+    public function test_the_final_message_says_what_was_cleared_on_a_re_import(): void
+    {
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org'])
+            ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
+            ->assertSuccessful();
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag'])
+            ->expectsConfirmation('Clear 2 people for regular shifts? Nobody will be emailed.', 'yes')
+            ->expectsOutputToContain('Cleared 2 people for regular shifts. Nobody was emailed.')
+            ->doesntExpectOutputToContain('Added 0')
+            ->assertSuccessful();
+    }
+
+    public function test_the_final_message_says_what_was_added_and_cleared(): void
+    {
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag'])
+            ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
+            ->expectsOutputToContain('Added 3 people as not invited yet and cleared 2 people for regular shifts. Nobody was emailed.')
+            ->assertSuccessful();
+    }
+
+    public function test_the_cleared_tag_leaves_people_moved_back_to_shadowing_alone(): void
+    {
+        $blake = User::factory()->create(['name' => 'Blake Example', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2', 'shadowing_since' => now()]);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertCount(0, $preview->clearExisting);
+        $this->assertSame(['Blake Example'], $preview->movedBack->pluck('row.name')->all());
+        $this->assertCount(0, $preview->leftAlone());
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag', '--no-interaction' => true])
+            ->expectsOutputToContain('Moved back to shadowing, left alone (1)')
+            ->expectsOutputToContain('Already here, left alone (0)')
+            ->doesntExpectOutputToContain('already here will be cleared')
+            ->assertSuccessful();
+
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+
+        $this->assertFalse($blake->fresh()->isCleared());
+        $this->assertSame(0, ChangeLogEntry::query()->where('action', 'user.cleared')->where('subject_id', $blake->id)->count());
+    }
+
+    public function test_the_cleared_tag_leaves_people_who_are_turned_off_alone(): void
+    {
+        $blake = User::factory()->deactivated()->create(['name' => 'Blake Example', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2']);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertCount(0, $preview->clearExisting);
+        $this->assertSame(['Blake Example'], $preview->leftAlone()->pluck('row.name')->all());
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+
+        $this->assertFalse($blake->fresh()->isCleared());
+    }
+
+    public function test_people_being_cleared_arent_listed_as_left_alone(): void
+    {
+        User::factory()->create(['name' => 'Avery Example', 'email' => 'avery@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f1']);
+        User::factory()->create(['name' => 'Blake Example', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2']);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertSame(['Avery Example'], $preview->leftAlone()->pluck('row.name')->all());
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag', '--no-interaction' => true])
+            ->expectsOutputToContain('Already here, left alone (1)')
+            ->expectsOutputToContain('1 person already here will be cleared.')
+            ->assertSuccessful();
+    }
 }

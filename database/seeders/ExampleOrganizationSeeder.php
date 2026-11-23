@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Actions\Accounts\ClearPerson;
 use App\Actions\Accounts\CreatePerson;
 use App\Actions\Accounts\DeactivateUser;
 use App\Actions\Accounts\GrantRole;
@@ -38,7 +39,7 @@ use RuntimeException;
 /**
  * A populated example install, the one the browser tests start from and the one `php artisan db:seed` gives developers. Everything is built through the app's own actions, so the change log has entries for it too. Accepting an invitation, choosing a password and connecting an authenticator app happen in controllers and Fortify, not actions, so those steps are written here the same way the app writes them, with the same change log entries, and without sending invitation emails.
  *
- * Every name is made up and every address is at example.org. Everyone who has accepted their invitation shares one password, made at random on each run, printed at the end of the run and returned by password(); ADMIN, COORDINATOR and AREA_LEAD have two-factor on with TWO_FACTOR_SECRET. NEEDS_SETUP is an area lead with a password who hasn't connected an authenticator app yet. Some actions email people after the response, so seeding a development install puts a few example emails in Mailpit. Both kinds of take page have an example: Łucja's released place on the next Tuesday front desk shift that's at least a day away (with a note, and Rosa shadowing), and a Sunday front desk slot with no regular.
+ * Every name is made up and every address is at example.org. Everyone who has accepted their invitation shares one password, made at random on each run, printed at the end of the run and returned by password(); ADMIN, COORDINATOR and AREA_LEAD have two-factor on with TWO_FACTOR_SECRET. NEEDS_SETUP is an area lead with a password who hasn't connected an authenticator app yet. Some actions email people after the response, so seeding a development install puts a few example emails in Mailpit. Both kinds of take page have an example: Łucja's released place on the next Tuesday front desk shift that's at least a day away (with a note, and Rosa shadowing), and a Sunday front desk slot with no regular. Everyone with a role or a regular slot is cleared for regular shifts; TRAINEE is a volunteer who isn't cleared yet and has no regular slot.
  *
  * It runs only when APP_ENV is local or testing, even with --force, because these accounts are described in the public code. Anything else, including a real server set to production or staging, is refused before anything is written.
  */
@@ -57,6 +58,9 @@ class ExampleOrganizationSeeder extends Seeder
     public const NOT_INVITED = 'not-invited@example.org';
 
     public const TURNED_OFF = 'turned-off@example.org';
+
+    /** A volunteer who accepted their invitation but isn't cleared for regular shifts yet. */
+    public const TRAINEE = 'trainee@example.org';
 
     /** The environments the example organization may be seeded in. */
     public const ALLOWED_ENVIRONMENTS = ['local', 'testing'];
@@ -139,6 +143,7 @@ class ExampleOrganizationSeeder extends Seeder
             $people[strtok($email, '@')] = $this->person($admin, $name, $email);
         }
 
+        $this->person($admin, 'Riley Brooks', self::TRAINEE);
         $turnedOff = $this->person($admin, 'Toby Marsh', self::TURNED_OFF);
         $leaving = $this->person($admin, 'Casey Moore', 'leaving@example.org');
         app(CreatePerson::class)->handle($admin, 'Harper Quinn', self::NOT_INVITED);
@@ -179,6 +184,7 @@ class ExampleOrganizationSeeder extends Seeder
 
         foreach ($regulars as [$weeklySlot, $members]) {
             foreach ($members as $member) {
+                $this->clear($member);
                 app(AddRegular::class)->handle($admin, $weeklySlot, $member, $weeklySlot->valid_from->toDateString());
             }
         }
@@ -268,6 +274,15 @@ class ExampleOrganizationSeeder extends Seeder
                 ])->save();
                 ChangeLogEntry::record($person, 'two_factor.enabled', $person);
             }
+        });
+    }
+
+    /** Clears an example regular by the system, with `via` "example_seed", which the change log reads as "(example data)". */
+    private function clear(User $person): void
+    {
+        DB::transaction(function () use ($person) {
+            $locked = User::query()->whereKey($person->id)->lockForUpdate()->firstOrFail();
+            app(ClearPerson::class)->clearLocked(null, $locked, 'example_seed', $person);
         });
     }
 

@@ -12,10 +12,12 @@ use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
- * Gives someone a role. A null actor is the system, used only by first-run setup.
+ * Gives someone a role. A null actor is the system, used only by first-run setup. Holding a role clears you (decision 4 of the clearance plan), so when the person isn't cleared yet, they're cleared through ClearPerson in the same transaction, with `via` "role.granted". Taking the role away later leaves them cleared.
  */
 class GrantRole
 {
+    public function __construct(private ClearPerson $clearPerson) {}
+
     public function handle(?User $actor, User $user, Role $role, ?Area $area = null): RoleAssignment
     {
         if ($role === Role::AreaLead && $area === null) {
@@ -32,13 +34,15 @@ class GrantRole
 
         return DB::transaction(function () use ($actor, $user, $role, $area) {
             // Lock the person's row so role changes for them run one at a time: the unique index doesn't cover a NULL area_id.
-            User::query()->whereKey($user->id)->lockForUpdate()->first();
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
             $assignment = $user->roles()->firstOrCreate(['role' => $role->value, 'area_id' => $area?->id]);
 
             if ($assignment->wasRecentlyCreated) {
                 ChangeLogEntry::record($actor, 'role.granted', $user, ['role' => $role->value, 'area_id' => $area?->id]);
             }
+
+            $this->clearPerson->clearLocked($actor, $locked, 'role.granted', $user);
 
             return $assignment;
         });

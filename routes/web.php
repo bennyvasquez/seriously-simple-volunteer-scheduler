@@ -13,6 +13,7 @@ use App\Http\Controllers\Calendar\RegularController;
 use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\ChangeLogController;
 use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\People\ClearanceController;
 use App\Http\Controllers\People\InviteController;
 use App\Http\Controllers\People\PeopleController;
 use App\Http\Controllers\People\PersonController;
@@ -21,6 +22,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\Volunteer\EmailSettingsController;
 use App\Http\Controllers\Volunteer\HomeController;
 use App\Http\Controllers\Volunteer\ReleaseController;
+use App\Http\Controllers\Volunteer\ShadowController;
 use App\Http\Controllers\Volunteer\TakeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,6 +46,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/shifts/{shift}/take', [TakeController::class, 'show'])->name('shifts.take');
         Route::post('/shifts/{shift}/take', [TakeController::class, 'store']);
         Route::get('/shifts/{shift}/taken', [TakeController::class, 'taken'])->name('shifts.taken');
+        Route::get('/shifts/{shift}/shadow', [ShadowController::class, 'show'])->name('shifts.shadow');
+        Route::post('/shifts/{shift}/shadow', [ShadowController::class, 'store']);
     });
     Route::get('/shifts/released', [ReleaseController::class, 'released'])->name('shifts.released');
     Route::get('/account/emails', [EmailSettingsController::class, 'edit'])->name('account.emails');
@@ -66,6 +70,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/shifts/{shift}/assign', [ShiftController::class, 'assign'])->name('calendar.shift.assign');
         Route::get('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePerson'])->name('calendar.shift.remove-person');
         Route::post('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePersonStore'])->name('calendar.shift.remove-person.store');
+        Route::post('/calendar/shifts/{shift}/no-show', [ShiftController::class, 'noShow'])->name('calendar.shift.no-show');
         Route::post('/calendar/shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('calendar.shift.cancel');
         Route::post('/calendar/shifts/{shift}/restore', [ShiftController::class, 'restore'])->name('calendar.shift.restore');
         Route::post('/calendar/shifts/{shift}', [ShiftController::class, 'update'])->name('calendar.shift.update');
@@ -88,6 +93,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/change-log', [ChangeLogController::class, 'index'])->middleware('can:view-change-log')->name('change-log.index');
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings');
     Route::put('/settings', [SettingsController::class, 'update']);
+    Route::put('/settings/shadowing', [SettingsController::class, 'updateShadowing'])->name('settings.shadowing');
     Route::get('/people', [PeopleController::class, 'index'])->middleware('can:viewAny,App\Models\User')->name('people.index');
     Route::middleware('can:invite,App\Models\User')->group(function () {
         Route::get('/people/invite', [InviteController::class, 'create'])->name('people.invite');
@@ -101,6 +107,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/people/{user}/roles/remove', [PersonController::class, 'removeRole'])->name('people.roles.destroy');
         Route::post('/people/{user}/invite', [PersonController::class, 'invite'])->name('people.invite.send');
         Route::post('/people/{user}/turn-off', [PersonController::class, 'turnOff'])->name('people.turn-off');
+        Route::post('/people/{user}/clear', [ClearanceController::class, 'store'])->name('people.clear');
+        Route::get('/people/{user}/move-back', [ClearanceController::class, 'confirmMoveBack'])->name('people.move-back');
+        Route::post('/people/{user}/move-back', [ClearanceController::class, 'moveBack'])->name('people.move-back.store');
         Route::get('/people/{user}/remove', [PersonController::class, 'confirmRemove'])->name('people.remove');
         Route::post('/people/{user}/remove', [PersonController::class, 'remove'])->name('people.remove.store');
     });

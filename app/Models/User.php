@@ -93,6 +93,8 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'last_seen_at' => 'datetime',
             'cover_request_emails' => 'boolean',
+            'cleared_at' => 'datetime',
+            'shadowing_since' => 'datetime',
         ];
     }
 
@@ -216,6 +218,12 @@ class User extends Authenticatable
         $words = preg_split('/\s+/', trim($this->name));
 
         return count($words) < 2 ? $words[0] : $words[0].' '.mb_strtoupper(mb_substr($words[count($words) - 1], 0, 1)).'.';
+    }
+
+    /** Cleared for regular shifts (spec section 9): only cleared people take shifts and get cover requests. Coordinators can still put anyone on a shift. */
+    public function isCleared(): bool
+    {
+        return $this->cleared_at !== null;
     }
 
     public function isActive(): bool
