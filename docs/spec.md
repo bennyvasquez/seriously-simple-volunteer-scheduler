@@ -89,6 +89,7 @@ These tables describe what's built today, checked against the code's policies an
 | Organization settings (name, time zone, weeks ahead) | No | No | No | Yes |
 | Shadowing setting (shadow shifts before review) | No | No | Yes | Yes |
 | Mark a shadow's no-show | No | Their areas | All areas | All areas |
+| "Ready for review" in Needs attention | No | No | Yes | Yes |
 
 **People**
 
@@ -96,6 +97,8 @@ These tables describe what's built today, checked against the code's policies an
 |---|---|---|---|---|
 | People list and person pages | No | People with a shift or regular slot in their areas, and themselves | Everyone | Everyone |
 | Invite someone, and "Invite everyone not invited yet" | No | No | Yes | Yes |
+| Clearance status and shadow history on a person page | No | People they can see | Everyone | Everyone |
+| Clear someone for regular shifts, with an optional note for the change log | No | No | Yes | Yes |
 | Turn off or remove someone (never themselves; only an admin can do it to an admin) | No | No | Yes | Yes |
 | Grant or revoke roles | No | No | Area lead only | Any role |
 | Reset someone's two-factor | No | No | No | Yes |

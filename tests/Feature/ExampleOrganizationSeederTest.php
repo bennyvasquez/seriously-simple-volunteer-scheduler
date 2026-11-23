@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\ChangeLog\Describe;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Models\Area;
@@ -149,7 +150,9 @@ class ExampleOrganizationSeederTest extends TestCase
 
         foreach ($regulars as $regular) {
             $this->assertTrue($regular->isCleared(), $regular->email.' is cleared.');
-            $this->assertSame(['via' => 'migration'], ChangeLogEntry::query()->where('action', 'user.cleared')->about($regular)->sole()->details, $regular->email);
+            $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->about($regular)->sole();
+            $this->assertSame(['via' => 'example_seed'], $entry->details, $regular->email);
+            $this->assertSame('Cleared '.$regular->name.' for regular shifts (example data)', Describe::entry($entry, $regular));
         }
 
         foreach ([ExampleOrganizationSeeder::ADMIN, ExampleOrganizationSeeder::COORDINATOR, ExampleOrganizationSeeder::AREA_LEAD, ExampleOrganizationSeeder::NEEDS_SETUP] as $email) {

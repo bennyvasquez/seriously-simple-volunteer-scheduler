@@ -86,7 +86,7 @@ class CalendarController extends Controller
             'areas' => $areas,
             'shown' => $shown,
             'areaQuery' => $areaQuery,
-            'needsAttention' => NeedsAttention::for($organization, $shown, $areaQuery),
+            'needsAttention' => NeedsAttention::for($organization, $shown, $areaQuery, $request->user()),
             'now' => CarbonImmutable::now(),
             'today' => $organization->today()->toDateString(),
             'nothingShown' => $shown === [],

@@ -277,13 +277,12 @@ class ExampleOrganizationSeeder extends Seeder
         });
     }
 
-    /** Clears an example regular the way the migration cleared people who already held a role: by the system, with `via` "migration". */
+    /** Clears an example regular by the system, with `via` "example_seed", which the change log reads as "(example data)". */
     private function clear(User $person): void
     {
         DB::transaction(function () use ($person) {
             $locked = User::query()->whereKey($person->id)->lockForUpdate()->firstOrFail();
-            app(ClearPerson::class)->clearLocked(null, $locked, 'migration');
-            $person->forceFill(['cleared_at' => $locked->cleared_at])->syncOriginalAttribute('cleared_at');
+            app(ClearPerson::class)->clearLocked(null, $locked, 'example_seed', $person);
         });
     }
 

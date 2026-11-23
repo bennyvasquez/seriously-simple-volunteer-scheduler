@@ -93,7 +93,7 @@
 <input type="hidden" name="areas[]" value="{{ $areaId }}">
 @endforeach
 <input type="hidden" name="person" value="{{ $match->id }}">
-<div class="row"><span>{{ $match->display_name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
+<div class="row"><span>{{ $match->display_name }}@unless ($match->isCleared()) <span class="tag">Not cleared yet</span>@endunless<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span></div>
 <div class="add-actions">
 <button type="submit" class="btn btn-primary" name="type" value="regular" aria-label="Put {{ $match->display_name }} on this shift">Put on shift</button>
 @if ($shift->shadow_spots > $shadowsTaken)<button type="submit" class="btn" name="type" value="shadow" aria-label="Put {{ $match->display_name }} on this shift as a shadow">Shadow</button>@endif

@@ -13,6 +13,7 @@ use App\Http\Controllers\Calendar\RegularController;
 use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\ChangeLogController;
 use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\People\ClearanceController;
 use App\Http\Controllers\People\InviteController;
 use App\Http\Controllers\People\PeopleController;
 use App\Http\Controllers\People\PersonController;
@@ -106,6 +107,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/people/{user}/roles/remove', [PersonController::class, 'removeRole'])->name('people.roles.destroy');
         Route::post('/people/{user}/invite', [PersonController::class, 'invite'])->name('people.invite.send');
         Route::post('/people/{user}/turn-off', [PersonController::class, 'turnOff'])->name('people.turn-off');
+        Route::post('/people/{user}/clear', [ClearanceController::class, 'store'])->name('people.clear');
         Route::get('/people/{user}/remove', [PersonController::class, 'confirmRemove'])->name('people.remove');
         Route::post('/people/{user}/remove', [PersonController::class, 'remove'])->name('people.remove.store');
     });

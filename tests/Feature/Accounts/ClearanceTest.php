@@ -16,13 +16,17 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Notifications\ClearedNotification;
 use Carbon\CarbonImmutable;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
+use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
 class ClearanceTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithTwoFactor, RefreshDatabase;
 
     private Area $frontDesk;
 
@@ -201,5 +205,150 @@ class ClearanceTest extends TestCase
         $this->assertSame(['Avery Trainee'], $names);
         // One for the required number, one for the people.
         $this->assertLessThanOrEqual(2, count($queries));
+    }
+
+    /** A coordinator with two-factor on, and the organization the cleared email names. */
+    private function coordinatorForClearing(): User
+    {
+        Organization::factory()->create(['name' => 'Example Makerspace']);
+        $coordinator = User::factory()->create(['name' => 'Chris Coordinator']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+
+        return $coordinator;
+    }
+
+    public function test_a_coordinator_clears_someone_with_a_note(): void
+    {
+        Notification::fake();
+        $this->withoutDefer();
+        $coordinator = $this->coordinatorForClearing();
+        $jamie = User::factory()->create(['name' => 'Jamie Example']);
+
+        app(ClearPerson::class)->handle($coordinator, $jamie, "  Did great on both shifts.  \n");
+
+        $this->assertTrue($jamie->isCleared(), 'The caller\'s copy reads as cleared.');
+        $this->assertTrue($jamie->fresh()->cleared_at->equalTo(now()));
+
+        $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->about($jamie)->sole();
+        $this->assertSame($coordinator->id, $entry->actor_id);
+        $this->assertSame('Chris Coordinator', $entry->actor_name);
+        $this->assertSame(['via' => 'person_page'], $entry->details);
+        $this->assertNull($entry->changes['cleared_at']['old']);
+        $this->assertNotNull($entry->changes['cleared_at']['new']);
+        $this->assertSame(['old' => null, 'new' => 'Did great on both shifts.'], $entry->changes['note']);
+        $this->assertSame('Cleared Jamie Example for regular shifts', Describe::entry($entry, $coordinator));
+        $this->assertSame('Note: Did great on both shifts.', Describe::changes($entry));
+
+        Notification::assertSentTo($jamie, ClearedNotification::class, function (ClearedNotification $notification) use ($jamie) {
+            $mail = $notification->toMail($jamie);
+
+            return $mail->subject === 'You\'re cleared for regular shifts'
+                && in_array('Chris cleared you to take regular shifts at Example Makerspace. You\'ll now get cover requests when someone can\'t make a shift you could take, and you can take open shifts from Home.', $mail->introLines, true);
+        });
+        Notification::assertCount(1);
+    }
+
+    public function test_clearing_without_a_note_logs_no_note(): void
+    {
+        Notification::fake();
+        $this->withoutDefer();
+        $coordinator = $this->coordinatorForClearing();
+        $jamie = User::factory()->create(['name' => 'Jamie Example']);
+
+        app(ClearPerson::class)->handle($coordinator, $jamie, '   ');
+
+        $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->about($jamie)->sole();
+        $this->assertArrayNotHasKey('note', $entry->changes);
+        $this->assertNull(Describe::changes($entry));
+    }
+
+    public function test_two_coordinators_clearing_at_once_logs_once(): void
+    {
+        Notification::fake();
+        $this->withoutDefer();
+        $coordinator = $this->coordinatorForClearing();
+        $other = User::factory()->create(['name' => 'Pat Coordinator']);
+        app(GrantRole::class)->handle(null, $other, Role::Coordinator);
+        $jamie = User::factory()->create(['name' => 'Jamie Example']);
+        // Both loaded the page before either pressed the button.
+        $firstCopy = User::query()->findOrFail($jamie->id);
+        $secondCopy = User::query()->findOrFail($jamie->id);
+
+        app(ClearPerson::class)->handle($coordinator, $firstCopy, null);
+
+        try {
+            app(ClearPerson::class)->handle($other, $secondCopy, null);
+            $this->fail('The second clearing should be refused.');
+        } catch (DomainException $e) {
+            $this->assertSame('Jamie is already cleared.', $e->getMessage());
+        }
+
+        $this->assertSame(1, ChangeLogEntry::query()->where('action', 'user.cleared')->about($jamie)->count());
+        Notification::assertSentToTimes($jamie, ClearedNotification::class, 1);
+    }
+
+    public function test_someone_turned_off_isnt_cleared(): void
+    {
+        Notification::fake();
+        $coordinator = $this->coordinatorForClearing();
+        $jamie = User::factory()->deactivated()->create(['name' => 'Jamie Example']);
+
+        $this->expectExceptionObject(new DomainException('Jamie has been turned off. Turn them back on first.'));
+
+        try {
+            app(ClearPerson::class)->handle($coordinator, $jamie, null);
+        } finally {
+            $this->assertFalse($jamie->fresh()->isCleared());
+            $this->assertSame(0, ChangeLogEntry::query()->where('action', 'user.cleared')->about($jamie)->count());
+        }
+    }
+
+    public function test_a_note_over_500_characters_is_refused(): void
+    {
+        Notification::fake();
+        $coordinator = $this->coordinatorForClearing();
+        $jamie = User::factory()->create(['name' => 'Jamie Example']);
+
+        $this->expectExceptionObject(new DomainException('Keep the note under 500 characters.'));
+
+        try {
+            app(ClearPerson::class)->handle($coordinator, $jamie, str_repeat('a', 501));
+        } finally {
+            $this->assertFalse($jamie->fresh()->isCleared());
+        }
+    }
+
+    public function test_someone_not_invited_yet_is_cleared_without_an_email(): void
+    {
+        Notification::fake();
+        $this->withoutDefer();
+        $coordinator = $this->coordinatorForClearing();
+        $jamie = User::factory()->notInvited()->create(['name' => 'Jamie Example']);
+
+        app(ClearPerson::class)->handle($coordinator, $jamie, null);
+
+        $this->assertTrue($jamie->fresh()->isCleared());
+        Notification::assertNothingSent();
+    }
+
+    public function test_leads_and_volunteers_cant_clear(): void
+    {
+        Notification::fake();
+        $this->coordinatorForClearing();
+        $lead = User::factory()->create(['name' => 'Casey Lead']);
+        app(GrantRole::class)->handle(null, $lead, Role::AreaLead, $this->frontDesk);
+        $this->enableTwoFactor($lead);
+        $volunteer = User::factory()->cleared()->create(['name' => 'Robin Volunteer']);
+        $jamie = User::factory()->create(['name' => 'Jamie Example']);
+        // On a front desk shift, so the lead can see Jamie's page.
+        $this->shadowShift($jamie, '2026-10-12 10:00', '2026-10-12 12:00');
+
+        $this->actingAs($lead)->post(route('people.clear', $jamie), ['note' => 'Ready'])->assertForbidden();
+        $this->actingAs($volunteer)->post(route('people.clear', $jamie))->assertForbidden();
+
+        $this->assertFalse($jamie->fresh()->isCleared());
+        $this->assertSame(0, ChangeLogEntry::query()->where('action', 'user.cleared')->about($jamie)->count());
+        $this->assertFalse($lead->can('clear', $jamie));
+        $this->assertFalse($volunteer->can('clear', $jamie));
     }
 }

@@ -44,7 +44,7 @@
 </form>
 @if ($search['query'] !== '' && ! $search['tooShort'])
 @forelse ($search['matches'] as $match)
-<div class="row"><span>{{ $match->display_name }}<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span><a href="{{ route('calendar.slots.regulars.create', $keep(['person' => $match->id])) }}" aria-label="Choose {{ $match->display_name }}">Choose</a></div>
+<div class="row"><span>{{ $match->display_name }}@unless ($match->isCleared()) <span class="tag">Not cleared yet</span>@endunless<br>@if ($match->show_email)<span class="muted">{{ $match->email }}</span>@endif</span><a href="{{ route('calendar.slots.regulars.create', $keep(['person' => $match->id])) }}" aria-label="Choose {{ $match->display_name }}">Choose</a></div>
 @empty
 <p class="muted">Nobody matches "{{ $search['query'] }}". Only people with an active account who aren't already regulars here are listed.</p>
 @endforelse

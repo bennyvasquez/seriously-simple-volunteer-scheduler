@@ -7,7 +7,7 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 
 /**
- * The person search on the calendar panels (put someone on a shift, add a regular). Finds active people by name. Someone who can manage every area also matches on email; anyone else (an area lead) matches by name only, and an email or full name is shown only for people the viewer may see (spec section 13); others show as a short name.
+ * The person search on the calendar panels (put someone on a shift, add a regular). Finds active people by name. Each match says whether they're cleared for regular shifts, so the picker can say "Not cleared yet". Someone who can manage every area also matches on email; anyone else (an area lead) matches by name only, and an email or full name is shown only for people the viewer may see (spec section 13); others show as a short name.
  */
 final class PersonSearch
 {
@@ -41,7 +41,7 @@ final class PersonSearch
         $matches = User::query()->whereNull('deactivated_at')
             ->whereNotIn('id', collect($excludeIds)->all())
             ->where(fn ($q) => $q->where('name', 'like', $like)->when($byEmail, fn ($q) => $q->orWhere('email', 'like', $like)))
-            ->orderBy('name')->limit(8)->get(['id', 'name', 'email'])
+            ->orderBy('name')->limit(8)->get(['id', 'name', 'email', 'cleared_at'])
             ->each(function (User $match) use ($viewer) {
                 $match->setAttribute('show_email', $viewer->canSee($match));
                 $match->setAttribute('display_name', self::displayName($viewer, $match));

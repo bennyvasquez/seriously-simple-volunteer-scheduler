@@ -2,15 +2,17 @@
 
 namespace App\Calendar;
 
+use App\Cover\ShadowProgress;
 use App\Enums\SlotFrequency;
 use App\Models\Organization;
 use App\Models\Shift;
+use App\Models\User;
 use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
- * The sidebar's "Needs attention" list (plan decision): for the next 14 days, shifts with open places (marked urgent inside 24 hours) and rotation shifts nobody signed up for, then weekly slots with no regular. "Ready for review" waits for clearance.
+ * The sidebar's "Needs attention" list (plan decision): for the next 14 days, shifts with open places (marked urgent inside 24 hours) and rotation shifts nobody signed up for, then, for coordinators and admins, people who are Ready for review (spec section 9), then weekly slots with no regular.
  */
 final class NeedsAttention
 {
@@ -18,9 +20,10 @@ final class NeedsAttention
 
     /**
      * @param  array<string, mixed>  $linkQuery  Query kept on every link, such as the areas[] filter.
+     * @param  ?User  $viewer  Ready for review is listed only when this is a coordinator or admin. It isn't about an area, so the area filter doesn't hide it.
      * @return Collection<int, array{label: string, detail: string, url: ?string, urgent: bool}>
      */
-    public static function for(Organization $organization, array $areaIds, array $linkQuery = []): Collection
+    public static function for(Organization $organization, array $areaIds, array $linkQuery = [], ?User $viewer = null): Collection
     {
         $timezone = $organization->timezone;
         $now = CarbonImmutable::now();
@@ -59,7 +62,25 @@ final class NeedsAttention
             ];
         })->values();
 
+        if ($viewer?->isCoordinator()) {
+            $items = $items->concat(self::readyForReview());
+        }
+
         return $items->concat(self::slotsWithoutRegular($today, $areaIds, $linkQuery));
+    }
+
+    /** @return Collection<int, array{label: string, detail: string, url: ?string, urgent: bool}> */
+    private static function readyForReview(): Collection
+    {
+        return ShadowProgress::readyForReview()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (User $person) => [
+                'label' => 'Ready for review: '.$person->firstName(),
+                'detail' => 'Shadow shifts done',
+                'url' => route('people.show', $person),
+                'urgent' => false,
+            ]);
     }
 
     /** @return Collection<int, array{label: string, detail: string, url: ?string, urgent: bool}> */

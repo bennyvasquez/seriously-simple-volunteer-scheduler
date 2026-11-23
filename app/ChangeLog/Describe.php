@@ -42,6 +42,7 @@ final class Describe
                 'role.granted' => ' (with a role)',
                 'import' => ' (from the import)',
                 'migration' => ' (already held a role)',
+                'example_seed' => ' (example data)',
                 default => '',
             },
             'user.deactivated' => 'Turned off '.$possessive.' account',
@@ -92,7 +93,7 @@ final class Describe
         };
     }
 
-    /** The grey line under a sentence: what a field changed from and to, where showing that is safe. */
+    /** The grey line under a sentence: what a field changed from and to, or the note a coordinator left when clearing someone, where showing that is safe. */
     public static function changes(ChangeLogEntry $entry): ?string
     {
         $changes = $entry->changes ?? [];
@@ -105,6 +106,10 @@ final class Describe
             $name = fn (?string $value) => $value ?: 'Area lead';
 
             return 'From '.$name($changes['lead_name']['old'] ?? null).' to '.$name($changes['lead_name']['new'] ?? null);
+        }
+
+        if ($entry->action === 'user.cleared' && isset($changes['note']['new'])) {
+            return 'Note: '.$changes['note']['new'];
         }
 
         if (collect($changes)->contains(fn ($change) => ($change['hidden'] ?? false) === true)) {

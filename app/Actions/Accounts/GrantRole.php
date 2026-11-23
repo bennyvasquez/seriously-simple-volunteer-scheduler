@@ -42,10 +42,7 @@ class GrantRole
                 ChangeLogEntry::record($actor, 'role.granted', $user, ['role' => $role->value, 'area_id' => $area?->id]);
             }
 
-            if ($this->clearPerson->clearLocked($actor, $locked, 'role.granted')) {
-                // So the caller's copy of the person doesn't read as not cleared.
-                $user->forceFill(['cleared_at' => $locked->cleared_at])->syncOriginalAttribute('cleared_at');
-            }
+            $this->clearPerson->clearLocked($actor, $locked, 'role.granted', $user);
 
             return $assignment;
         });
