@@ -120,13 +120,15 @@ final class CoverLadder
     }
 
     /**
-     * Marks the requests escalated, logs cover_request.escalated for each (with the shift as the subject), and returns what to send, without sending: the urgent email for each lead and coordinator and, when nobody but shadows is left on the shift, the shadows' "still nobody to shadow" email. Each person appears at most once for the shift, even when they're both a lead and a coordinator. The caller holds the area, shift and cover request locks and sends after the commit; ReleaseShifts merges the emails of several shifts per person first. `$openRequests` are in the order they were made; the oldest names the releaser. `$actor` is null when the ladder runs it, and the person releasing when ReleaseShifts escalates at release; that person is left out of the urgent email, so a lead or coordinator releasing inside URGENT_HOURS isn't told about their own release. With no requests it does nothing and returns an empty list.
+     * Marks the requests escalated, logs cover_request.escalated for each (with the shift as the subject), and returns what to send, without sending: the urgent email for each lead and coordinator and, when nobody but shadows is left on the shift, the shadows' "still nobody to shadow" email. Each person appears at most once for the shift, even when they're both a lead and a coordinator. The caller holds the area, shift and cover request locks and sends after the commit; ReleaseShifts merges the emails of several shifts per person first. `$openRequests` are in the order they were made; the oldest names the releaser. `$actor` is who the escalation is logged as made by: null when the ladder runs it, and whoever released when ReleaseShifts escalates at release (the coordinator, when they moved the person back to shadowing). `$leftOut` is left out of the urgent email, so a lead or coordinator releasing inside URGENT_HOURS isn't told about their own release; it defaults to `$actor`. With no requests it does nothing and returns an empty list.
      *
      * @param  Collection<int, CoverRequest>  $openRequests
      * @return list<array{0: User, 1: CoverUrgentNotification|ShadowSpotNotification}>
      */
-    public function escalateLocked(Shift $lockedShift, Collection $openRequests, ?User $actor = null): array
+    public function escalateLocked(Shift $lockedShift, Collection $openRequests, ?User $actor = null, ?User $leftOut = null): array
     {
+        $leftOut ??= $actor;
+
         if ($openRequests->isEmpty()) {
             return [];
         }
@@ -148,8 +150,8 @@ final class CoverLadder
         $sends = [];
         $audience = self::urgentAudience($area);
 
-        if ($actor !== null) {
-            unset($audience[$actor->id]);
+        if ($leftOut !== null) {
+            unset($audience[$leftOut->id]);
         }
 
         foreach ($audience as $id => [$person, $reason]) {

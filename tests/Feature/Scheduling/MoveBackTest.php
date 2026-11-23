@@ -235,7 +235,9 @@ class MoveBackTest extends TestCase
 
         $this->assertCount(2, $released);
         $this->assertSame([$tomorrow->id], CoverRequest::query()->whereNotNull('escalated_at')->pluck('shift_id')->all());
-        $this->assertSame(1, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
+        $escalated = ChangeLogEntry::query()->ofAction('cover_request.escalated')->sole();
+        $this->assertSame($tomorrow->id, $escalated->subject_id);
+        $this->assertSame($this->coordinator->id, $escalated->actor_id);
 
         foreach ([$lead, $this->coordinator] as $person) {
             Notification::assertSentToTimes($person, CoverUrgentNotification::class, 1);

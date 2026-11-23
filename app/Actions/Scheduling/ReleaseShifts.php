@@ -237,7 +237,7 @@ class ReleaseShifts
      *
      * `nobodyAsked` is true for a regular place on a shift that still has the people it needs, where nobody is asked and nothing escalates.
      *
-     * Public for ReleaseFutureSchedule::releaseRegularPlaces(), which releases a person's places when a coordinator moves them back to shadowing: it passes the coordinator as `$actor`, so the removal and the cover request are logged as theirs, while the request, the emails and any escalation still name the person as the releaser, the way any release does. The caller holds the area and shift locks and the assignment's row lock.
+     * Public for ReleaseFutureSchedule::releaseRegularPlaces(), which releases a person's places when a coordinator moves them back to shadowing: it passes the coordinator as `$actor`, so the removal, the cover request and any escalation are logged as theirs, while the request, the emails and any escalation still name the person as the releaser, the way any release does. The caller holds the area and shift locks and the assignment's row lock.
      *
      * @return array{shift: Shift, request: ?CoverRequest, nobodyAsked: bool, recipients: Collection<int, User>, sends: list<array{0: User, 1: Notification}>, shadowsTold: list<string>}
      */
@@ -261,7 +261,7 @@ class ReleaseShifts
             $unescalated = CoverLadder::openRequestsLocked($lockedShift)->whereNull('escalated_at')->values();
 
             if ($unescalated->isNotEmpty()) {
-                $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $person);
+                $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $actor ?? $person, $person);
             } elseif ($shadows->isNotEmpty()) {
                 // Every request that counts was already escalated (people needed was lowered after an escalated release, say), so the leads and coordinators already know and aren't emailed again. This release took off the last regular, so the shadows' spot goes on hold now and they haven't heard "still nobody" for it yet: they get that, not "on hold" as well.
                 $audience = CoverLadder::urgentAudience($lockedShift->area);
