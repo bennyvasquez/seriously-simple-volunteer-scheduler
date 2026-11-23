@@ -180,7 +180,7 @@ class ReleaseShifts
         return $this->releaseLockedLeavingOut($person, $lockedShift, $assignment, $note, $via, false);
     }
 
-    /** releaseLocked(). When `$callerEscalates` is true (releaseAndCollectLocked(), which escalates a shift that escalatesNow()) and the shift escalates now, checked after the removal opens the place, the urgent email's audience is left out of the recipients, so each of those people hears about the shift once. `$actor` is who the removal and the cover request are logged as made by: the person, unless someone else released their place for them (moving them back to shadowing). */
+    /** releaseLocked(). When `$callerEscalates` is true (releaseAndCollectLocked(), which escalates a shift that escalatesNow()) and the shift escalates now, checked after the removal opens the place, the urgent email's audience is left out of the recipients, so each of those people hears about the shift once. `$actor` is who the removal and the cover request are logged as made by: the person, unless someone else released their place for them (moving them back to shadowing). The actor is left out of the recipients too, so a coordinator isn't asked to cover a shift they just released. */
     private function releaseLockedLeavingOut(User $person, Shift $lockedShift, Assignment $assignment, ?string $note, string $via, bool $callerEscalates, ?User $actor = null): ?CoverRequest
     {
         $note = self::cleanNote($note);
@@ -193,8 +193,8 @@ class ReleaseShifts
             return null;
         }
 
-        // The request isn't saved yet, so recipients() can't leave the releaser out by their request; they're left out here.
-        $leftOut = [$person->id];
+        // The request isn't saved yet, so recipients() can't leave the releaser out by their request; they're left out here. So is a coordinator who released the place for them (moving them back to shadowing): they made the gap on purpose.
+        $leftOut = array_values(array_unique([$person->id, $actor->id]));
 
         if ($callerEscalates && self::escalatesNow($lockedShift)) {
             $leftOut = array_merge($leftOut, array_keys(CoverLadder::urgentAudience($lockedShift->loadMissing('area')->area)));

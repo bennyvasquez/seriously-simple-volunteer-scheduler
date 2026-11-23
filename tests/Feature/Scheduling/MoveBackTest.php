@@ -161,7 +161,7 @@ class MoveBackTest extends TestCase
 
         $requests = CoverRequest::query()->orderBy('shift_id')->get();
         $this->assertSame($future, $requests->pluck('shift_id')->all());
-        $this->assertTrue($requests->every(fn (CoverRequest $request) => $request->released_by === $this->morgan->id && $request->note === null && $request->notified_count === 3 && $request->escalated_at === null));
+        $this->assertTrue($requests->every(fn (CoverRequest $request) => $request->released_by === $this->morgan->id && $request->note === null && $request->notified_count === 2 && $request->escalated_at === null));
 
         $moved = ChangeLogEntry::query()->ofAction('user.moved_back')->about($this->morgan)->sole();
         $this->assertSame(['release' => true], $moved->details);
@@ -180,7 +180,9 @@ class MoveBackTest extends TestCase
         $this->assertSame($future, $created->pluck('subject_id')->all());
         $this->assertTrue($created->every(fn (ChangeLogEntry $entry) => $entry->actor_id === $this->coordinator->id && $entry->affected_user_id === $this->morgan->id));
 
-        foreach ([$this->coordinator, $this->robin, $this->sam] as $person) {
+        // The coordinator who moved Morgan back released these shifts themselves, so they aren't asked to cover them.
+        Notification::assertNotSentTo($this->coordinator, CoverRequestNotification::class);
+        foreach ([$this->robin, $this->sam] as $person) {
             Notification::assertSentToTimes($person, CoverRequestNotification::class, 1);
             Notification::assertSentTo($person, CoverRequestNotification::class, function (CoverRequestNotification $notification) use ($person) {
                 $text = $this->text($notification->toMail($person));
@@ -251,6 +253,7 @@ class MoveBackTest extends TestCase
         }
         // The coordinator who moved Morgan back released tomorrow's shift themselves, so they get no urgent email about it (the 2026-11-21 rule).
         Notification::assertNotSentTo($this->coordinator, CoverUrgentNotification::class);
+        Notification::assertNotSentTo($this->coordinator, CoverRequestNotification::class);
         Notification::assertSentTo($this->robin, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => count($notification->shifts) === 2);
         Notification::assertNotSentTo($this->morgan, CoverUrgentNotification::class);
 
