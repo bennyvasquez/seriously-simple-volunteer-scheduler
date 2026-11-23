@@ -319,4 +319,67 @@ class ImportPeopleTest extends TestCase
     {
         $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--lead-tag' => 'Example Lead Tag'])->assertFailed();
     }
+
+    public function test_the_cleared_tag_clears_new_people(): void
+    {
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Cleared Tag');
+
+        $this->assertTrue($preview->add->firstWhere('row.name', 'Casey Example')->clear);
+        $this->assertFalse($preview->add->firstWhere('row.name', 'Avery Example')->clear);
+
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+
+        $this->assertTrue(User::query()->where('email', 'casey@example.org')->sole()->isCleared());
+        $this->assertFalse(User::query()->where('email', 'avery@example.org')->sole()->isCleared());
+        $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->where('details->via', 'import')->sole();
+        $this->assertSame('import', $entry->details['via']);
+        $this->assertSame($this->admin->id, $entry->actor_id);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages()->all());
+    }
+
+    public function test_the_cleared_tag_clears_people_already_imported(): void
+    {
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org'])
+            ->expectsConfirmation('Add these 3 people? Nobody will be emailed.', 'yes')
+            ->assertSuccessful();
+        $blake = User::query()->where('email', 'blake@example.org')->sole();
+        $before = $blake->fresh()->only(['name', 'email', 'member_id', 'invited_at']);
+
+        $this->artisan('ssvs:import-people', ['file' => $this->fixture(), '--as' => 'admin@example.org', '--cleared-tag' => 'Example Volunteer Tag'])
+            ->expectsOutputToContain('2 people already here will be cleared.')
+            ->expectsConfirmation('Clear 2 people for regular shifts? Nobody will be emailed.', 'yes')
+            ->assertSuccessful();
+
+        $this->assertTrue($blake->fresh()->isCleared());
+        $this->assertTrue(User::query()->where('email', 'casey@example.org')->sole()->isCleared());
+        $this->assertFalse(User::query()->where('email', 'avery@example.org')->sole()->isCleared());
+        $this->assertSame($before, $blake->fresh()->only(['name', 'email', 'member_id', 'invited_at']));
+        $this->assertSame(2, ChangeLogEntry::query()->where('action', 'user.cleared')->where('details->via', 'import')->count());
+    }
+
+    public function test_people_already_cleared_arent_logged_again(): void
+    {
+        User::factory()->cleared()->create(['name' => 'Blake Kept', 'email' => 'blake@example.org', 'member_id' => 'a1b2c3d4e5f6a1b2c3d4e5f2']);
+        User::factory()->create(['name' => 'Casey Kept', 'email' => 'casey@example.org']);
+
+        $preview = app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag');
+
+        $this->assertCount(1, $preview->clearExisting);
+        app(ImportPeople::class)->apply($this->admin, $preview, null);
+        app(ImportPeople::class)->apply($this->admin, app(ImportPeople::class)->preview(HelloClubExport::read($this->fixture()), null, 'Example Volunteer Tag'), null);
+
+        $this->assertSame(1, ChangeLogEntry::query()->where('action', 'user.cleared')->where('details->via', 'import')->count());
+    }
+
+    public function test_tags_are_matched_the_same_way_as_the_lead_tag(): void
+    {
+        $rows = HelloClubExport::read($this->fixture());
+        $lead = app(ImportPeople::class)->preview($rows, 'Example Cleared Tag');
+        $cleared = app(ImportPeople::class)->preview($rows, null, 'Example Cleared Tag');
+        $wrongCase = app(ImportPeople::class)->preview($rows, 'example cleared tag', 'example cleared tag');
+
+        $this->assertSame($lead->add->where('makeLead', true)->pluck('row.name')->all(), $cleared->add->where('clear', true)->pluck('row.name')->all());
+        $this->assertCount(0, $wrongCase->add->where('makeLead', true));
+        $this->assertCount(0, $wrongCase->add->where('clear', true));
+    }
 }

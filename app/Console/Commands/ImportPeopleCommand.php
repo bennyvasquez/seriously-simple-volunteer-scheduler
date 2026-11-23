@@ -20,7 +20,8 @@ class ImportPeopleCommand extends Command
         {file : The Hello Club members export (a CSV file)}
         {--as= : The email address of the admin running the import}
         {--lead-tag= : A Hello Club category that makes someone an area lead}
-        {--lead-area= : The area those people lead}';
+        {--lead-area= : The area those people lead}
+        {--cleared-tag= : A Hello Club category that marks someone as cleared for regular shifts}';
 
     protected $description = 'Add the people in a Hello Club members export, as not invited yet. Nobody is emailed.';
 
@@ -36,6 +37,7 @@ class ImportPeopleCommand extends Command
 
         $leadTag = $this->option('lead-tag');
         $leadAreaName = $this->option('lead-area');
+        $clearedTag = $this->option('cleared-tag');
 
         if (($leadTag === null) !== ($leadAreaName === null)) {
             $this->error('Use --lead-tag and --lead-area together.');
@@ -56,7 +58,7 @@ class ImportPeopleCommand extends Command
         }
 
         try {
-            $preview = $importPeople->preview(HelloClubExport::read($this->argument('file')), $leadTag);
+            $preview = $importPeople->preview(HelloClubExport::read($this->argument('file')), $leadTag, $clearedTag);
         } catch (InvalidArgumentException $exception) {
             $this->error($exception->getMessage());
 
@@ -64,13 +66,20 @@ class ImportPeopleCommand extends Command
         }
 
         // Names and email addresses only. Nothing else from the file is shown.
-        $this->showGroup("Will be added ({$preview->add->count()})", ['Name', 'Email'], $preview->add->map(fn ($item) => [$item->row->name, $item->row->email.($item->makeLead ? ' (leads '.$leadArea->name.')' : '')]));
+        $this->showGroup("Will be added ({$preview->add->count()})", ['Name', 'Email', 'Cleared'], $preview->add->map(fn ($item) => [$item->row->name, $item->row->email.($item->makeLead ? ' (leads '.$leadArea->name.')' : ''), $item->clear ? 'Yes' : '']));
         $this->showGroup("Already here, left alone ({$preview->existing->count()})", ['Name', 'Email'], $preview->existing->map(fn ($item) => [$item->row->name, $item->row->email.($item->fillMemberId ? ' (membership ID will be added)' : '')]));
         $this->showGroup("Skipped ({$preview->problems->count()})", ['Name', 'Email', 'Why'], $preview->problems->map(fn ($item) => [$item->row->name, $item->row->email, $item->reason]));
 
         $fills = $preview->existing->where('fillMemberId', true)->count();
+        $clears = $preview->clearExisting->count();
 
-        if ($preview->add->isEmpty() && $fills === 0) {
+        if ($clears > 0) {
+            $this->newLine();
+            $this->line($clears === 1 ? '1 person already here will be cleared.' : "{$clears} people already here will be cleared.");
+            $this->table(['Name', 'Email'], $preview->clearExisting->map(fn ($item) => [$item->row->name, $item->row->email])->all());
+        }
+
+        if ($preview->add->isEmpty() && $fills === 0 && $clears === 0) {
             $this->info("There's nobody to add.");
 
             return self::SUCCESS;
@@ -81,9 +90,20 @@ class ImportPeopleCommand extends Command
         }
 
         $count = $preview->add->count();
-        $question = $count === 0
-            ? ($fills === 1 ? 'Add a membership ID to 1 person? Nobody will be emailed.' : "Add membership IDs to {$fills} people? Nobody will be emailed.")
-            : ($count === 1 ? 'Add this 1 person? Nobody will be emailed.' : "Add these {$count} people? Nobody will be emailed.");
+        $steps = [];
+
+        if ($count > 0) {
+            $steps[] = $count === 1 ? 'Add this 1 person' : "Add these {$count} people";
+        } elseif ($fills > 0) {
+            $steps[] = $fills === 1 ? 'Add a membership ID to 1 person' : "Add membership IDs to {$fills} people";
+        }
+
+        if ($clears > 0) {
+            $clearStep = $clears === 1 ? 'clear 1 person for regular shifts' : "clear {$clears} people for regular shifts";
+            $steps[] = $steps === [] ? ucfirst($clearStep) : $clearStep;
+        }
+
+        $question = implode(' and ', $steps).'? Nobody will be emailed.';
 
         if (! $this->confirm($question)) {
             $this->line('Nothing was changed.');

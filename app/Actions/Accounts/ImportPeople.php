@@ -22,13 +22,14 @@ class ImportPeople
     /**
      * @param  Collection<int, ImportRow>  $rows
      */
-    public function preview(Collection $rows, ?string $leadTag): ImportPreview
+    public function preview(Collection $rows, ?string $leadTag, ?string $clearedTag = null): ImportPreview
     {
         $emailLines = $rows->filter(fn (ImportRow $row) => $row->email !== '')->groupBy('email')->map->pluck('line');
         $memberLines = $rows->filter(fn (ImportRow $row) => $row->memberId !== '')->groupBy('memberId')->map->pluck('line');
 
         $add = new Collection;
         $existing = new Collection;
+        $clearExisting = new Collection;
         $problems = new Collection;
 
         foreach ($rows as $row) {
@@ -44,6 +45,7 @@ class ImportPeople
 
             if ($byMemberId !== null) {
                 $existing->push((object) ['row' => $row, 'user' => $byMemberId, 'fillMemberId' => false]);
+                $this->noteClearing($clearExisting, $row, $byMemberId, $clearedTag);
 
                 continue;
             }
@@ -51,21 +53,23 @@ class ImportPeople
             $byEmail = User::query()->people()->where('email', $row->email)->first();
 
             if ($byEmail === null) {
-                $add->push((object) ['row' => $row, 'makeLead' => $leadTag !== null && in_array($leadTag, $row->tags, true)]);
+                $add->push((object) ['row' => $row, 'makeLead' => $this->hasTag($row, $leadTag), 'clear' => $this->hasTag($row, $clearedTag)]);
             } elseif ($byEmail->member_id === null) {
                 $existing->push((object) ['row' => $row, 'user' => $byEmail, 'fillMemberId' => $row->memberId !== '']);
+                $this->noteClearing($clearExisting, $row, $byEmail, $clearedTag);
             } elseif ($byEmail->member_id === $row->memberId) {
                 $existing->push((object) ['row' => $row, 'user' => $byEmail, 'fillMemberId' => false]);
+                $this->noteClearing($clearExisting, $row, $byEmail, $clearedTag);
             } else {
                 $problems->push((object) ['row' => $row, 'reason' => 'Matches someone by email, but their membership ID is different']);
             }
         }
 
-        return new ImportPreview($add, $existing, $problems);
+        return new ImportPreview($add, $existing, $problems, $clearExisting);
     }
 
     /**
-     * Creates the people in the preview and returns how many it created. All or nothing.
+     * Creates the people in the preview, clears the ones the cleared tag matched, and returns how many it created. All or nothing.
      */
     public function apply(User $admin, ImportPreview $preview, ?Area $leadArea): int
     {
@@ -91,6 +95,11 @@ class ImportPeople
                     if ($item->makeLead) {
                         app(GrantRole::class)->handle($admin, $person, Role::AreaLead, $leadArea);
                     }
+
+                    if ($item->clear) {
+                        $locked = User::query()->whereKey($person->id)->lockForUpdate()->firstOrFail();
+                        app(ClearPerson::class)->clearLocked($admin, $locked, 'import');
+                    }
                 } catch (DomainException $exception) {
                     throw new DomainException("Line {$item->row->line}: {$exception->getMessage()} Nothing was saved.", previous: $exception);
                 }
@@ -109,8 +118,34 @@ class ImportPeople
                 ChangeLogEntry::record($admin, 'user.member_id_added', $person, changes: $changes);
             }
 
+            foreach ($preview->clearExisting as $item) {
+                $person = User::query()->whereKey($item->user->id)->lockForUpdate()->first();
+
+                if ($person !== null) {
+                    app(ClearPerson::class)->clearLocked($admin, $person, 'import');
+                }
+            }
+
             return $created;
         });
+    }
+
+    /**
+     * The one comparison for a category option: the tag must equal one of the row's tags exactly (the reader already trims them).
+     */
+    private function hasTag(ImportRow $row, ?string $tag): bool
+    {
+        return $tag !== null && in_array($tag, $row->tags, true);
+    }
+
+    /**
+     * @param  Collection<int, object>  $clearExisting
+     */
+    private function noteClearing(Collection $clearExisting, ImportRow $row, User $user, ?string $clearedTag): void
+    {
+        if (! $user->isCleared() && $this->hasTag($row, $clearedTag)) {
+            $clearExisting->push((object) ['row' => $row, 'user' => $user]);
+        }
     }
 
     private function problemWith(ImportRow $row, Collection $emailLines, Collection $memberLines): ?string
