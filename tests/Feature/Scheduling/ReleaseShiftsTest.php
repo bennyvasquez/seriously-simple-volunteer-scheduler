@@ -9,6 +9,7 @@ use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\ReleaseShifts;
 use App\Actions\Scheduling\RestoreShift;
+use App\Actions\Scheduling\UpdateShift;
 use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\ChangeLog\Describe;
 use App\Cover\CoverLadder;
@@ -882,6 +883,40 @@ class ReleaseShiftsTest extends TestCase
         Notification::assertNotSentTo($lead, CoverRequestNotification::class);
         Notification::assertSentToTimes($lead, ShiftsReleasedNotification::class, 1);
         Notification::assertSentToTimes($this->coordinator, CoverUrgentNotification::class, 1);
+    }
+
+    public function test_releasing_inside_24_hours_after_people_needed_was_lowered_doesnt_crash(): void
+    {
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        $shift = $this->robinOn('2026-10-15', peopleNeeded: 2);
+        $this->on($shift, $this->morgan);
+        $this->on($shift, $casey, AssignmentType::Shadow);
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 19:00', self::TIMEZONE));
+
+        // Robin releases inside 24 hours, so the request is escalated at once.
+        $robins = app(ReleaseShifts::class)->one($this->robin, $shift, null);
+        $this->assertNotNull($robins->fresh()->escalated_at);
+
+        // A coordinator lowers people needed to 1. Robin's escalated request stays open.
+        app(UpdateShift::class)->handle($this->coordinator, $shift->fresh(), ['people_needed' => 1]);
+        Notification::fake();
+
+        $morgans = app(ReleaseShifts::class)->one($this->morgan, $shift->fresh(), null);
+
+        $this->assertFalse(Assignment::query()->where('shift_id', $shift->id)->where('user_id', $this->morgan->id)->exists());
+        $this->assertNotNull($morgans);
+        $this->assertSame($this->morgan->id, ChangeLogEntry::query()->ofAction('assignment.removed')->latest('id')->first()->affected_user_id);
+        $this->assertTrue(ChangeLogEntry::query()->ofAction('cover_request.created')->where('details->cover_request_id', $morgans->id)->exists());
+        $this->assertSame(1, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
+
+        // The leads and coordinators already had the urgent email; nobody gets it again.
+        Notification::assertNotSentTo([$lead, $this->coordinator], CoverUrgentNotification::class);
+        // Morgan was the last regular, so the shadow hears now that there's nobody to shadow, once, and not "on hold" as well.
+        Notification::assertSentToTimes($casey, ShadowSpotNotification::class, 1);
+        Notification::assertSentTo($casey, ShadowSpotNotification::class, fn (ShadowSpotNotification $notification) => $notification->notice === ShadowSpotNotice::StillUncovered
+            && str_contains($this->text($notification->toMail($casey)), 'Alex (Shift lead) knows.'));
+        Notification::assertSentToTimes($this->morgan, ShiftsReleasedNotification::class, 1);
     }
 
     public function test_the_releaser_email_lists_shadow_spots_left_in_the_same_range(): void

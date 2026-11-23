@@ -166,6 +166,14 @@ class CoverLadderTest extends TestCase
         Notification::assertSentTo($this->coordinator, CoverUrgentNotification::class, fn (CoverUrgentNotification $notification) => $notification->shifts[0]['releaser'] === 'Someone');
     }
 
+    public function test_escalating_no_requests_does_nothing(): void
+    {
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:30', '21:30', 1, 1, null);
+
+        $this->assertSame([], app(CoverLadder::class)->escalateLocked($shift, collect()));
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('cover_request.escalated')->count());
+    }
+
     public function test_nothing_happens_before_72_hours(): void
     {
         $shift = $this->released();

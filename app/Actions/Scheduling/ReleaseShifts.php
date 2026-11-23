@@ -256,7 +256,15 @@ class ReleaseShifts
         if (self::escalatesNow($lockedShift)) {
             // Every unescalated open request that counts, the way the ladder would take them, so it never escalates this shift a second time.
             $unescalated = CoverLadder::openRequestsLocked($lockedShift)->whereNull('escalated_at')->values();
-            $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $person);
+
+            if ($unescalated->isNotEmpty()) {
+                $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $person);
+            } elseif ($shadows->isNotEmpty()) {
+                // Every request that counts was already escalated (people needed was lowered after an escalated release, say), so the leads and coordinators already know and aren't emailed again. This release took off the last regular, so the shadows' spot goes on hold now and they haven't heard "still nobody" for it yet: they get that, not "on hold" as well.
+                $audience = CoverLadder::urgentAudience($lockedShift->area);
+                unset($audience[$person->id]);
+                $released['sends'] = array_values(CoverLadder::stillUncoveredSends($lockedShift, $audience, $person->firstName()));
+            }
         } else {
             $released['sends'] = $shadows->map(fn (User $shadow) => [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::OnHold, $person->firstName())])->all();
         }
