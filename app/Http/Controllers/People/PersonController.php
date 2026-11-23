@@ -206,6 +206,8 @@ class PersonController extends Controller
             'ready' => $done >= $required,
             'history' => $history,
             'canClear' => ! $person->isCleared() && $person->isActive() && $viewer->can('clear', $person),
+            // Holding a role keeps someone cleared (decision 4), so they're never offered it.
+            'canMoveBack' => $person->isCleared() && ! $person->roles()->exists() && $viewer->can('clear', $person),
         ];
     }
 

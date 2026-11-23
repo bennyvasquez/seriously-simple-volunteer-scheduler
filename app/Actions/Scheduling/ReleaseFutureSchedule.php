@@ -2,18 +2,24 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Enums\AssignmentType;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
+use Closure;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Clears a person's future schedule when they're turned off or removed (spec section 13, "People leaving"): every current or future regular gets an end date, and they're removed from every shift that hasn't started, cancelled or not, in every area. Shifts that have started keep them, so their history stays. Nobody is emailed: the person is leaving, and the people who run the schedule are the ones who asked for it.
+ *
+ * releaseRegularPlaces() does the same for someone a coordinator moves back to shadowing and chooses to release (spec section 9), with the same candidates, locks and regular ends, except that their regular places on future shifts are released through the normal cover flow instead of removed, and their shadow places stay.
  *
  * A regular's end date is yesterday, or the day before its start when that's later, so a future regular never works a date (SlotRegular::currentOrFuture() and activeOn() treat it that way). A regular on a slot that has already ended is left alone. Each end is logged as `regular.ended` about the person and each removal by RemoveFromShift::removeLocked(), both with `via` saying why (`user.deactivated` or `user.removed`).
  *
@@ -21,19 +27,58 @@ use Illuminate\Support\Facades\DB;
  */
 class ReleaseFutureSchedule
 {
-    public function __construct(private readonly RemoveFromShift $removeFromShift) {}
+    public function __construct(private readonly RemoveFromShift $removeFromShift, private readonly ReleaseShifts $releaseShifts) {}
 
     /**
      * @return array{shifts: int, regulars: int} How many shifts they were removed from and how many slots their time as a regular was ended on.
      */
     public function handle(User $actor, User $person, string $via): array
     {
+        return $this->endAndClear($actor, $person, $via, null, function (Shift $lockedShift, Assignment $assignment) use ($actor, $via) {
+            $this->removeFromShift->removeLocked($actor, $lockedShift, $assignment, ['via' => $via]);
+        });
+    }
+
+    /**
+     * "Release them" when a coordinator moves someone back to shadowing (decision 9): every current or future regular ends, logged as `regular.ended` with `via` `user.moved_back`, so the nightly generator doesn't put them back. Each regular place on a future, uncancelled shift is released through ReleaseShifts::releaseAndCollectLocked(), logged as the coordinator's with `via` `release:move_back`, so it becomes a cover request naming the person, and a shift inside CoverLadder::URGENT_HOURS escalates at once, the way any release does. A regular place on a cancelled future shift is removed with nobody asked, as handle() does. Shadow places and shifts that have started are left alone. After the commit the volunteers get their cover requests and any escalation emails through ReleaseShifts::sendAfterCommit(), but the person gets no "You're off" email: the caller (MoveBackToShadowing) sends them one email of its own.
+     *
+     * @return Collection<int, CoverRequest|null> Keyed by the id of each shift released, in time order. The value is null for a shift that still has the people it needs, where nobody was asked.
+     */
+    public function releaseRegularPlaces(User $actor, User $person): Collection
+    {
+        $released = [];
+
+        $this->endAndClear($actor, $person, 'user.moved_back', AssignmentType::Regular, function (Shift $lockedShift, Assignment $assignment) use ($actor, $person, &$released) {
+            if ($lockedShift->cancelled_at !== null) {
+                $this->removeFromShift->removeLocked($actor, $lockedShift, $assignment, ['via' => 'user.moved_back']);
+
+                return;
+            }
+
+            $released[] = $this->releaseShifts->releaseAndCollectLocked($person, $lockedShift->loadMissing('area'), $assignment, null, 'move_back', $actor);
+        });
+
+        if ($released !== []) {
+            $this->releaseShifts->sendAfterCommit($person, $released, null, tellReleaser: false);
+        }
+
+        return collect($released)->mapWithKeys(fn (array $place) => [$place['shift']->id => $place['request']]);
+    }
+
+    /**
+     * The shared body of handle() and releaseRegularPlaces(): finds the candidates, takes the locks, ends the regulars and calls `$onEachPlace(Shift $lockedShift, Assignment $assignment)` for each of the person's places on a shift that hasn't started (only places of `$type`, when given), inside the transaction with every lock held.
+     *
+     * @param  Closure(Shift, Assignment): void  $onEachPlace
+     * @return array{shifts: int, regulars: int}
+     */
+    private function endAndClear(User $actor, User $person, string $via, ?AssignmentType $type, Closure $onEachPlace): array
+    {
         $today = Organization::current()->today();
         $yesterday = $today->subDay()->toDateString();
         $today = $today->toDateString();
         $regularIds = self::regularsQuery($person, $today)->orderBy('id')->pluck('id');
         $slotIds = SlotRegular::query()->whereKey($regularIds)->distinct()->orderBy('weekly_slot_id')->pluck('weekly_slot_id');
-        $shiftIds = self::shiftsQuery($person)->pluck('id');
+        $shiftIds = self::shiftsQuery($person, $type)->pluck('id');
         $areaIds = WeeklySlot::query()->whereKey($slotIds)->pluck('area_id')
             ->concat(Shift::query()->whereKey($shiftIds)->pluck('area_id'))
             ->unique()->sort()->values();
@@ -42,7 +87,7 @@ class ReleaseFutureSchedule
             return ['shifts' => 0, 'regulars' => 0];
         }
 
-        return DB::transaction(function () use ($actor, $person, $via, $today, $yesterday, $regularIds, $slotIds, $shiftIds, $areaIds) {
+        return DB::transaction(function () use ($actor, $person, $via, $type, $onEachPlace, $today, $yesterday, $regularIds, $slotIds, $shiftIds, $areaIds) {
             Area::query()->whereKey($areaIds)->orderBy('id')->lockForUpdate()->get();
             WeeklySlot::query()->whereKey($slotIds)->orderBy('id')->lockForUpdate()->get();
 
@@ -51,7 +96,7 @@ class ReleaseFutureSchedule
                 ->filter(fn (SlotRegular $regular) => $regular->ends_on === null || ($regular->ends_on->toDateString() >= $today && $regular->ends_on->greaterThanOrEqualTo($regular->starts_on)))
                 ->values();
             $shifts = Shift::query()->whereKey($shiftIds)->where('starts_at', '>', now())->orderBy('starts_at')->orderBy('id')->lockForUpdate()->get();
-            $assignments = Assignment::query()->where('user_id', $person->id)->whereIn('shift_id', $shifts->modelKeys())->orderBy('id')->lockForUpdate()->get();
+            $assignments = Assignment::query()->where('user_id', $person->id)->when($type !== null, fn ($query) => $query->where('type', $type))->whereIn('shift_id', $shifts->modelKeys())->orderBy('id')->lockForUpdate()->get();
             $assignments->load('user');
             $assignments = $assignments->groupBy('shift_id');
             $shifts = $shifts->filter(fn (Shift $shift) => $assignments->has($shift->id))->values();
@@ -68,7 +113,7 @@ class ReleaseFutureSchedule
 
             foreach ($shifts as $shift) {
                 foreach ($assignments[$shift->id] as $assignment) {
-                    $this->removeFromShift->removeLocked($actor, $shift, $assignment, ['via' => $via]);
+                    $onEachPlace($shift, $assignment);
                 }
             }
 
@@ -90,8 +135,8 @@ class ReleaseFutureSchedule
         ];
     }
 
-    /** The person's regulars that are current or still to start, on slots that haven't ended. */
-    private static function regularsQuery(User $person, string $today)
+    /** The person's regulars that are current or still to start, on slots that haven't ended. MoveBackToShadowing::preview() lists the same ones. */
+    public static function regularsQuery(User $person, string $today)
     {
         return SlotRegular::query()
             ->where('user_id', $person->id)
@@ -99,11 +144,11 @@ class ReleaseFutureSchedule
             ->whereHas('weeklySlot', fn ($slot) => $slot->where(fn ($valid) => $valid->whereNull('valid_until')->orWhere('valid_until', '>=', $today)));
     }
 
-    /** The shifts the person is on that haven't started, cancelled or not. */
-    private static function shiftsQuery(User $person)
+    /** The shifts the person is on that haven't started, cancelled or not, where they hold a place of `$type` when it's given. */
+    private static function shiftsQuery(User $person, ?AssignmentType $type = null)
     {
         return Shift::query()
             ->where('starts_at', '>', now())
-            ->whereHas('assignments', fn ($query) => $query->where('user_id', $person->id));
+            ->whereHas('assignments', fn ($query) => $query->where('user_id', $person->id)->when($type !== null, fn ($query) => $query->where('type', $type)));
     }
 }

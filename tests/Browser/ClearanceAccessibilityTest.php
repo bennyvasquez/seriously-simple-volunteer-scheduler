@@ -9,7 +9,7 @@ use Tests\Browser\Concerns\ChecksAccessibility;
 use Tests\DuskTestCase;
 
 /**
- * An automated accessibility check of the person page's "Shadowing and clearance" panel (screen 9), before and after a coordinator clears someone. It finds what a tool can find and doesn't replace trying it with a keyboard and a screen reader.
+ * An automated accessibility check of the person page's "Shadowing and clearance" panel (screen 9), before and after a coordinator clears someone, and of the move back page (screen 10), with and without its error. It finds what a tool can find and doesn't replace trying it with a keyboard and a screen reader.
  */
 class ClearanceAccessibilityTest extends DuskTestCase
 {
@@ -30,6 +30,30 @@ class ClearanceAccessibilityTest extends DuskTestCase
                 ->waitForText('Riley is cleared for regular shifts.')
                 ->assertSee('Cleared for regular shifts since');
             $this->assertAccessible($browser);
+        });
+    }
+
+    public function test_moving_someone_back_to_shadowing(): void
+    {
+        $coordinator = User::where('email', ExampleOrganizationSeeder::COORDINATOR)->firstOrFail();
+        $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
+        $first = $volunteer->firstName();
+
+        $this->browse(function (Browser $browser) use ($coordinator, $volunteer, $first) {
+            $browser->loginAs($coordinator)->visit(route('people.show', $volunteer))
+                ->assertSee('Cleared for regular shifts since')
+                ->clickLink('Move back to shadowing')
+                ->waitForText('Move '.$first.' back to shadowing?')
+                ->assertSee('Keep them')
+                ->assertSee('Release them');
+            $this->assertAccessible($browser);
+
+            $browser->press('Move back to shadowing')->waitForText('Choose keep or release.');
+            $this->assertAccessible($browser);
+
+            $browser->radio('existing', 'keep')->press('Move back to shadowing')
+                ->waitForText($first.' is back to shadowing.')
+                ->assertSee('Shadow shifts done');
         });
     }
 }

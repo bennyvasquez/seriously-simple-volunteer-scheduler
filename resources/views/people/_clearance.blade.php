@@ -1,10 +1,13 @@
-{{-- Screen 9 inside the person page: clearance status, shadow progress and history, and for coordinators the "Clear for regular shifts" form. $clearance comes from PersonController::clearance(). --}}
+{{-- Screen 9 inside the person page: clearance status, shadow progress and history, and for coordinators the "Clear for regular shifts" form or, for someone cleared without a role, a link to "Move back to shadowing" (screen 10). $clearance comes from PersonController::clearance(). --}}
 <section class="panel" aria-labelledby="clearance-heading">
 <h2 id="clearance-heading">Shadowing and clearance</h2>
 {{-- Above the form, so a refusal still shows when the form is gone (someone else cleared them first). --}}
 @error('clear')<p class="field-error" id="clear-error" role="alert">{{ $message }}</p>@enderror
 @if ($clearance['clearedSince'])
 <p><strong>Cleared for regular shifts since {{ $clearance['clearedSince'] }}</strong></p>
+@if ($clearance['canMoveBack'])
+<p><a href="{{ route('people.move-back', $person) }}" class="btn">Move back to shadowing</a></p>
+@endif
 @else
 <div class="progress">
 <p><strong>{{ $clearance['ready'] ? 'Ready for review: '.$clearance['done'].' of '.$clearance['required'].' shadow shifts done' : 'Shadow shifts done: '.$clearance['done'].' of '.$clearance['required'] }}</strong></p>

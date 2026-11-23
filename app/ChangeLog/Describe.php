@@ -45,6 +45,7 @@ final class Describe
                 'example_seed' => ' (example data)',
                 default => '',
             },
+            'user.moved_back' => 'Moved '.$person.' back to shadowing',
             'user.deactivated' => 'Turned off '.$possessive.' account',
             'user.removed' => 'Removed a person\'s account',
             'user.email_changed' => 'Changed '.($self ? 'their' : $possessive).' email address',
@@ -108,7 +109,7 @@ final class Describe
             return 'From '.$name($changes['lead_name']['old'] ?? null).' to '.$name($changes['lead_name']['new'] ?? null);
         }
 
-        if ($entry->action === 'user.cleared' && isset($changes['note']['new'])) {
+        if (in_array($entry->action, ['user.cleared', 'user.moved_back'], true) && isset($changes['note']['new'])) {
             return 'Note: '.$changes['note']['new'];
         }
 

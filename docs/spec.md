@@ -99,6 +99,7 @@ These tables describe what's built today, checked against the code's policies an
 | Invite someone, and "Invite everyone not invited yet" | No | No | Yes | Yes |
 | Clearance status and shadow history on a person page | No | People they can see | Everyone | Everyone |
 | Clear someone for regular shifts, with an optional note for the change log | No | No | Yes | Yes |
+| Move someone back to shadowing (never someone with a role), keeping or releasing their upcoming regular shifts, with an optional note for the change log | No | No | Yes | Yes |
 | Turn off or remove someone (never themselves; only an admin can do it to an admin) | No | No | Yes | Yes |
 | Grant or revoke roles | No | No | Area lead only | Any role |
 | Reset someone's two-factor | No | No | No | Yes |
