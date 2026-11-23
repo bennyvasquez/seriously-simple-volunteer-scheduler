@@ -2,6 +2,7 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Cover\CoverFill;
 use App\Enums\AssignmentType;
 use App\Models\Area;
 use App\Models\AreaClosure;
@@ -15,6 +16,7 @@ use App\Models\WeeklySlot;
 use App\Notifications\ShiftRestoredNotification;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -62,7 +64,9 @@ class RestoreShift
      *
      * A shift from a weekly slot whose `edited_at` is null gets the slot's current times for its date, title and people needed, and its shadow spots unless that would be fewer than the shadows on it; a slot time that has already started leaves the times alone. The slot's regulars who work that date, aren't on it and aren't turned off are added as regulars, the same way UpdateWeeklySlot brings back a date. The detail changes go in the shift.restored entry's changes, and the people added in its details as `added_regular_ids`. A shift edited on its own keeps its details and gets nobody new.
      *
-     * @return array{emailed: Collection<int, User>, removed: Collection<int, User>} The people still on the shift who can sign in, and the people removed from it.
+     * Each regular who joined and stays on fills one of the shift's open cover requests, oldest first, through CoverFill::fillForRegularsLocked(). `covered` holds the "is covering" emails for the releasers (and "back on" for shadows), for the caller to send after the commit with CoverFill::sendAfterCommit().
+     *
+     * @return array{emailed: Collection<int, User>, removed: Collection<int, User>, covered: list<array{0: User, 1: Notification}>} The people still on the shift who can sign in, the people removed from it, and the emails for the cover requests filled.
      */
     public function restoreLocked(User $actor, Shift $lockedShift, array $via): array
     {
@@ -106,7 +110,11 @@ class RestoreShift
             }
         }
 
-        return ['emailed' => $staying->filter(fn (User $user) => $user->canSignIn())->values(), 'removed' => $removed];
+        // Locked last, after the shift. Only the people who joined and stay on cover a released place.
+        $covering = $joining->filter(fn (User $person) => $staying->contains('id', $person->id))->values();
+        $covered = $covering->isEmpty() ? [] : CoverFill::fillForRegularsLocked($actor, $lockedShift, $covering, $before->where('type', AssignmentType::Regular)->isEmpty());
+
+        return ['emailed' => $staying->filter(fn (User $user) => $user->canSignIn())->values(), 'removed' => $removed, 'covered' => $covered];
     }
 
     /**
@@ -237,6 +245,7 @@ class RestoreShift
         $shift->loadMissing('area');
         $emailed = $result['emailed'];
         defer(fn () => $emailed->each(fn (User $person) => $person->notify(new ShiftRestoredNotification($shift))));
+        CoverFill::sendAfterCommit($result['covered']);
 
         return ['emailed' => $emailed->count(), 'removed' => $result['removed']];
     }

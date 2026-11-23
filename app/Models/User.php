@@ -92,6 +92,7 @@ class User extends Authenticatable
             'password_reset_at' => 'datetime',
             'last_login_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'cover_request_emails' => 'boolean',
         ];
     }
 

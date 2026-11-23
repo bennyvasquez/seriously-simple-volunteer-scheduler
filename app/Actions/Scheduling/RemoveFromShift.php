@@ -10,6 +10,7 @@ use App\Models\Shift;
 use App\Models\User;
 use App\Notifications\RemovedFromShiftsNotification;
 use Carbon\CarbonImmutable;
+use Carbon\Exceptions\InvalidFormatException;
 use DomainException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -71,7 +72,7 @@ class RemoveFromShift
     /** @return Collection<int, Shift> The shifts the person was removed from. */
     public function range(User $actor, User $person, string $from, string $to): Collection
     {
-        $this->checkDates($from, $to);
+        self::checkDates($from, $to);
 
         // Found before the transaction, so no read inside it fixes the snapshot ahead of the locks.
         $areaIds = $this->candidates($actor, $person, $from, $to)['shifts']->pluck('area_id')->unique()->sort()->values();
@@ -114,12 +115,18 @@ class RemoveFromShift
      */
     public function rangePreview(User $actor, User $person, string $from, string $to): array
     {
-        $this->checkDates($from, $to);
+        self::checkDates($from, $to);
 
+        return $this->candidates($actor, $person, $from, $to) + ['lastOnCalendar' => self::lastOnCalendar($to)];
+    }
+
+    /** The generation window's last date (today plus the organization's weeks ahead, Y-m-d) when `$to` goes past it, or null. Shared with ReleaseShifts::rangePreview(). */
+    public static function lastOnCalendar(string $to): ?string
+    {
         $organization = Organization::current();
-        $lastOnCalendar = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC')->addDays($organization->weeks_ahead * 7 - 1)->toDateString();
+        $last = CarbonImmutable::parse($organization->today()->toDateString(), 'UTC')->addDays($organization->weeks_ahead * 7 - 1)->toDateString();
 
-        return $this->candidates($actor, $person, $from, $to) + ['lastOnCalendar' => $to > $lastOnCalendar ? $lastOnCalendar : null];
+        return $to > $last ? $last : null;
     }
 
     /** @return array{shifts: Collection<int, Shift>, otherAreas: int} */
@@ -139,11 +146,23 @@ class RemoveFromShift
             ->whereHas('assignments', fn ($query) => $query->where('user_id', $person->id));
     }
 
-    private function checkDates(string $from, string $to): void
+    /** Whether the text is a real date written as Y-m-d, the only form the screens send. Shared with checkDates(), EndRegular::endOwn() and ReleaseShifts::slot(). */
+    public static function isDate(string $date): bool
     {
-        $valid = fn (string $date) => CarbonImmutable::createFromFormat('!Y-m-d', $date) !== false && CarbonImmutable::createFromFormat('!Y-m-d', $date)->format('Y-m-d') === $date;
+        // Carbon throws on text that isn't a date at all, rather than returning false.
+        try {
+            $parsed = CarbonImmutable::createFromFormat('!Y-m-d', $date);
+        } catch (InvalidFormatException) {
+            return false;
+        }
 
-        if (! $valid($from) || ! $valid($to)) {
+        return $parsed !== false && $parsed->format('Y-m-d') === $date;
+    }
+
+    /** Refuses a range that isn't two real dates, starts before today or ends before it starts, with messages written to be shown on screen. Shared with ReleaseShifts. */
+    public static function checkDates(string $from, string $to): void
+    {
+        if (! self::isDate($from) || ! self::isDate($to)) {
             throw new DomainException('Pick two dates.');
         }
 

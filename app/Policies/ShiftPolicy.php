@@ -31,4 +31,16 @@ class ShiftPolicy
     {
         return $user->canManageArea($shift->area);
     }
+
+    /** A volunteer releasing their own place on a shift ("Can't make it"). ReleaseShifts checks the shift itself (cancelled, started) under its locks. */
+    public function release(User $user, Shift $shift): bool
+    {
+        return $user->isActive() && $shift->assignments()->where('user_id', $user->id)->exists();
+    }
+
+    /** A volunteer taking an open shift ("Take this shift"). TakeShift checks everything else (open places, the shift itself, overlaps) under its locks. */
+    public function take(User $user, Shift $shift): bool
+    {
+        return $user->canSignIn();
+    }
 }

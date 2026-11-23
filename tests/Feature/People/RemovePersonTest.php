@@ -18,6 +18,7 @@ use App\Import\HelloClubExport;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\CoverRequest;
 use App\Models\LoginLink;
 use App\Models\Organization;
 use App\Models\Shift;
@@ -207,6 +208,30 @@ class RemovePersonTest extends TestCase
         $this->assertSame(2, $shift->assignments()->where('user_id', User::removedPerson()->id)->count());
         $this->assertSame(2, ChangeLogEntry::query()->ofAction('user.removed')->count());
         $this->assertSame(1, User::query()->where('is_removed_person', true)->count());
+    }
+
+    public function test_removal_repoints_cover_requests(): void
+    {
+        $shift = $this->shift('2026-10-07');
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $releasedByRobin = CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $robin->id, 'note' => 'Sorry!', 'filled_by' => $sam->id, 'filled_at' => now()]);
+        $takenByRobin = CoverRequest::create(['shift_id' => $shift->id, 'released_by' => $sam->id, 'filled_by' => $robin->id, 'filled_at' => now()]);
+        // The entries releasing and taking a shift will record, about the person, with the request's user ids in their changes.
+        $created = ChangeLogEntry::record($robin, 'cover_request.created', $shift, ['cover_request_id' => $releasedByRobin->id], ['released_by' => ['old' => null, 'new' => $robin->id], 'note' => ['old' => null, 'new' => 'Sorry!']], about: $robin);
+        $filled = ChangeLogEntry::record($robin, 'cover_request.filled', $shift, ['cover_request_id' => $takenByRobin->id], ['filled_by' => ['old' => null, 'new' => $robin->id]], about: $robin);
+        $samsEntry = ChangeLogEntry::record($sam, 'cover_request.filled', $shift, ['cover_request_id' => $releasedByRobin->id], ['filled_by' => ['old' => null, 'new' => $sam->id]], about: $sam);
+
+        app(RemovePerson::class)->handle($this->coordinator, $robin);
+
+        $removed = User::removedPerson();
+        $this->assertDatabaseMissing('users', ['id' => $robin->id]);
+        $this->assertSame([$removed->id, $sam->id], [$releasedByRobin->fresh()->released_by, $releasedByRobin->fresh()->filled_by]);
+        $this->assertSame([$sam->id, $removed->id], [$takenByRobin->fresh()->released_by, $takenByRobin->fresh()->filled_by]);
+        $this->assertSame($removed->id, $created->fresh()->changes['released_by']['new']);
+        $this->assertSame('Sorry!', $created->fresh()->changes['note']['new']);
+        $this->assertSame($removed->id, $filled->fresh()->changes['filled_by']['new']);
+        $this->assertSame($sam->id, $samsEntry->fresh()->changes['filled_by']['new']);
     }
 
     public function test_removing_someone_with_future_shifts_now_works(): void

@@ -114,6 +114,17 @@ class ChangeLogScreenTest extends TestCase
         $get(['about' => 'nobody'])->assertSee('No changes match');
     }
 
+    public function test_the_schedule_kind_includes_cover_requests(): void
+    {
+        foreach (['cover_request.created', 'cover_request.resent', 'cover_request.escalated', 'cover_request.filled'] as $i => $action) {
+            $this->entry(null, $action, $this->robin, '2026-10-1'.$i.' 10:00', ['cover_request_id' => 1]);
+        }
+        $this->entry($this->admin, 'user.invited', $this->sam, '2026-10-11 11:00');
+
+        $this->actingAs($this->coordinator)->get(route('change-log.index', ['kind' => 'schedule']))
+            ->assertSee('4 changes')->assertDontSee('Sam Example');
+    }
+
     public function test_the_to_date_includes_the_end_of_the_day_in_the_organization_time_zone(): void
     {
         $this->entry($this->admin, 'user.invited', $this->robin, '2026-10-11 23:30');

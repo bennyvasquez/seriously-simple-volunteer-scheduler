@@ -18,11 +18,15 @@ use App\Http\Controllers\People\PeopleController;
 use App\Http\Controllers\People\PersonController;
 use App\Http\Controllers\PersonSecurityController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\Volunteer\EmailSettingsController;
+use App\Http\Controllers\Volunteer\HomeController;
+use App\Http\Controllers\Volunteer\ReleaseController;
+use App\Http\Controllers\Volunteer\TakeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn (Request $request) => view('home', ['user' => $request->user()]))->middleware('auth')->name('home');
+Route::get('/', [HomeController::class, 'home'])->middleware('auth')->name('home');
 
 Route::middleware('guest')->group(function () {
     Route::post('/login-link', [LoginLinkController::class, 'request'])->middleware('throttle:login-link')->name('login-link.request');
@@ -33,6 +37,17 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
+    Route::get('/my-shifts', [HomeController::class, 'myShifts'])->name('my-shifts');
+    Route::whereNumber('shift')->group(function () {
+        Route::get('/shifts/{shift}/release', [ReleaseController::class, 'show'])->name('shifts.release');
+        Route::post('/shifts/{shift}/release', [ReleaseController::class, 'store']);
+        Route::get('/shifts/{shift}/take', [TakeController::class, 'show'])->name('shifts.take');
+        Route::post('/shifts/{shift}/take', [TakeController::class, 'store']);
+        Route::get('/shifts/{shift}/taken', [TakeController::class, 'taken'])->name('shifts.taken');
+    });
+    Route::get('/shifts/released', [ReleaseController::class, 'released'])->name('shifts.released');
+    Route::get('/account/emails', [EmailSettingsController::class, 'edit'])->name('account.emails');
+    Route::post('/account/emails', [EmailSettingsController::class, 'update']);
     Route::get('/account', [AccountController::class, 'show'])->name('account.show');
     Route::get('/account/security', [AccountController::class, 'security'])->name('account.security');
     Route::post('/account/password', [InitialPasswordController::class, 'store'])->name('account.password.set');

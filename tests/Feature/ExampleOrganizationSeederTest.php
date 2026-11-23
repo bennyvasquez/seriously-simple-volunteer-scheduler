@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
+use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
@@ -52,7 +53,7 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertSame(['Electronics', 'Front desk', 'Woodshop'], Area::query()->orderBy('name')->pluck('name')->all());
         $this->assertSame('Shift lead', Area::query()->where('name', 'Front desk')->value('lead_name'));
 
-        $this->assertSame(7, WeeklySlot::query()->count());
+        $this->assertSame(8, WeeklySlot::query()->count());
         $this->assertSame(2, WeeklySlot::query()->where('frequency', 'every_other_week')->count());
 
         // Shifts four weeks ahead, from today through the 27th day after it.
@@ -69,6 +70,12 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertSame(1, AreaClosure::query()->count());
         $this->assertSame(2, $shifts->whereNotNull('area_closure_id')->count());
         $this->assertTrue($shifts->contains(fn (Shift $shift) => $shift->assignments->contains('type', AssignmentType::Shadow)));
+
+        // Both kinds of take page: a released shift with a note and a shadow, and a weekly slot with no regular.
+        $released = CoverRequest::query()->open()->with('shift.assignments')->sole();
+        $this->assertNotNull($released->note);
+        $this->assertTrue($released->shift->assignments->contains('type', AssignmentType::Shadow));
+        $this->assertTrue(WeeklySlot::query()->whereDoesntHave('regulars')->exists());
 
         // Four staff, fifteen volunteers, one not invited yet, one turned off and the shared record a removed person's history moves onto.
         $this->assertSame(22, User::query()->count());
@@ -105,9 +112,30 @@ class ExampleOrganizationSeederTest extends TestCase
         $this->assertTrue($volunteer->regulars()->exists());
 
         // Built through the app's actions, so the change log has the same entries a live install would.
-        foreach (['organization.created', 'user.created', 'user.invited', 'user.accepted_invitation', 'user.password_set', 'two_factor.enabled', 'role.granted', 'area.created', 'area.updated', 'slot.created', 'regular.added', 'assignment.added', 'shift.created', 'closure.created', 'shift.cancelled', 'user.deactivated', 'user.removed'] as $action) {
+        foreach (['organization.created', 'user.created', 'user.invited', 'user.accepted_invitation', 'user.password_set', 'two_factor.enabled', 'role.granted', 'area.created', 'area.updated', 'slot.created', 'regular.added', 'assignment.added', 'shift.created', 'closure.created', 'shift.cancelled', 'cover_request.created', 'user.deactivated', 'user.removed'] as $action) {
             $this->assertTrue(ChangeLogEntry::query()->where('action', $action)->exists(), "The change log has a {$action} entry.");
         }
+    }
+
+    /** Six in the evening on each day of a week, starting Monday 23 November 2026 in Detroit. On the Monday the seeded release is on Tuesday 1 December, just over 7 days away, which a day count alone would pick. */
+    public static function eveningsOfAWeek(): array
+    {
+        return collect(range(0, 6))->mapWithKeys(fn (int $day) => [CarbonImmutable::parse('2026-11-23')->addDays($day)->format('l') => [$day]])->all();
+    }
+
+    #[DataProvider('eveningsOfAWeek')]
+    public function test_the_browser_tests_shift_is_clear_of_the_seeded_cover_request(int $day): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 18:00', 'America/Detroit')->addDays($day));
+        $this->seed(ExampleOrganizationSeeder::class);
+
+        $volunteer = User::query()->where('email', ExampleOrganizationSeeder::VOLUNTEER)->sole();
+        $shift = ExampleOrganizationSeeder::releasableShiftOf($volunteer);
+
+        $this->assertFalse($shift->coverRequests()->exists());
+        $this->assertTrue($shift->assignments()->where('user_id', $volunteer->id)->exists());
+        $this->assertTrue($shift->starts_at->greaterThan(now()->addDay()));
+        $this->assertNull($shift->cancelled_at);
     }
 
     public function test_it_seeds_at_any_time_of_day(): void

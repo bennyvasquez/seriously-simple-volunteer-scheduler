@@ -393,6 +393,98 @@ class EndRegularTest extends TestCase
         });
     }
 
+    public function test_end_own_hands_each_future_shift_to_the_callback_and_sends_no_email(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-15');
+        Notification::fake();
+        $cancelled = $this->shiftOn($slot, '2026-11-12');
+        $cancelled->update(['cancelled_at' => now(), 'cancel_reason' => 'Power outage']);
+        $future = $slot->shifts()->where('local_date', '>', '2026-10-28')->whereNull('cancelled_at')->orderBy('starts_at')->pluck('id')->all();
+        $handed = [];
+
+        $ended = app(EndRegular::class)->endOwn($this->robin, $regular, '2026-10-28', function (Shift $shift, Assignment $assignment) use (&$handed) {
+            $this->assertSame($this->robin->id, $assignment->user_id);
+            $handed[] = $shift->id;
+        });
+
+        $this->assertSame($future, $handed);
+        $this->assertSame('2026-10-28', $ended->fresh()->ends_on->toDateString());
+        // The callback removes nothing here, so Robin is still on those; the cancelled shift is cleared like handle() clears it.
+        $this->assertFalse($cancelled->assignments()->exists());
+        $this->assertSame(count($future) + 2, count($this->datesFor($this->robin)));
+
+        $entry = ChangeLogEntry::query()->about($this->robin)->ofAction('regular.ended')->sole();
+        $this->assertSame($this->robin->id, $entry->actor_id);
+        $this->assertSame(['ends_on' => ['old' => null, 'new' => '2026-10-28']], $entry->changes);
+        $removed = ChangeLogEntry::query()->about($this->robin)->ofAction('assignment.removed')->sole();
+        $this->assertSame($cancelled->id, $removed->subject_id);
+        $this->assertSame('regular.ended', $removed->details['via']);
+        Notification::assertNothingSent();
+    }
+
+    public function test_end_own_refuses_someone_elses_regular(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-15');
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+
+        try {
+            app(EndRegular::class)->endOwn($casey, $regular, '2026-10-28', fn () => $this->fail('Nothing should be handed on.'));
+            $this->fail('Someone else\'s regular should be refused.');
+        } catch (DomainException $e) {
+            $this->assertSame('That isn\'t your weekly slot.', $e->getMessage());
+        }
+
+        $this->assertNull($regular->fresh()->ends_on);
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('regular.ended')->count());
+    }
+
+    public function test_end_own_refuses_a_past_date(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-01');
+
+        try {
+            app(EndRegular::class)->endOwn($this->robin, $regular, '2026-10-12', fn () => null);
+            $this->fail('A last date before yesterday should be refused.');
+        } catch (DomainException $e) {
+            $this->assertSame('Pick a date from today on.', $e->getMessage());
+        }
+
+        $this->assertNull($regular->fresh()->ends_on);
+
+        // Yesterday as the last date gives up the slot from today.
+        app(EndRegular::class)->endOwn($this->robin, $regular, '2026-10-13', fn () => null);
+        $this->assertSame('2026-10-13', $regular->fresh()->ends_on->toDateString());
+    }
+
+    public function test_end_own_refuses_an_unreadable_date(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-15');
+
+        try {
+            app(EndRegular::class)->endOwn($this->robin, $regular, 'tomorrow', fn () => $this->fail('Nothing should be handed on.'));
+            $this->fail('An unreadable date should be refused.');
+        } catch (DomainException $e) {
+            $this->assertSame('Pick a date.', $e->getMessage());
+        }
+
+        $this->assertNull($regular->fresh()->ends_on);
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('regular.ended')->count());
+    }
+
+    public function test_end_own_speaks_to_the_person_when_they_already_stop_earlier(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-15', null, '2026-11-12');
+
+        $this->expectExceptionObject(new DomainException('You already stop after Thursday, November 12.'));
+
+        app(EndRegular::class)->endOwn($this->robin, $regular, '2026-11-18', fn () => null);
+    }
+
     public function test_the_status_leaves_out_the_shifts_sentence_when_there_were_none(): void
     {
         $slot = $this->slot();

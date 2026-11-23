@@ -19,10 +19,12 @@ use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
+use App\Notifications\MadeRegularNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -464,5 +466,61 @@ class AddRegularTest extends TestCase
 
         $this->assertTrue($again->exists);
         $this->assertSame(['2026-10-22', '2026-10-29'], $this->datesFor($robin));
+    }
+
+    public function test_a_self_claim_needs_no_manager_and_sends_no_regular_email(): void
+    {
+        $this->withoutDefer();
+        Notification::fake();
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+
+        $regular = app(AddRegular::class)->handle($robin, $this->slot, $robin, '2026-10-22', selfClaim: true);
+
+        $this->assertTrue($regular->exists);
+        $this->assertSame(['2026-10-22', '2026-10-29'], $this->datesFor($robin));
+        $this->assertSame($robin->id, ChangeLogEntry::query()->about($robin)->ofAction('regular.added')->sole()->actor_id);
+        Notification::assertNotSentTo($robin, MadeRegularNotification::class);
+    }
+
+    public function test_a_self_claim_is_only_for_the_person_themselves(): void
+    {
+        $robin = User::factory()->create();
+        $sam = User::factory()->create();
+
+        $this->expectException(InvalidArgumentException::class);
+
+        app(AddRegular::class)->handle($sam, $this->slot, $robin, '2026-10-22', selfClaim: true);
+    }
+
+    public function test_a_self_claim_is_refused_on_a_slot_with_a_current_or_future_regular(): void
+    {
+        $robin = User::factory()->create();
+        $sam = User::factory()->create();
+        app(AddRegular::class)->handle(null, $this->slot, $sam, '2026-11-05');
+
+        try {
+            app(AddRegular::class)->handle($robin, $this->slot, $robin, '2026-10-22', selfClaim: true);
+            $this->fail('A slot with a regular should be refused.');
+        } catch (DomainException $e) {
+            $this->assertSame('You can take this date only.', $e->getMessage());
+        }
+
+        $this->assertSame([], $this->datesFor($robin));
+    }
+
+    public function test_a_self_claim_skips_a_later_date_that_already_has_its_people(): void
+    {
+        $robin = User::factory()->create();
+        $sam = User::factory()->create();
+        $later = Shift::query()->where('local_date', '2026-10-29')->sole();
+        Assignment::create(['shift_id' => $later->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);
+
+        $regular = app(AddRegular::class)->handle($robin, $this->slot, $robin, '2026-10-22', selfClaim: true);
+
+        $this->assertTrue($regular->exists);
+        $this->assertSame(['2026-10-22'], $this->datesFor($robin));
+        $this->assertSame(['2026-10-29'], $regular->skipped_full);
+        $this->assertSame([], $regular->skipped_overlaps);
+        $this->assertSame([$sam->id], $later->assignments()->pluck('user_id')->all());
     }
 }

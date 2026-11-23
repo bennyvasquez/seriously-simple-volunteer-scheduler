@@ -5,6 +5,7 @@ namespace Tests\Feature\Accounts;
 use App\Actions\Accounts\IssueLoginLink;
 use App\Enums\LoginLinkPurpose;
 use App\Models\ChangeLogEntry;
+use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\LoginLinkNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -188,5 +189,86 @@ class LoginLinkTest extends TestCase
         $entry = ChangeLogEntry::query()->where('action', 'user.accepted_invitation')->sole();
         $this->assertNull($entry->changes['email_verified_at']['old']);
         $this->assertNotNull($entry->changes['email_verified_at']['new']);
+    }
+
+    private function tokenFromSentLink(User $user): string
+    {
+        $url = null;
+        Notification::assertSentTo($user, LoginLinkNotification::class, function (LoginLinkNotification $notification) use (&$url) {
+            $url = $notification->url;
+
+            return true;
+        });
+
+        return basename(parse_url($url, PHP_URL_PATH));
+    }
+
+    public function test_the_destination_survives_a_different_browser(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create(['email' => 'volunteer@example.org']);
+
+        $this->get('/account')->assertRedirect('/login');
+        $this->post(route('login-link.request'), ['email' => 'volunteer@example.org']);
+        $token = $this->tokenFromSentLink($user);
+
+        $this->flushSession();
+        $this->useLink($token)->assertRedirect('/account');
+    }
+
+    public function test_an_outside_destination_is_ignored(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create(['email' => 'volunteer@example.org']);
+
+        $this->withSession(['url.intended' => 'https://example.org/steal'])
+            ->post(route('login-link.request'), ['email' => 'volunteer@example.org']);
+        $token = $this->tokenFromSentLink($user);
+
+        $this->assertNull(LoginLink::query()->sole()->destination);
+
+        $this->flushSession();
+        $this->useLink($token)->assertRedirect(config('fortify.home'));
+    }
+
+    public function test_only_this_apps_own_paths_are_kept_as_a_destination(): void
+    {
+        $host = parse_url(config('app.url'), PHP_URL_HOST);
+
+        $this->assertSame('/account', LoginLink::safeDestination(url('/account')));
+        $this->assertSame('/account?tab=1', LoginLink::safeDestination(url('/account?tab=1')));
+        $this->assertSame('/account', LoginLink::safeDestination('/account'));
+        $this->assertNull(LoginLink::safeDestination(null));
+        $this->assertNull(LoginLink::safeDestination('https://example.org/steal'));
+        $this->assertNull(LoginLink::safeDestination('//example.org/steal'));
+        $this->assertNull(LoginLink::safeDestination('https://'.$host.'.example.org/account'));
+        $this->assertNull(LoginLink::safeDestination('account'));
+        $this->assertNull(LoginLink::safeDestination(url('/'.str_repeat('a', 500))));
+    }
+
+    public function test_the_login_page_says_why_when_taking_a_shift(): void
+    {
+        $this->withSession(['url.intended' => url('/shifts/5/take')])
+            ->get('/login')
+            ->assertOk()
+            ->assertSee('Log in to take this shift. Once you\'re in, we\'ll take you straight back to it.', false);
+
+        $this->withSession(['url.intended' => url('/account')])
+            ->get('/login')
+            ->assertOk()
+            ->assertDontSee('Log in to take this shift.', false);
+    }
+
+    public function test_a_two_factor_login_keeps_the_destination(): void
+    {
+        $user = User::factory()->create();
+        $secret = $this->enableTwoFactor($user);
+        $url = app(IssueLoginLink::class)->handle($user, LoginLinkPurpose::SignIn, destination: '/account');
+        $token = basename(parse_url($url, PHP_URL_PATH));
+
+        $this->useLink($token)->assertRedirect(route('two-factor.login'));
+        $this->post(route('two-factor.login.store'), ['code' => $this->currentCode($secret)])->assertRedirect('/account');
+
+        $this->assertAuthenticatedAs($user);
     }
 }

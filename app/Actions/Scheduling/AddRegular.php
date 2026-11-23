@@ -2,6 +2,7 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Cover\CoverFill;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Models\Area;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\MadeRegularNotification;
 use Carbon\CarbonImmutable;
+use Closure;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -28,11 +30,13 @@ use InvalidArgumentException;
  *
  * The transaction locks the area, then the slot, then reads the regulars and locks the shifts, the same order EndRegular uses, so the two can't interleave.
  *
- * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift.
+ * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift. Each of those shifts' oldest open cover request is filled through CoverFill::fillForRegularsLocked(), so a slot someone gave up stops asking for cover when a coordinator adds a new regular; the releasers get one "is covering" email each, listing their dates, and the leads aren't told.
  *
- * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, and a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on.
+ * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on, and a `skipped_full` attribute listing the dates a self-claim left out because they already have the people they need (always empty otherwise).
  *
  * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
+ *
+ * A volunteer taking a slot for themselves (TakeShift, decision 15) passes `$selfClaim`: the actor has to be the person, the manager check is skipped, the slot must have no regular on or after the start date ("You can take this date only."), and a generated shift that already has the people it needs (counting everyone on it, one-time places included) is left out, the way overlapping dates are, instead of asking to confirm. When that full date is the start date (the one being taken), ShiftAlreadyTaken is thrown instead. overDates() isn't consulted for a self-claim: it counts only regulars, a self-claim is refused whenever the slot has any regular from that date on, and people needed is at least 1, so it could never find a date. Its assignment.added entries carry `via` "take", and no "now a regular" email is sent, since TakeShift sends the person one email for the whole take. `$onPutOn` is called inside the transaction, after everything is logged, with the locked shifts the person was put on and every locked candidate shift, so TakeShift can check the date taken and fill its cover request in the same transaction.
  */
 class AddRegular
 {
@@ -45,17 +49,25 @@ class AddRegular
         SlotFrequency $frequency = SlotFrequency::Weekly,
         ?string $anchorDate = null,
         bool $overConfirmed = false,
+        bool $selfClaim = false,
+        ?Closure $onPutOn = null,
     ): SlotRegular {
-        if ($actor !== null) {
+        if ($selfClaim) {
+            if ($actor?->id !== $user->id) {
+                throw new InvalidArgumentException('Only the person themselves can take a slot this way.');
+            }
+        } elseif ($actor !== null) {
             Gate::forUser($actor)->authorize('manageSchedule', $slot->area);
         }
 
         if ($slot->is_rotation) {
-            throw new DomainException('A rotation has no regulars. Volunteers sign up for it one date at a time.');
+            throw new DomainException($selfClaim ? 'You can take this date only.' : 'A rotation has no regulars. Volunteers sign up for it one date at a time.');
         }
 
+        $turnedOff = $selfClaim ? 'Your account has been turned off, so you can\'t take shifts.' : $user->firstName().' has been turned off and can\'t be made a regular.';
+
         if (! $user->isActive()) {
-            throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
+            throw new DomainException($turnedOff);
         }
 
         $startsOn = CarbonImmutable::parse($startsOn)->toDateString();
@@ -77,7 +89,7 @@ class AddRegular
         $regular->weeklySlot()->associate($slot);
         $regular->ensureValid();
 
-        $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn, $overConfirmed) {
+        $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn, $overConfirmed, $selfClaim, $onPutOn, $turnedOff) {
             // The area then the slot, before reading the regulars: the order EndRegular and the other scheduling actions lock in.
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->firstOrFail();
             WeeklySlot::query()->whereKey($slot->id)->lockForUpdate()->firstOrFail();
@@ -86,7 +98,7 @@ class AddRegular
             $current = User::query()->whereKey($user->id)->sharedLock()->first();
 
             if ($current === null || ! $current->isActive()) {
-                throw new DomainException($user->firstName().' has been turned off and can\'t be made a regular.');
+                throw new DomainException($turnedOff);
             }
 
             // A regular whose end is before its start (ended before it started, or released by a turn-off) never works a date, so it's left out.
@@ -96,11 +108,17 @@ class AddRegular
                 ->lockForUpdate()
                 ->get();
 
+            // A volunteer can make themselves the regular only on a slot nobody is the regular for from that date on (decision 15).
+            if ($selfClaim && $overlapping->isNotEmpty()) {
+                throw new DomainException('You can take this date only.');
+            }
+
             if ($overlapping->contains('user_id', $user->id)) {
                 throw new DomainException('This person is already a regular on this slot for some of those dates.');
             }
 
-            $overDates = $overConfirmed ? [] : $this->overDates($slot, $regular, $overlapping);
+            // A self-claim has no other regulars to count (refused above), so overDates() would always be empty; full dates are left out shift by shift below instead.
+            $overDates = $overConfirmed || $selfClaim ? [] : $this->overDates($slot, $regular, $overlapping);
 
             if ($overDates !== []) {
                 throw new NeedsOverConfirmation($overDates);
@@ -121,6 +139,8 @@ class AddRegular
 
             $shifts = new Collection;
             $skippedOverlaps = [];
+            $skippedFull = [];
+            $covered = [];
 
             foreach ($candidates as $shift) {
                 $on = $assignments->get($shift->id, new Collection);
@@ -136,12 +156,28 @@ class AddRegular
                     continue;
                 }
 
+                // Someone taking a slot never goes over the people a date needs, counting everyone already on it, one-time places included. The date being taken has to have room; a later full date is left out.
+                if ($selfClaim && $on->where('type', AssignmentType::Regular)->count() >= $shift->people_needed) {
+                    if ($date === $startsOn) {
+                        throw new ShiftAlreadyTaken;
+                    }
+
+                    $skippedFull[] = $date;
+
+                    continue;
+                }
+
                 $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $user->id, 'type' => AssignmentType::Regular]);
                 $assignmentChanges = ChangeLogEntry::changesOf($assignment);
                 $assignment->save();
                 // The same entry PutOnShift records, so a shift's history shows everyone put on it however they got there.
-                ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value], $assignmentChanges, about: $user);
+                ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value] + ($selfClaim ? ['via' => 'take'] : []), $assignmentChanges, about: $user);
                 $shifts->push($shift);
+
+                // A self-claim fills its requests in TakeShift's $onPutOn, which words the emails for a take.
+                if (! $selfClaim) {
+                    array_push($covered, ...CoverFill::fillForRegularsLocked($actor, $shift, [$user], $on->where('type', AssignmentType::Regular)->isEmpty()));
+                }
             }
 
             ChangeLogEntry::record($actor, 'regular.added', $regular, [
@@ -149,16 +185,24 @@ class AddRegular
                 'added_to_shift_ids' => $shifts->pluck('id')->values()->all(),
             ], $changes, about: $user);
 
-            return [$regular, $shifts->count(), $skippedOverlaps];
+            if ($onPutOn !== null) {
+                $onPutOn($shifts, $candidates);
+            }
+
+            return [$regular, $shifts->count(), $skippedOverlaps, $skippedFull, $covered];
         });
 
-        [$regular, $count, $skippedOverlaps] = $added;
-        // Not stored: how many existing shifts the person was added to, and the dates they weren't because of another shift, for the screen's confirmation.
+        [$regular, $count, $skippedOverlaps, $skippedFull, $covered] = $added;
+        // Not stored: how many existing shifts the person was added to, and the dates they weren't because of another shift or (for a self-claim) because the date was full, for the confirmation and TakeShift's email.
         $regular->setAttribute('added_to_shifts', $count);
         $regular->setAttribute('skipped_overlaps', $skippedOverlaps);
+        $regular->setAttribute('skipped_full', $skippedFull);
 
-        // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved.
-        defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));
+        // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved. Someone taking a slot gets TakeShift's email instead.
+        if (! $selfClaim) {
+            defer(fn () => $user->notify(new MadeRegularNotification($slot->loadMissing('area'), $regular, $count)));
+            CoverFill::sendAfterCommit($covered);
+        }
 
         return $regular;
     }

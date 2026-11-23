@@ -24,6 +24,9 @@
 
 @section('content')
 <h1>Log in</h1>
+@if (preg_match('#^/shifts/\d+/take$#', (string) parse_url((string) session('url.intended'), PHP_URL_PATH)))
+<p role="status">Log in to take this shift. Once you're in, we'll take you straight back to it.</p>
+@endif
 @if (session('status'))
 <p role="status">{{ session('status') }}</p>
 @endif

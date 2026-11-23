@@ -2,6 +2,7 @@
 
 namespace App\Actions\Scheduling;
 
+use App\Cover\CoverFill;
 use App\Enums\AssignmentType;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. Refuses a shift that is cancelled or has started, a person who is already on it, turned off (checked again under the shift lock) or on another active shift at an overlapping time, and a shadow when the shadow spots are taken. A regular beyond the people the shift needs is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the date and the count. The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
+ * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. A regular place fills the shift's oldest open cover request through CoverFill::fillLocked(), so the ladder stops and the releaser and shadows hear who's covering; the leads aren't told, since a coordinator or lead did it. Refuses a shift that is cancelled or has started, a person who is already on it, turned off (checked again under the shift lock) or on another active shift at an overlapping time, and a shadow when the shadow spots are taken. A regular beyond the people the shift needs is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the date and the count. The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
  */
 class PutOnShift
 {
@@ -21,7 +22,7 @@ class PutOnShift
     {
         Gate::forUser($actor)->authorize('assign', $shift);
 
-        $assignment = DB::transaction(function () use ($actor, $shift, $person, $type, $overConfirmed) {
+        [$assignment, $fill] = DB::transaction(function () use ($actor, $shift, $person, $type, $overConfirmed) {
             // Lock the shift so two people can't both be checked against the same count at once.
             $shift = Shift::query()->whereKey($shift->id)->lockForUpdate()->firstOrFail();
 
@@ -58,6 +59,7 @@ class PutOnShift
                 throw new DomainException($person->firstName().' is already on '.$overlapping->area->name.', '.$overlapping->whenText().'.');
             }
 
+            $nobodyButShadowsBefore = $shift->filledCount() === 0;
             $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => $type]);
             $changes = ChangeLogEntry::changesOf($assignment);
             $assignment->save();
@@ -65,11 +67,20 @@ class PutOnShift
             // About the person, with the shift as the subject, so a shift's history is found with forSubject($shift).
             ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => $type->value], $changes, about: $person);
 
-            return $assignment;
+            // Locked after the shift, in CoverFill. A shadow doesn't cover a released place.
+            $fill = $type === AssignmentType::Regular ? CoverFill::fillLocked($actor, $shift, $current, $nobodyButShadowsBefore) : null;
+
+            return [$assignment, $fill];
         });
 
         // After the transaction commits and after the response, so a mail failure never shows an error for a change that was saved.
-        defer(fn () => $person->notify(new PutOnShiftNotification($shift->loadMissing('area'))));
+        defer(function () use ($person, $shift, $fill) {
+            $person->notify(new PutOnShiftNotification($shift->loadMissing('area')));
+
+            if ($fill !== null) {
+                $fill();
+            }
+        });
 
         return $assignment;
     }
