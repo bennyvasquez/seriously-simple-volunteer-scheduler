@@ -79,6 +79,7 @@ final class Describe
                 'shadow_signup' => 'Signed up to shadow ',
                 default => 'Put '.$person.' on ',
             }.self::shiftWords($entry->subject, true),
+            'assignment.type_changed' => ($self ? 'Moved' : 'Moved '.$person).' from shadowing to a regular place on '.self::shiftWords($entry->subject, true),
             'assignment.removed' => self::assignmentRemoved($entry, $details, $self ? 'their' : $possessive, $person),
             'assignment.no_show' => isset($changes['no_show_at']['new']) ? 'Marked '.$person.' as a no-show for '.self::shiftWords($entry->subject, true) : 'Undid the no-show for '.$person.' on '.self::shiftWords($entry->subject, true),
             'cover_request.created' => 'Cover request sent for '.self::shiftDay($entry->subject),

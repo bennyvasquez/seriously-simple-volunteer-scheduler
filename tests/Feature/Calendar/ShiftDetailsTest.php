@@ -12,6 +12,7 @@ use App\Enums\Role;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -19,6 +20,7 @@ use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\PutOnShiftNotification;
 use App\Notifications\ShiftCancelledNotification;
+use App\Notifications\ShiftCoveredNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -139,6 +141,68 @@ class ShiftDetailsTest extends TestCase
             "There's no shadow spot left on this shift.",
         ], array_slice($messages, 0, 2));
         $this->assertCount(3, $messages);
+    }
+
+    public function test_putting_a_shadow_on_as_a_regular_changes_their_place(): void
+    {
+        Notification::fake();
+        $shift = $this->shiftWithPerson('Sam Example', shadow: 'Robin Example');
+        $shift->update(['people_needed' => 2]);
+        $robin = User::query()->where('name', 'Robin Example')->sole();
+        $releaser = User::factory()->create(['name' => 'Jordan Example']);
+        $request = CoverRequest::query()->create(['shift_id' => $shift->id, 'released_by' => $releaser->id]);
+        $coordinator = $this->coordinator();
+
+        $assignment = app(PutOnShift::class)->handle($coordinator, $shift, $robin, AssignmentType::Regular);
+
+        // The same assignment, in a regular place now, and the shadow spot is free again.
+        $this->assertSame(AssignmentType::Regular, $assignment->fresh()->type);
+        $this->assertSame(1, $shift->assignments()->where('user_id', $robin->id)->count());
+        $this->assertSame(0, $shift->fresh()->openPlaces());
+        $this->assertSame(0, $shift->assignments()->where('type', AssignmentType::Shadow)->count());
+
+        $this->assertFalse(ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.added')->exists());
+        $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.type_changed')->sole();
+        $this->assertSame($coordinator->id, $entry->actor_id);
+        $this->assertSame($robin->id, $entry->affected_user_id);
+        $this->assertSame(['assignment_id' => $assignment->id], $entry->details);
+        $this->assertSame(['type' => ['old' => 'shadow', 'new' => 'regular']], $entry->changes);
+
+        // A regular place fills the shift's open cover request, the same as putting anyone else on.
+        $this->assertSame($robin->id, $request->fresh()->filled_by);
+        Notification::assertSentTo($releaser, ShiftCoveredNotification::class);
+        Notification::assertSentTo($robin, PutOnShiftNotification::class);
+    }
+
+    public function test_a_shadow_put_on_as_a_regular_counts_as_a_new_place(): void
+    {
+        // Sam fills the one place, so Robin moving from the shadow spot would go over.
+        $shift = $this->shiftWithPerson('Sam Example', shadow: 'Robin Example');
+        $robin = User::query()->where('name', 'Robin Example')->sole();
+        $coordinator = $this->coordinator();
+
+        try {
+            app(PutOnShift::class)->handle($coordinator, $shift, $robin, AssignmentType::Regular);
+            $this->fail('Going over people needed was allowed without asking.');
+        } catch (NeedsOverConfirmation $e) {
+            $this->assertSame([['date' => '2026-10-22', 'people' => 2, 'needed' => 1]], $e->dates);
+        }
+
+        $this->assertSame(AssignmentType::Shadow, $shift->assignments()->where('user_id', $robin->id)->sole()->type);
+
+        app(PutOnShift::class)->handle($coordinator, $shift, $robin, AssignmentType::Regular, overConfirmed: true);
+
+        $this->assertSame(AssignmentType::Regular, $shift->assignments()->where('user_id', $robin->id)->sole()->type);
+    }
+
+    public function test_a_shadow_put_on_as_a_shadow_again_is_still_already_on(): void
+    {
+        $shift = $this->shiftWithPerson('Sam Example', shadow: 'Robin Example');
+        $robin = User::query()->where('name', 'Robin Example')->sole();
+
+        $this->expectExceptionMessage('Robin is already on this shift.');
+
+        app(PutOnShift::class)->handle($this->coordinator(), $shift, $robin, AssignmentType::Shadow);
     }
 
     public function test_putting_someone_on_a_shift_that_overlaps_another_of_theirs_is_refused(): void

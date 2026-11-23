@@ -31,7 +31,7 @@ use InvalidArgumentException;
  *
  * The transaction locks the area, then the slot, then reads the regulars and locks the shifts, the same order EndRegular uses, so the two can't interleave.
  *
- * Shifts that have started, are cancelled, or that this person is already on (as a shadow or for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift. Each of those shifts' oldest open cover request is filled through CoverFill::fillForRegularsLocked(), so a slot someone gave up stops asking for cover when a coordinator adds a new regular; the releasers get one "is covering" email each, listing their dates, and the leads aren't told.
+ * Shifts that have started, are cancelled, or where this person already has a regular place (for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift. On a shift the person is shadowing, their shadow place becomes a regular place instead (#21), through PutOnShift::makeRegular(), which logs assignment.type_changed; it counts as a new regular place everywhere a new one would, in the self-claim's full check, the shifts counted and the cover requests filled. Each of those shifts' oldest open cover request is filled through CoverFill::fillForRegularsLocked(), so a slot someone gave up stops asking for cover when a coordinator adds a new regular; the releasers get one "is covering" email each, listing their dates, and the leads aren't told.
  *
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on, and a `skipped_full` attribute listing the dates a self-claim left out because they already have the people they need (always empty otherwise).
  *
@@ -151,8 +151,10 @@ class AddRegular
             foreach ($candidates as $shift) {
                 $on = $assignments->get($shift->id, new Collection);
                 $date = $shift->local_date->toDateString();
+                $mine = $on->firstWhere('user_id', $user->id);
 
-                if ($shift->cancelled_at !== null || ! $regular->activeOn($date) || $on->contains('user_id', $user->id)) {
+                // Someone already in a regular place (for that one date) keeps it. A shadow place is turned into a regular one below (#21).
+                if ($shift->cancelled_at !== null || ! $regular->activeOn($date) || $mine?->type === AssignmentType::Regular) {
                     continue;
                 }
 
@@ -173,16 +175,26 @@ class AddRegular
                     continue;
                 }
 
-                $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $user->id, 'type' => AssignmentType::Regular]);
-                $assignmentChanges = ChangeLogEntry::changesOf($assignment);
-                $assignment->save();
-                // The same entry PutOnShift records, so a shift's history shows everyone put on it however they got there.
-                ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value] + ($selfClaim ? ['via' => 'take'] : []), $assignmentChanges, about: $user);
+                // Read before the shadow place below changes, so it's whether anyone filled a place before this person did.
+                $nobodyButShadowsBefore = $on->where('type', AssignmentType::Regular)->isEmpty();
+                $via = $selfClaim ? ['via' => 'take'] : [];
+
+                if ($mine !== null) {
+                    // The shadow place becomes a regular place on the same assignment, freeing the shadow spot. The assignment row is already locked above.
+                    PutOnShift::makeRegular($actor, $shift, $mine, $user, $via);
+                } else {
+                    $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $user->id, 'type' => AssignmentType::Regular]);
+                    $assignmentChanges = ChangeLogEntry::changesOf($assignment);
+                    $assignment->save();
+                    // The same entry PutOnShift records, so a shift's history shows everyone put on it however they got there.
+                    ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Regular->value] + $via, $assignmentChanges, about: $user);
+                }
+
                 $shifts->push($shift);
 
                 // A self-claim fills its requests in TakeShift's $onPutOn, which words the emails for a take.
                 if (! $selfClaim) {
-                    array_push($covered, ...CoverFill::fillForRegularsLocked($actor, $shift, [$user], $on->where('type', AssignmentType::Regular)->isEmpty()));
+                    array_push($covered, ...CoverFill::fillForRegularsLocked($actor, $shift, [$user], $nobodyButShadowsBefore));
                 }
             }
 

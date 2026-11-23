@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. A regular place fills the shift's oldest open cover request through CoverFill::fillLocked(), so the ladder stops and the releaser and shadows hear who's covering; the leads aren't told, since a coordinator or lead did it. Refuses a shift that is cancelled or has started, a person who is already on it, turned off (checked again under the shift lock) or on another active shift at an overlapping time, and a shadow when the shadow spots are taken. A regular beyond the people the shift needs is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the date and the count. The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
+ * A coordinator or area lead puts someone on one shift, as a regular for that date or as a shadow. A regular place fills the shift's oldest open cover request through CoverFill::fillLocked(), so the ladder stops and the releaser and shadows hear who's covering; the leads aren't told, since a coordinator or lead did it. Someone shadowing the shift who is put on as a regular moves to a regular place on the same assignment through makeRegular() (#21), which counts as a new regular place for people needed and fills a cover request the same way. Refuses a shift that is cancelled or has started, a person who is already on it (except that move), turned off (checked again under the shift lock) or on another active shift at an overlapping time, and a shadow when the shadow spots are taken. A regular beyond the people the shift needs is allowed only when `$overConfirmed` is true; without it NeedsOverConfirmation is thrown with the date and the count. The refusals are written to be shown on screen. Logged with the shift as the subject and about the person, with the new assignment's values; they're emailed after the response.
  */
 class PutOnShift
 {
@@ -41,7 +41,10 @@ class PutOnShift
                 throw new DomainException($person->firstName().' has been turned off and can\'t be put on a shift.');
             }
 
-            if ($shift->assignments()->where('user_id', $person->id)->exists()) {
+            // Locked after the shift. A shadow put on as a regular moves to a regular place instead of being refused (#21).
+            $existing = $shift->assignments()->where('user_id', $person->id)->lockForUpdate()->first();
+
+            if ($existing !== null && ! ($existing->type === AssignmentType::Shadow && $type === AssignmentType::Regular)) {
                 throw new DomainException($person->firstName().' is already on this shift.');
             }
 
@@ -60,12 +63,17 @@ class PutOnShift
             }
 
             $nobodyButShadowsBefore = $shift->filledCount() === 0;
-            $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => $type]);
-            $changes = ChangeLogEntry::changesOf($assignment);
-            $assignment->save();
 
-            // About the person, with the shift as the subject, so a shift's history is found with forSubject($shift).
-            ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => $type->value], $changes, about: $person);
+            if ($existing !== null) {
+                $assignment = self::makeRegular($actor, $shift, $existing, $person);
+            } else {
+                $assignment = new Assignment(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => $type]);
+                $changes = ChangeLogEntry::changesOf($assignment);
+                $assignment->save();
+
+                // About the person, with the shift as the subject, so a shift's history is found with forSubject($shift).
+                ChangeLogEntry::record($actor, 'assignment.added', $shift, ['assignment_id' => $assignment->id, 'type' => $type->value], $changes, about: $person);
+            }
 
             // Locked after the shift, in CoverFill. A shadow doesn't cover a released place.
             $fill = $type === AssignmentType::Regular ? CoverFill::fillLocked($actor, $shift, $current, $nobodyButShadowsBefore) : null;
@@ -83,6 +91,22 @@ class PutOnShift
         });
 
         return $assignment;
+    }
+
+    /**
+     * Turns someone's shadow place on a shift into a regular place on the same assignment (#21), freeing the shadow spot, and logs `assignment.type_changed` with the shift as the subject, about the person, with `type` changing from shadow to regular. `$details` adds to the entry's details (AddRegular passes `via` "take" for a self-claim). The caller holds the shift and assignment locks and fills any cover request itself. Used by handle() and AddRegular.
+     *
+     * @param  array<string, string>  $details
+     */
+    public static function makeRegular(?User $actor, Shift $lockedShift, Assignment $shadow, User $person, array $details = []): Assignment
+    {
+        $shadow->type = AssignmentType::Regular;
+        $changes = ChangeLogEntry::changesOf($shadow);
+        $shadow->save();
+
+        ChangeLogEntry::record($actor, 'assignment.type_changed', $lockedShift, ['assignment_id' => $shadow->id] + $details, $changes, about: $person);
+
+        return $shadow;
     }
 
     /** Another active shift the person is on (as a regular or a shadow) whose time overlaps this one, or null. Back-to-back shifts don't overlap. */

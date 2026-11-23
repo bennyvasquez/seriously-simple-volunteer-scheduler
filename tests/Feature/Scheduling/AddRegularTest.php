@@ -8,18 +8,22 @@ use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\EndRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\NeedsOverConfirmation;
+use App\ChangeLog\Describe;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Enums\SlotFrequency;
+use App\Http\Controllers\ChangeLogController;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\MadeRegularNotification;
+use App\Notifications\ShiftCoveredNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -143,10 +147,115 @@ class AddRegularTest extends TestCase
         $this->assertSame(1, $this->slot->regulars()->count());
         $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($user));
         $this->assertSame(
-            AssignmentType::Shadow,
+            AssignmentType::Regular,
             Shift::query()->whereDate('local_date', '2026-10-22')->firstOrFail()
-                ->assignments()->where('user_id', $user->id)->firstOrFail()->type,
+                ->assignments()->where('user_id', $user->id)->sole()->type,
         );
+    }
+
+    /** A coordinator who manages every area, for the tests that check who made a change. */
+    private function coordinator(): User
+    {
+        $coordinator = User::factory()->create(['name' => 'Casey Coordinator']);
+        app(GrantRole::class)->handle(null, $coordinator, Role::Coordinator);
+
+        return $coordinator;
+    }
+
+    /** Puts the person in a shadow spot on the slot's shift on this date and returns the shift. */
+    private function shadowOn(User $user, string $date): Shift
+    {
+        $shift = Shift::query()->whereDate('local_date', $date)->firstOrFail();
+        $shift->update(['shadow_spots' => 1]);
+        $shift->assignments()->create(['user_id' => $user->id, 'type' => AssignmentType::Shadow]);
+
+        return $shift;
+    }
+
+    public function test_a_shadow_made_the_regular_takes_the_regular_place_on_shifts_they_shadow(): void
+    {
+        $this->withoutDefer();
+        Notification::fake();
+        $coordinator = $this->coordinator();
+        $avery = User::factory()->cleared()->create(['name' => 'Avery Example']);
+        $sam = User::factory()->cleared()->create(['name' => 'Sam Example']);
+        $jordan = User::factory()->cleared()->create(['name' => 'Jordan Example']);
+        $shadowed = [$this->shadowOn($avery, '2026-10-22'), $this->shadowOn($avery, '2026-10-29')];
+        $oldest = [];
+        $newer = [];
+
+        foreach ($shadowed as $shift) {
+            $oldest[] = CoverRequest::query()->create(['shift_id' => $shift->id, 'released_by' => $sam->id]);
+            $newer[] = CoverRequest::query()->create(['shift_id' => $shift->id, 'released_by' => $jordan->id]);
+        }
+
+        $regular = app(AddRegular::class)->handle($coordinator, $this->slot, $avery, '2026-10-01');
+
+        $this->assertSame(3, $regular->getAttribute('added_to_shifts'));
+        $this->assertSame(['2026-10-15', '2026-10-22', '2026-10-29'], $this->datesFor($avery));
+
+        foreach ($shadowed as $i => $shift) {
+            // The same assignment, now in a regular place, and the shadow spot is free again.
+            $assignment = $shift->assignments()->where('user_id', $avery->id)->sole();
+            $this->assertSame(AssignmentType::Regular, $assignment->type);
+            $this->assertSame(0, $shift->assignments()->where('type', AssignmentType::Shadow)->count());
+            $this->assertFalse(ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.added')->exists());
+
+            $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.type_changed')->sole();
+            $this->assertSame($coordinator->id, $entry->actor_id);
+            $this->assertSame($avery->id, $entry->affected_user_id);
+            $this->assertSame(['assignment_id' => $assignment->id], $entry->details);
+            $this->assertSame(['type' => ['old' => 'shadow', 'new' => 'regular']], $entry->changes);
+            $this->assertTrue(ChangeLogEntry::query()->ofAction(...ChangeLogController::KINDS['schedule'][1])->whereKey($entry->id)->exists());
+            $this->assertSame('Moved Avery Example from shadowing to a regular place on the '.$shift->area->name.' shift on '.$shift->whenText(), Describe::entry($entry, $coordinator));
+
+            // The oldest open request on each shift is filled by the new regular; the newer one still asks for cover.
+            $this->assertSame($avery->id, $oldest[$i]->fresh()->filled_by);
+            $this->assertNull($newer[$i]->fresh()->filled_at);
+            $this->assertSame($avery->id, ChangeLogEntry::query()->forSubject($shift)->ofAction('cover_request.filled')->sole()->affected_user_id);
+        }
+
+        $added = ChangeLogEntry::query()->about($avery)->ofAction('regular.added')->sole();
+        $this->assertCount(3, $added->details['added_to_shift_ids']);
+        Notification::assertSentToTimes($sam, ShiftCoveredNotification::class, 1);
+        Notification::assertSentTo($sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => count($notification->dates) === 2 && $notification->takerFirstName === 'Avery');
+        Notification::assertNotSentTo($jordan, ShiftCoveredNotification::class);
+    }
+
+    public function test_a_not_cleared_shadow_can_still_be_made_regular_by_a_coordinator(): void
+    {
+        $coordinator = $this->coordinator();
+        $trainee = User::factory()->create(['name' => 'Taylor Example']);
+        $this->assertFalse($trainee->isCleared());
+        $shift = $this->shadowOn($trainee, '2026-10-22');
+
+        app(AddRegular::class)->handle($coordinator, $this->slot, $trainee, '2026-10-01');
+
+        $this->assertSame(AssignmentType::Regular, $shift->assignments()->where('user_id', $trainee->id)->sole()->type);
+        $entry = ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.type_changed')->sole();
+        $this->assertSame($trainee->id, $entry->affected_user_id);
+        $this->assertSame(['old' => 'shadow', 'new' => 'regular'], $entry->changes['type']);
+        $this->assertNull($trainee->fresh()->cleared_at);
+    }
+
+    public function test_a_self_claim_counts_a_shadow_place_turned_regular_against_a_full_date(): void
+    {
+        $this->slot->update(['shadow_spots' => 1]);
+        $avery = User::factory()->cleared()->create(['name' => 'Avery Example']);
+        $other = User::factory()->create();
+        // October 29 already has the person it needs, so Avery's shadow place there stays a shadow place.
+        $full = $this->shadowOn($avery, '2026-10-29');
+        $full->assignments()->create(['user_id' => $other->id, 'type' => AssignmentType::Regular]);
+        $open = $this->shadowOn($avery, '2026-10-22');
+
+        $regular = app(AddRegular::class)->handle($avery, $this->slot, $avery, '2026-10-22', selfClaim: true);
+
+        $this->assertSame(['2026-10-29'], $regular->getAttribute('skipped_full'));
+        $this->assertSame(AssignmentType::Regular, $open->assignments()->where('user_id', $avery->id)->sole()->type);
+        $this->assertSame(AssignmentType::Shadow, $full->assignments()->where('user_id', $avery->id)->sole()->type);
+        $entry = ChangeLogEntry::query()->forSubject($open)->ofAction('assignment.type_changed')->sole();
+        $this->assertSame(['assignment_id' => $entry->details['assignment_id'], 'via' => 'take'], $entry->details);
+        $this->assertSame('Moved from shadowing to a regular place on the '.$open->area->name.' shift on '.$open->whenText(), Describe::entry($entry, $avery));
     }
 
     public function test_someone_who_took_one_date_can_become_the_regular(): void
