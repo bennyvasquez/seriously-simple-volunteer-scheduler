@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Gate;
  *
  * Moving back commits first, in its own transaction, the way turning someone off does: it locks the person's row, sets `cleared_at` to null and `shadowing_since` to now (so their shadow progress starts over, see ShadowProgress) and logs `user.moved_back` about them, with both columns' old and new values and the coordinator's note (if any) in `changes` and the choice in `details.release`. From then on CoverEligibility leaves them out of cover requests and refuses their takes. Releasing runs after that commit, through ReleaseFutureSchedule::releaseRegularPlaces(). If the release fails after the move back committed, the person stays not cleared with their shifts and regulars kept, and the coordinator can release them through the calendar.
  *
- * The person gets one email after the response, "You've been moved back to shadowing", listing what was released, and no "You're off" email. The note stays in the change log and isn't emailed.
+ * The person gets one email after the response, "You've been moved back to shadowing", listing what was released (the shifts other volunteers were asked to cover apart from the ones that still have the people they need), and no "You're off" email. The note stays in the change log and isn't emailed.
  */
 class MoveBackToShadowing
 {
@@ -106,17 +106,19 @@ class MoveBackToShadowing
 
         $shifts = collect();
         $noLongerRegularOn = [];
+        $nobodyAskedIds = [];
 
         if ($release) {
             $regulars = $this->regulars($locked);
-            $shiftIds = $this->releaseFutureSchedule->releaseRegularPlaces($actor, $locked)->keys();
-            $shifts = Shift::query()->with('area')->whereKey($shiftIds)->orderBy('starts_at')->orderBy('id')->get();
+            $requests = $this->releaseFutureSchedule->releaseRegularPlaces($actor, $locked);
+            $shifts = Shift::query()->with('area')->whereKey($requests->keys())->orderBy('starts_at')->orderBy('id')->get();
+            $nobodyAskedIds = $requests->filter(fn ($request) => $request === null)->keys()->all();
             $noLongerRegularOn = self::slotWords($regulars);
         }
 
         if ($locked->canSignIn()) {
             $organization = Organization::current();
-            $email = new MovedBackNotification($actor, $organization, (int) $organization->required_shadow_shifts, $shifts, $noLongerRegularOn);
+            $email = new MovedBackNotification($actor, $organization, (int) $organization->required_shadow_shifts, $shifts, $noLongerRegularOn, $nobodyAskedIds);
             defer(fn () => $locked->notify($email));
         }
 

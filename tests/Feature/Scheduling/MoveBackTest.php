@@ -228,6 +228,7 @@ class MoveBackTest extends TestCase
     public function test_a_shift_inside_24_hours_escalates_once(): void
     {
         $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $otherCoordinator = $this->withRole('Jordan Coordinator', Role::Coordinator);
         $regular = $this->morgansThursdays();
         $tomorrow = $regular->weeklySlot->shifts()->where('local_date', '2026-10-15')->sole();
         Notification::fake();
@@ -242,12 +243,14 @@ class MoveBackTest extends TestCase
         $this->assertSame($tomorrow->id, $escalated->subject_id);
         $this->assertSame($this->coordinator->id, $escalated->actor_id);
 
-        foreach ([$lead, $this->coordinator] as $person) {
+        foreach ([$lead, $otherCoordinator] as $person) {
             Notification::assertSentToTimes($person, CoverUrgentNotification::class, 1);
             Notification::assertSentTo($person, CoverUrgentNotification::class, fn (CoverUrgentNotification $notification) => count($notification->shifts) === 1);
             // The cover request lists only the shift that didn't escalate, so nobody hears about tomorrow twice.
             Notification::assertSentTo($person, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => count($notification->shifts) === 1);
         }
+        // The coordinator who moved Morgan back released tomorrow's shift themselves, so they get no urgent email about it (the 2026-11-21 rule).
+        Notification::assertNotSentTo($this->coordinator, CoverUrgentNotification::class);
         Notification::assertSentTo($this->robin, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => count($notification->shifts) === 2);
         Notification::assertNotSentTo($this->morgan, CoverUrgentNotification::class);
 
@@ -363,7 +366,8 @@ class MoveBackTest extends TestCase
             return $mail->subject === 'You\'ve been moved back to shadowing'
                 && str_contains($text, 'Hi Morgan,')
                 && str_contains($text, 'Chris moved you back to shadowing at Example Makerspace. You can sign up for shadow spots from Home, and a coordinator will review you again once you\'ve done 2 shadow shifts.')
-                && str_contains($text, 'These shifts were given to other volunteers:')
+                && str_contains($text, 'You\'re off these shifts, and other volunteers were asked to cover them:')
+                && ! str_contains($text, 'nobody was asked')
                 && str_contains($text, 'Front desk, Thursday, October 15, 6:30 to 9:30pm')
                 && str_contains($text, 'Hosted events, Saturday, October 17, 10am to 2pm')
                 && str_contains($text, 'Front desk, Thursday, October 22, 6:30 to 9:30pm')
@@ -387,6 +391,46 @@ class MoveBackTest extends TestCase
             return str_contains($text, 'Chris moved you back to shadowing at Example Makerspace.')
                 && ! str_contains($text, 'These shifts')
                 && ! str_contains($text, 'no longer the regular');
+        });
+    }
+
+    public function test_the_email_says_which_shifts_asked_for_cover_and_which_asked_nobody(): void
+    {
+        $this->morgansThursdays();
+        $saturday = $this->morgansSaturday();
+        // Robin is on Saturday too, and it needs only one person, so Morgan coming off it leaves it with the people it needs.
+        Assignment::create(['shift_id' => $saturday->id, 'user_id' => $this->robin->id, 'type' => AssignmentType::Regular]);
+        Notification::fake();
+
+        app(MoveBackToShadowing::class)->handle($this->coordinator, $this->morgan, true, null);
+
+        Notification::assertSentTo($this->morgan, MovedBackNotification::class, function (MovedBackNotification $notification) {
+            $text = $this->text($notification->toMail($this->morgan));
+            $asked = strpos($text, 'You\'re off these shifts, and other volunteers were asked to cover them:');
+            $nobody = strpos($text, 'You\'re off these shifts too. They still have the people they need, so nobody was asked:');
+
+            return $asked !== false && $nobody !== false
+                && strpos($text, 'Front desk, Thursday, October 15, 6:30 to 9:30pm') > $asked
+                && strpos($text, 'Front desk, Thursday, October 15, 6:30 to 9:30pm') < $nobody
+                && strpos($text, 'Hosted events, Saturday, October 17, 10am to 2pm') > $nobody
+                && ! str_contains($text, 'given to other volunteers');
+        });
+    }
+
+    public function test_the_email_leaves_out_the_cover_line_when_every_shift_asked_nobody(): void
+    {
+        $saturday = $this->morgansSaturday();
+        Assignment::create(['shift_id' => $saturday->id, 'user_id' => $this->robin->id, 'type' => AssignmentType::Regular]);
+        Notification::fake();
+
+        app(MoveBackToShadowing::class)->handle($this->coordinator, $this->morgan, true, null);
+
+        Notification::assertSentTo($this->morgan, MovedBackNotification::class, function (MovedBackNotification $notification) {
+            $text = $this->text($notification->toMail($this->morgan));
+
+            return str_contains($text, 'You\'re off these shifts too. They still have the people they need, so nobody was asked:')
+                && str_contains($text, 'Hosted events, Saturday, October 17, 10am to 2pm')
+                && ! str_contains($text, 'other volunteers were asked');
         });
     }
 

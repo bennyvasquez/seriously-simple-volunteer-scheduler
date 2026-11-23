@@ -260,12 +260,15 @@ class ReleaseShifts
             // Every unescalated open request that counts, the way the ladder would take them, so it never escalates this shift a second time.
             $unescalated = CoverLadder::openRequestsLocked($lockedShift)->whereNull('escalated_at')->values();
 
+            // Whoever released is left out of the urgent email about their own release: the person, or the coordinator who released for them when moving them back to shadowing (the person never holds a role then, so leaving them out would do nothing).
+            $leftOut = $actor ?? $person;
+
             if ($unescalated->isNotEmpty()) {
-                $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $actor ?? $person, $person);
+                $released['sends'] = $this->ladder->escalateLocked($lockedShift, $unescalated, $actor ?? $person, $leftOut);
             } elseif ($shadows->isNotEmpty()) {
                 // Every request that counts was already escalated (people needed was lowered after an escalated release, say), so the leads and coordinators already know and aren't emailed again. This release took off the last regular, so the shadows' spot goes on hold now and they haven't heard "still nobody" for it yet: they get that, not "on hold" as well.
                 $audience = CoverLadder::urgentAudience($lockedShift->area);
-                unset($audience[$person->id]);
+                unset($audience[$leftOut->id]);
                 $released['sends'] = array_values(CoverLadder::stillUncoveredSends($lockedShift, $audience, $person->firstName()));
             }
         } else {
