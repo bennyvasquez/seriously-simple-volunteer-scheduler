@@ -4,6 +4,7 @@
 @section('header', 'Emails')
 
 @section('content')
+<h1>Emails</h1>
 @if ($status)
 <p role="status">{{ $status }}</p>
 @endif

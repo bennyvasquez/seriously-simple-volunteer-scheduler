@@ -25,6 +25,7 @@ class EmailSettingsTest extends TestCase
         $sam = User::factory()->create()->fresh();
 
         $this->actingAs($sam)->get(route('account.emails'))->assertOk()
+            ->assertSee('<h1>Emails</h1>', false)
             ->assertSee("Email me when someone can't make a shift I could take", false)
             ->assertSee('Usually one or two emails each time a shift needs covering.')
             ->assertSee('Always sent')
