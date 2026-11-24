@@ -196,6 +196,68 @@ class ChangeNoticesTest extends TestCase
         $this->assertStringNotContainsString('(was 5 to 8pm)', $this->text($second, $this->sam));
     }
 
+    public function test_undoing_a_change_before_answering_asks_nothing_and_sends_no_email(): void
+    {
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:00', '21:00', 2, 0, null);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->sam->id, 'type' => AssignmentType::Regular]);
+
+        app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '19:00', 'end_time' => '22:00']);
+        app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '18:00', 'end_time' => '21:00']);
+
+        $this->assertSame(0, ChangeNotice::query()->open()->count());
+        $this->assertSame(1, ChangeNotice::query()->count());
+        Notification::assertSentToTimes($this->sam, ShiftTimeChangedNotification::class, 1);
+        $this->assertSame(1, ChangeLogEntry::query()->where('action', 'change_notice.sent')->count());
+
+        $this->actingAs($this->coordinator)->get(route('calendar.shift', $shift))->assertOk()
+            ->assertSee('Sam E.')->assertDontSee('Hasn\'t answered yet', false);
+    }
+
+    public function test_a_second_change_to_a_different_time_still_asks_with_the_last_asked_time(): void
+    {
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:00', '21:00', 2, 0, null);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->sam->id, 'type' => AssignmentType::Regular]);
+
+        app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '19:00', 'end_time' => '22:00']);
+        app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '20:00', 'end_time' => '23:00']);
+
+        $this->assertSame(1, ChangeNotice::query()->open()->count());
+        Notification::assertSentToTimes($this->sam, ShiftTimeChangedNotification::class, 2);
+        $second = Notification::sent($this->sam, ShiftTimeChangedNotification::class)->last();
+        $this->assertStringContainsString('8 to 11pm (was 6 to 9pm)', $this->text($second, $this->sam));
+    }
+
+    public function test_an_undone_shift_is_left_out_of_the_email_about_the_persons_other_changed_shift(): void
+    {
+        $one = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:00', '21:00', 2, 0, null);
+        $two = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-24', '18:00', '21:00', 2, 0, null);
+
+        foreach ([$one, $two] as $shift) {
+            Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->sam->id, 'type' => AssignmentType::Regular]);
+        }
+        // Sam is asked about the move of the first shift, then one edit puts it back and moves the second.
+        app(UpdateShift::class)->handle($this->coordinator, $one, ['start_time' => '19:00', 'end_time' => '22:00']);
+        Notification::fake();
+
+        $oneBefore = $one->fresh();
+        $twoBefore = $two->fresh();
+        $oneBefore->update(['starts_at' => CarbonImmutable::parse('2026-10-22 18:00', self::TIMEZONE)->utc(), 'ends_at' => CarbonImmutable::parse('2026-10-22 21:00', self::TIMEZONE)->utc()]);
+        $twoAfter = $two->fresh();
+        $twoAfter->update(['starts_at' => CarbonImmutable::parse('2026-10-24 17:00', self::TIMEZONE)->utc(), 'ends_at' => CarbonImmutable::parse('2026-10-24 20:00', self::TIMEZONE)->utc()]);
+
+        $sent = app(SendChangeNotices::class)->recordLocked($this->coordinator, [
+            ['shift' => $one->fresh()->load('area'), 'was_starts_at' => CarbonImmutable::parse('2026-10-22 19:00', self::TIMEZONE)->utc(), 'was_ends_at' => CarbonImmutable::parse('2026-10-22 22:00', self::TIMEZONE)->utc()],
+            ['shift' => $twoAfter->load('area'), 'was_starts_at' => $twoBefore->starts_at, 'was_ends_at' => $twoBefore->ends_at],
+        ]);
+
+        $this->assertCount(1, $sent);
+        $this->assertSame([$two->id], $sent[0]['notification']->shiftIds);
+        $text = $this->text($sent[0]['notification'], $this->sam);
+        $this->assertStringContainsString('Saturday, October 24: 5 to 8pm (was 6 to 9pm)', $text);
+        $this->assertStringNotContainsString('October 22', $text);
+        $this->assertSame([$two->id], ChangeNotice::query()->open()->pluck('shift_id')->all());
+    }
+
     public function test_shadows_get_notices_too(): void
     {
         $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:00', '21:00', 2, 1, null);

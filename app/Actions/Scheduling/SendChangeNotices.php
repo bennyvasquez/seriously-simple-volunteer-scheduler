@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 /**
  * Records change notices for a time change (spec section 10) and builds the emails asking each person whether the new time works. Call recordLocked() inside the edit's transaction after it holds the shift and assignment locks. It changes nothing but notices and the change log, and sends nothing: the caller sends the returned notifications after the response.
  *
- * For every person on a changed shift who can sign in (shadows too), it ends their open notices on that shift (replaced by this change, and the new notice keeps the replaced notice's "was" time, the last time the person was asked about, not an unanswered time in between), writes one row per shift under one new batch per person, and logs one `change_notice.sent` entry per person about them, with the batch, the shift ids and their count in `details`. Shifts that have started or are cancelled get nothing. Names go only in the entry's actor and affected person, never in details.
+ * For every person on a changed shift who can sign in (shadows too), it ends their open notices on that shift (replaced by this change, and the new notice keeps the replaced notice's "was" time, the last time the person was asked about, not an unanswered time in between), writes one row per shift under one new batch per person, and logs one `change_notice.sent` entry per person about them, with the batch, the shift ids and their count in `details`. A shift that is back at the time the person was last asked about (a change undone before they answered) ends the replaced notice and gets no new one, and a person with nothing else changed in the edit gets no entry and no email. Shifts that have started or are cancelled get nothing. Names go only in the entry's actor and affected person, never in details.
  */
 class SendChangeNotices
 {
@@ -52,6 +52,19 @@ class SendChangeNotices
             ChangeNotice::query()->whereKey($replaced->modelKeys())->update(['ended_at' => now()]);
             // The oldest open notice on each shift, whose "was" is the last time the person was asked about.
             $replaced = $replaced->unique('shift_id')->keyBy('shift_id');
+
+            // A shift back at the time the person was last asked about (a change undone before they answered) asks nothing: the replaced notice ends and nothing new is recorded or emailed for it.
+            $mine = $mine->reject(function (array $change) use ($replaced) {
+                $before = $replaced->get($change['shift']->id);
+
+                return $before !== null
+                    && $before->was_starts_at->equalTo($change['shift']->starts_at)
+                    && $before->was_ends_at->equalTo($change['shift']->ends_at);
+            })->values();
+
+            if ($mine->isEmpty()) {
+                continue;
+            }
 
             foreach ($mine as $change) {
                 $before = $replaced->get($change['shift']->id);
