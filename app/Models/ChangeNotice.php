@@ -30,7 +30,7 @@ class ChangeNotice extends Model
     /** Notices not confirmed and not ended. */
     public function scopeOpen(Builder $query): void
     {
-        $query->whereNull('confirmed_at')->whereNull('ended_at');
+        $query->whereNull('change_notices.confirmed_at')->whereNull('change_notices.ended_at');
     }
 
     public function user(): BelongsTo
@@ -49,13 +49,13 @@ class ChangeNotice extends Model
     }
 
     /**
-     * Every row of one batch, earliest shift first.
+     * Every row of one person's batch, earliest shift first. The query is scoped to the person before it runs, so someone else's batch costs what a made-up one does and loads none of their rows.
      *
      * @return Collection<int, static>
      */
-    public static function batchFor(string $batch): Collection
+    public static function batchFor(string $batch, User $user): Collection
     {
-        return static::query()->with('shift.area')->where('batch', $batch)
+        return static::query()->with(['shift.area', 'changedBy'])->where('change_notices.batch', $batch)->where('change_notices.user_id', $user->id)
             ->join('shifts', 'shifts.id', '=', 'change_notices.shift_id')
             ->orderBy('shifts.starts_at')->orderBy('change_notices.id')
             ->select('change_notices.*')->get();

@@ -24,7 +24,7 @@ class ChangeNoticeController extends Controller
     public function show(Request $request, string $batch): View
     {
         $user = $request->user();
-        $rows = ChangeNotice::batchFor($batch)->where('user_id', $user->id)->values();
+        $rows = ChangeNotice::batchFor($batch, $user);
 
         abort_if($rows->isEmpty(), 404);
 
@@ -45,7 +45,8 @@ class ChangeNoticeController extends Controller
             $open->isNotEmpty() => ['open', $open],
             $confirmed->isNotEmpty() => [$request->session()->pull('change_confirmed') ? 'thanks' : 'confirmed', $confirmed],
             $ahead->contains(fn (ChangeNotice $row) => $replaced($row)) => ['replaced', $ahead->values()],
-            default => ['gone', $rows],
+            // Ended without a newer notice, and the person is on the shift again (they left and were put back).
+            default => ['changed', $ahead->values()],
         };
 
         $summary = self::summary($shown);
@@ -120,7 +121,6 @@ class ChangeNoticeController extends Controller
             'count' => $rows->count(),
             'lines' => $lines->all(),
             'changedBy' => $changedBy === null || $changedBy->is_removed_person ? null : $changedBy->shortName(),
-            'earliest' => $first,
             'earliest' => $first,
         ];
     }

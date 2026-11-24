@@ -15,6 +15,7 @@ use App\Models\Shift;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
@@ -313,5 +314,50 @@ class ChangeNoticePageTest extends TestCase
         $this->actingAs($this->sam)->get('/')->assertOk()->assertSee('Time changed');
         $mine = $this->actingAs($this->sam)->get(route('my-shifts'))->assertOk();
         $this->assertSame(1, substr_count($mine->getContent(), 'Time changed'));
+    }
+
+    public function test_someone_elses_notice_costs_the_same_queries_as_a_made_up_one(): void
+    {
+        $notice = $this->notice($this->shift('2026-10-22', $this->sam), $this->sam);
+        // The first request of a session also records last_seen_at, so warm it up before counting.
+        $this->actingAs($this->jordan)->get(route('home'));
+        $count = function (string $url): int {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->actingAs($this->jordan)->get($url)->assertNotFound();
+            $queries = collect(DB::getQueryLog())->pluck('query');
+            DB::disableQueryLog();
+
+            return $queries->count();
+        };
+
+        $this->assertSame($count(route('changes.show', '01JNOSUCHBATCH00000000000')), $count($this->answer($notice)));
+    }
+
+    public function test_a_guest_posting_an_answer_gets_what_the_other_volunteer_forms_give(): void
+    {
+        $notice = $this->notice($this->shift('2026-10-22', $this->sam), $this->sam);
+        $shift = $this->shift('2026-10-29');
+
+        // No session means no CSRF token: the same 419 the take and shadow forms give a guest.
+        $take = $this->post(route('shifts.take', $shift))->getStatusCode();
+        $shadow = $this->post(route('shifts.shadow', $shift))->getStatusCode();
+        $this->post(route('changes.confirm', $notice->batch))->assertStatus($take);
+
+        $this->assertSame($take, $shadow);
+        $this->assertNull($notice->fresh()->confirmed_at);
+    }
+
+    public function test_someone_put_back_on_a_shift_after_leaving_sees_it_changed(): void
+    {
+        $shift = $this->shift('2026-10-22', $this->sam);
+        $notice = $this->notice($shift, $this->sam, null, ['ended_at' => now()]);
+
+        $this->actingAs($this->sam)->get($this->answer($notice))->assertOk()
+            ->assertSee('This shift has changed since that email.')
+            ->assertDontSee('You\'re not on this shift any more.', false)
+            ->assertSee('Open the shift');
+        $this->actingAs($this->sam)->post($this->answer($notice));
+        $this->assertNull($notice->fresh()->confirmed_at);
     }
 }

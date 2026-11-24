@@ -5,6 +5,7 @@ namespace App\Actions\Scheduling;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\ChangeNotice;
+use App\Models\Shift;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -16,15 +17,15 @@ class ConfirmChangeNotice
     public function handle(User $person, string $batch): int
     {
         return DB::transaction(function () use ($person, $batch) {
-            $notices = ChangeNotice::query()->with('shift')->open()
-                ->where('change_notices.batch', $batch)->where('change_notices.user_id', $person->id)
-                ->join('shifts', 'shifts.id', '=', 'change_notices.shift_id')
-                ->whereNull('shifts.cancelled_at')->where('shifts.starts_at', '>', now())
-                ->orderBy('shifts.starts_at')->orderBy('change_notices.id')
-                ->select('change_notices.*')->lockForUpdate()->get();
-
-            $onIt = Assignment::query()->where('user_id', $person->id)->whereIn('shift_id', $notices->pluck('shift_id'))->pluck('shift_id');
-            $notices = $notices->filter(fn (ChangeNotice $notice) => $onIt->contains($notice->shift_id))->values();
+            // Locks in the project's order: the batch's shifts (by start, then id), then the person's assignments on them, then the notices. This changes no area or weekly slot, so it takes neither lock.
+            $shiftIds = ChangeNotice::query()->where('batch', $batch)->where('user_id', $person->id)->pluck('shift_id');
+            $shifts = Shift::query()->whereKey($shiftIds)->orderBy('starts_at')->orderBy('id')->lockForUpdate()->get()
+                ->filter(fn (Shift $shift) => $shift->cancelled_at === null && $shift->starts_at->greaterThan(now()))->keyBy('id');
+            $onIt = Assignment::query()->where('user_id', $person->id)->whereIn('shift_id', $shifts->keys())->orderBy('id')->lockForUpdate()->pluck('shift_id');
+            $notices = ChangeNotice::query()->open()->where('change_notices.batch', $batch)->where('change_notices.user_id', $person->id)
+                ->whereIn('shift_id', $onIt)->lockForUpdate()->get()
+                ->each(fn (ChangeNotice $notice) => $notice->setRelation('shift', $shifts[$notice->shift_id]))
+                ->sortBy(fn (ChangeNotice $notice) => [$notice->shift->starts_at->getTimestamp(), $notice->id])->values();
 
             if ($notices->isEmpty()) {
                 return 0;

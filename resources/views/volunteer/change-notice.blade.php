@@ -7,6 +7,7 @@
         'thanks' => 'Thanks. You\'re still on at the new time.',
         'confirmed' => 'You already said the new time works.',
         'replaced' => 'This shift has changed again since that email.',
+        'changed' => 'This shift has changed since that email.',
         'started' => 'This shift has already started.',
         default => 'You\'re not on this shift any more.',
     };
@@ -38,7 +39,7 @@
 <a href="{{ $cantUrl }}" class="btn">I can't make it after all</a>
 <a href="{{ route('home') }}" class="btn btn-primary">Back to home</a>
 </div>
-@elseif ($mode === 'replaced')
+@elseif (in_array($mode, ['replaced', 'changed'], true))
 <p>Check the newest email, or open the shift for its current time.</p>
 <a href="{{ $shiftUrl }}" class="btn btn-primary">Open the shift</a>
 @else
