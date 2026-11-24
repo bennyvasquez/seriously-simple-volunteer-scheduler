@@ -290,10 +290,10 @@ class CalendarViewTest extends TestCase
             ->assertDontSee('Tuesdays 9 to 11am');
     }
 
-    public function test_home_links_to_the_calendar_for_people_with_a_role(): void
+    public function test_home_reaches_the_calendar_through_the_menu_for_everyone(): void
     {
-        $this->actingAs($this->coordinator())->get('/')->assertSee(route('calendar.week'));
-        $this->actingAs(User::factory()->create())->get('/')->assertDontSee(route('calendar.week'));
+        $this->actingAs($this->coordinator())->get('/')->assertSee(route('calendar.week'))->assertDontSee('>Calendar<', false);
+        $this->actingAs(User::factory()->create())->get('/')->assertSee(route('calendar.week'))->assertDontSee('>Calendar<', false);
     }
 
     public function test_a_week_across_the_november_time_change_keeps_local_times(): void

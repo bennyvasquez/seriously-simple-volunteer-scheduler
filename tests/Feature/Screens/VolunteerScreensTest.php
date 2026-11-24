@@ -178,11 +178,11 @@ class VolunteerScreensTest extends TestCase
     public function test_home_keeps_the_links_staff_need(): void
     {
         $response = $this->sees($this->coordinator);
-        $response->assertSee(route('calendar.week'), false)->assertSee(route('people.index'), false)->assertSee(route('change-log.index'), false)
+        $response->assertDontSee('>Calendar<', false)->assertSee(route('people.index'), false)->assertSee(route('change-log.index'), false)
             ->assertSee(route('account.show'), false)->assertSee(route('account.emails'), false)->assertSee('Log out');
 
         $volunteer = $this->sees($this->sam);
-        $volunteer->assertDontSee(route('calendar.week'), false)->assertDontSee(route('people.index'), false)->assertDontSee(route('change-log.index'), false)
+        $volunteer->assertDontSee('>Calendar<', false)->assertDontSee(route('people.index'), false)->assertDontSee(route('change-log.index'), false)
             ->assertSee('Login and security')->assertSee('Emails')->assertSee('Log out');
     }
 

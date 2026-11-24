@@ -26,9 +26,6 @@
 
 <section class="shift-section">
 <h2>Your account</h2>
-@if ($user->canViewCalendar())
-<a class="btn" href="{{ route('calendar.week') }}">Calendar</a>
-@endif
 @can('viewAny', App\Models\User::class)
 <a class="btn" href="{{ route('people.index') }}">People</a>
 @endcan

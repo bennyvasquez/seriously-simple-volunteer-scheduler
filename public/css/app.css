@@ -246,3 +246,14 @@ a{color:#1a1a1a}a:hover{color:#000}
 .progress-bar{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px}
 .progress-bar span{height:10px;border:1px solid #1a1a1a;border-radius:5px;box-sizing:border-box}
 .progress-bar .done{background:#1a1a1a}
+
+/* The Home, Schedule and Me menu: in the top bar on a computer, fixed to the bottom of the screen on a phone. */
+.main-nav{display:flex;gap:4px;margin-left:auto}
+.main-nav a{display:flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;color:#1a1a1a;text-decoration:none;border-radius:6px}
+.main-nav a[aria-current="page"]{font-weight:700;background:#ececec}
+@media (max-width:699px){
+.main-nav{position:fixed;left:0;right:0;bottom:0;margin:0;gap:0;z-index:10;background:#fff;border-top:1px solid #ddd}
+.main-nav a{flex:1 1 0;min-height:56px;padding:0;border-radius:0}
+.main-nav a[aria-current="page"]{background:#fff}
+body{padding-bottom:56px}
+}
