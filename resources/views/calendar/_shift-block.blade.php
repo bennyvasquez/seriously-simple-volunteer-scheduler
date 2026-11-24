@@ -1,6 +1,6 @@
 {{-- One shift on the week grid. Overlapping shifts share the day's width. --}}
 @php
-    $info = $week->describe($shift, $now);
+    $info = $week->describe($shift, $now, $viewer);
     [$column, $columnCount] = $columns[$shift->id] ?? [0, 1];
     $style = 'top: '.$week->top($shift).'px; height: '.$week->height($shift).'px;';
     if ($columnCount > 1) {

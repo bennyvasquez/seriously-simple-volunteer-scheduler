@@ -24,7 +24,9 @@
 @section('content')
 <div class="cal-month">
 <div class="cal-month-actions">
+@if ($tools)
 <a href="{{ route('calendar.add', ['date' => $date] + $areaQuery) }}" class="btn btn-primary">+ Add</a>
+@endif
 @if ($canClose)
 <a href="{{ route('calendar.closures.create', $areaQuery) }}" class="btn">Add a closure</a>
 @endif

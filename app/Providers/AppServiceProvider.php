@@ -42,11 +42,11 @@ class AppServiceProvider extends ServiceProvider
         // Long enough to resist guessing; no breached-password lookup, because that calls an outside service on every change.
         Password::defaults(fn () => Password::min(10));
 
-        // Only admins change organization settings (spec section 6).
         // Every active person can read the schedule; changing it needs a role (spec section 6).
         Gate::define('view-schedule', fn (User $user) => $user->isActive());
         Gate::define('view-change-log', fn (User $user) => $user->isActive() && $user->isCoordinator());
         Gate::define('manage-shadowing', fn (User $user) => $user->isActive() && $user->isCoordinator());
+        // Only admins change organization settings (spec section 6).
         Gate::define('manage-settings', fn (User $user) => $user->isActive() && $user->hasRole(Role::Admin));
 
         RateLimiter::for('login-link', fn (Request $request) => Limit::perMinutes(10, 3)->by(Str::lower((string) $request->input('email')).'|'.$request->ip()));

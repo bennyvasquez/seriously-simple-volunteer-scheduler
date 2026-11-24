@@ -54,7 +54,7 @@ a{color:#1a1a1a}a:hover{color:#000}
 .sw{width:14px;height:14px;border-radius:3px;display:inline-block;flex-shrink:0;box-sizing:border-box}
 .sw.area-blue{background:#2b5a8a}.sw.area-orange{background:#9a4f0e}.sw.area-green{background:#2e6b34}.sw.area-purple{background:#5b3d8a}.sw.area-teal{background:#1f6b66}.sw.area-gray{background:#4f4f4f}
 .ev.open{border:2px dashed #1a1a1a}
-.ev.urgent{border:3px solid #1a1a1a}
+.ev.urgent,.ev.mine{border:3px solid #1a1a1a}
 .cal{background:#fff;min-height:calc(100vh - 68px)}
 .cal-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;flex-grow:1}
 .cal-bar-group{display:flex;align-items:center;gap:12px;flex-wrap:wrap}

@@ -8,6 +8,8 @@ use App\Calendar\NeedsAttention;
 use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\Organization;
+use App\Models\Shift;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -70,6 +72,7 @@ class CalendarController extends Controller
             'previous' => $month->subMonth()->format('Y-m'),
             'next' => $month->addMonth()->format('Y-m'),
             'nothingShown' => $shown === [],
+            'tools' => $request->user()->canViewCalendar(),
             'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
             'closableAreaIds' => $this->closableAreaIds($request, $areas),
         ]);
@@ -79,6 +82,8 @@ class CalendarController extends Controller
     private function gridData(Request $request, Organization $organization, CalendarWeek $week, Collection $areas, array $shown): array
     {
         $areaQuery = $this->areaQuery($request, $shown);
+        $user = $request->user();
+        $tools = $user->canViewCalendar();
 
         return [
             'organization' => $organization,
@@ -86,13 +91,28 @@ class CalendarController extends Controller
             'areas' => $areas,
             'shown' => $shown,
             'areaQuery' => $areaQuery,
-            'needsAttention' => NeedsAttention::for($organization, $shown, $areaQuery, $request->user()),
+            'tools' => $tools,
+            'needsAttention' => $tools ? NeedsAttention::for($organization, $shown, $areaQuery, $user) : collect(),
+            'nextShift' => $tools ? null : $this->nextShift($user),
+            'hasOwnShift' => $week->hasShiftOf($user),
+            'viewer' => $user,
             'now' => CarbonImmutable::now(),
             'today' => $organization->today()->toDateString(),
             'nothingShown' => $shown === [],
             'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
             'closableAreaIds' => $this->closableAreaIds($request, $areas),
         ];
+    }
+
+    /** The person's next uncancelled shift that hasn't started, in any area, as a regular or a shadow, with who else is on it. */
+    private function nextShift(User $user): ?Shift
+    {
+        return Shift::query()->active()
+            ->whereHas('assignments', fn ($assignments) => $assignments->where('user_id', $user->id))
+            ->where('starts_at', '>', now())
+            ->with(['area', 'assignments.user'])
+            ->orderBy('starts_at')->orderBy('id')
+            ->first();
     }
 
     /**
