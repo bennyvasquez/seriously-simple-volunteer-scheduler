@@ -10,7 +10,7 @@ use Illuminate\Notifications\Notification;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 
-/** Sent to someone a coordinator moved back to shadowing (MoveBackToShadowing). Names the coordinator by first name only. When their shifts were released it lists them, split into the ones other volunteers were asked to cover and the ones that still have the people they need (where nobody was asked), and the weekly slots they're no longer the regular on; it replaces the "You're off" email a release would send. The coordinator's note stays in the change log and isn't emailed. */
+/** Sent to someone a coordinator moved back to shadowing (MoveBackToShadowing). Names the coordinator by first name and last initial. When their shifts were released it lists them, split into the ones other volunteers were asked to cover and the ones that still have the people they need (where nobody was asked), and the weekly slots they're no longer the regular on; it replaces the "You're off" email a release would send. The coordinator's note stays in the change log and isn't emailed. */
 class MovedBackNotification extends Notification
 {
     public string $coordinatorFirstName;

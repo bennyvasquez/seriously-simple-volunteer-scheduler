@@ -313,7 +313,7 @@ final class CalendarWeek
         ];
     }
 
-    /** First names of the people of this type on the shift. For someone without the coordinator tools the viewer is "You", listed first. */
+    /** First names and last initials of the people of this type on the shift. For someone without the coordinator tools the viewer is "You", listed first. */
     private function names(Shift $shift, AssignmentType $type, User $viewer, bool $tools): Collection
     {
         $assignments = $shift->assignments->where('type', $type);

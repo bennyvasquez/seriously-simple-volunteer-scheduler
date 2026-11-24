@@ -283,7 +283,7 @@ class RegularController extends Controller
             ->orderBy('id')->get();
     }
 
-    /** "Needs 2 people every week. Now: Jordan every week, and Carol every other week from Oct 9." */
+    /** "Needs 2 people every week. Now: Jordan P. every week, and Carol S. every other week from Oct 9." */
     private function needs(WeeklySlot $slot, Collection $current): string
     {
         $needs = 'Needs '.$slot->people_needed.($slot->people_needed === 1 ? ' person' : ' people').($slot->frequency === SlotFrequency::EveryOtherWeek ? ' every other week.' : ' every week.');

@@ -8,7 +8,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Sent to someone who signed up for a shadow spot ("Shadow this shift"), naming the regulars they'll shadow by first name.
+ * Sent to someone who signed up for a shadow spot ("Shadow this shift"), naming the regulars they'll shadow by first name and last initial.
  */
 class ShadowSignedUpNotification extends Notification
 {
