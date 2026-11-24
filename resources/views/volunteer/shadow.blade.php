@@ -8,6 +8,7 @@
 @section('title', $heading)
 
 @section('content')
+@include('volunteer._status')
 <h1>{{ $heading }}</h1>
 <div class="shift-head">
 <p class="when">{{ $card['date'] }}</p>

@@ -337,6 +337,71 @@ class VolunteerScreensTest extends TestCase
             ->assertSee('Just Thursday, October 22')->assertSee('Several dates (I\'m away)', false)->assertDontSee('Give up my weekly');
     }
 
+    public function test_the_release_form_says_nobody_will_be_asked_when_the_shift_keeps_the_people_it_needs(): void
+    {
+        $crowded = $this->shift('2026-10-22', needed: 1);
+        $this->on($crowded, $this->sam);
+        $this->on($crowded, User::factory()->cleared()->create());
+        $short = $this->shift('2026-10-23', needed: 1);
+        $this->on($short, $this->sam);
+
+        $crowdedPage = $this->page($this->sam, route('shifts.release', $crowded));
+        $crowdedPage->assertSee('If you\'re off just Thursday, October 22, Front desk still has the people it needs, so nobody else will be asked.', false)
+            ->assertSee('Other volunteers are asked to cover any shift that still needs someone.', false)->assertDontSee('We\'ll ask other volunteers to cover it right away', false);
+        $shortPage = $this->page($this->sam, route('shifts.release', $short));
+        $shortPage->assertSee('We\'ll ask other volunteers to cover it right away', false)->assertSee('Other volunteers are asked to cover any shift that still needs someone.', false)
+            ->assertDontSee('nobody else will be asked', false);
+
+        // With a weekly slot on the form too, the sentence is still only about the one date.
+        $slot = $this->samsThursdays();
+        $regularShift = $this->thursday($slot, '2026-10-29');
+        $this->on($regularShift, User::factory()->cleared()->create());
+        $this->page($this->sam, route('shifts.release', $regularShift))
+            ->assertSee('Give up my weekly Thursday slot', false)->assertSee('If you\'re off just Thursday, October 29, Front desk still has the people it needs, so nobody else will be asked.', false);
+    }
+
+    public function test_the_release_form_only_mentions_the_weekly_slot_when_it_offers_one(): void
+    {
+        $oneOff = $this->shift('2026-10-22', needed: 1);
+        $this->on($oneOff, $this->sam);
+        $this->page($this->sam, route('shifts.release', $oneOff))
+            ->assertSee('For several dates, the next step shows which.', false)->assertDontSee('weekly slot', false);
+
+        $regularShift = $this->thursday($this->samsThursdays(), '2026-10-29');
+        $this->page($this->sam, route('shifts.release', $regularShift))
+            ->assertSee('For several dates or your weekly slot, the next step shows which.', false);
+    }
+
+    public function test_the_release_form_tells_a_shadow_it_will_let_them_know_in_one_sentence_each(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+        $this->on($shift, User::factory()->cleared()->create(['name' => 'Alex Person']), AssignmentType::Shadow);
+        $this->page($this->sam, route('shifts.release', $shift))
+            ->assertSee('Alex P. is shadowing you on Thursday, October 22. If you\'re off that date, we\'ll let them know too.', false)
+            ->assertDontSee('was shadowing you', false);
+    }
+
+    public function test_the_check_step_says_which_shifts_need_covering(): void
+    {
+        $crowded = $this->shift('2026-10-22');
+        $this->on($crowded, $this->sam);
+        $this->on($crowded, User::factory()->cleared()->create());
+        $short = $this->shift('2026-10-23');
+        $this->on($short, $this->sam);
+        $fields = ['scope' => 'range', 'from' => '2026-10-22', 'to' => '2026-10-23'];
+
+        $mixed = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $crowded), $fields)->assertOk());
+        $mixed->assertSee('We\'ll ask other volunteers to cover one of them.', false)
+            ->assertSee('The other one still has the people it needs, so nobody else will be asked.', false)
+            ->assertSeeInOrder(['Thursday, October 22', 'Nobody else will be asked', 'Friday, October 23'], false);
+
+        $none = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $crowded), ['from' => '2026-10-22', 'to' => '2026-10-22'] + $fields)->assertOk());
+        $none->assertSee('Front desk still has the people it needs, so nobody else will be asked.', false)->assertDontSee('We\'ll ask other volunteers', false);
+
+        $all = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $short), ['from' => '2026-10-23', 'to' => '2026-10-23'] + $fields)->assertOk());
+        $all->assertSee('We\'ll ask other volunteers to cover it.', false)->assertDontSee('nobody else will be asked', false);
+    }
+
     public function test_a_shadow_just_confirms_leaving_the_shadow_spot(): void
     {
         $shift = $this->shift('2026-10-20');
@@ -405,6 +470,20 @@ class VolunteerScreensTest extends TestCase
 
         $this->page($this->sam, route('shifts.released'))
             ->assertSeeInOrder(['You\'re off 4 shifts', 'Thursday, October 15', 'Saturday, October 24', 'You stay the Thursday regular.'], false);
+    }
+
+    public function test_the_check_step_gives_a_shadow_spot_no_cover_sentence(): void
+    {
+        $shadow = $this->shift('2026-10-22');
+        $this->on($shadow, $this->sam, AssignmentType::Shadow);
+        $this->on($shadow, User::factory()->cleared()->create());
+        $short = $this->shift('2026-10-23');
+        $this->on($short, $this->sam);
+        $fields = ['scope' => 'range', 'from' => '2026-10-22', 'to' => '2026-10-23'];
+
+        $response = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $short), $fields)->assertOk());
+        $response->assertSee('No one is asked to cover a shadow spot.', false)->assertSee('We\'ll ask other volunteers to cover one of them.', false)
+            ->assertDontSee('still has the people it needs', false);
     }
 
     public function test_change_the_dates_goes_back_with_what_was_typed(): void

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Scheduling;
 
 use App\Actions\Accounts\GrantRole;
+use App\Actions\Accounts\RemovePerson;
 use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CancelShift;
 use App\Actions\Scheduling\CreateOneTimeShift;
@@ -139,6 +140,26 @@ class TakeShiftTest extends TestCase
         } catch (DomainException $e) {
             $this->assertSame($message, $e->getMessage());
         }
+    }
+
+    public function test_the_emails_say_someone_when_the_releaser_has_been_removed(): void
+    {
+        $casey = User::factory()->cleared()->create(['name' => 'Casey Example']);
+        $shift = $this->shift('2026-10-22');
+        $this->on($shift, $this->robin);
+        $this->on($shift, $casey, AssignmentType::Shadow);
+        app(ReleaseShifts::class)->one($this->robin, $shift, 'The key is in the drawer.');
+        app(RemovePerson::class)->handle($this->coordinator, $this->robin);
+        $this->assertSame('Someone', CoverRequest::query()->sole()->releaserName());
+        $this->assertNull(CoverRequest::query()->sole()->releasedBy->routeNotificationForMail(new ShiftCoveredNotification($shift, 'Jordan E.')));
+        Notification::fake();
+
+        app(TakeShift::class)->handle($this->jordan, $shift->fresh(), TakeHow::JustThisDate);
+
+        Notification::assertSentTo($this->jordan, ShiftTakenNotification::class, fn (ShiftTakenNotification $notification) => $notification->releaserFirstName === 'Someone'
+            && str_contains($this->text($notification->toMail($this->jordan)), 'Note from Someone: The key is in the drawer.'));
+        Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, fn (ShiftTakenLeadNotification $notification) => str_contains($this->text($notification->toMail($this->lead)), 'Jordan E. is covering Someone\'s Front desk shift'));
+        Notification::assertSentTo($casey, ShadowSpotNotification::class, fn (ShadowSpotNotification $notification) => $notification->notice === ShadowSpotNotice::BackOn && $notification->releaserFirstName === 'Someone');
     }
 
     public function test_taking_a_released_shift_fills_its_cover_request(): void

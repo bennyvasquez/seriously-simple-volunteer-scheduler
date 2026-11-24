@@ -148,6 +148,25 @@ class VolunteerScheduleTest extends TestCase
         $this->assertStringContainsString(' open', implode('|', $this->classesOf($html)));
     }
 
+    public function test_a_started_shift_doesnt_say_needs_to_a_volunteer(): void
+    {
+        // The clock is frozen at 9:00 on October 14, so a shift from 8:00 to 12:00 that day has started.
+        $this->shiftOn('2026-10-14', '08:00', '12:00', needed: 2);
+
+        $html = $this->actingAs($this->sam)->get(route('calendar.week', ['date' => '2026-10-14']))->assertOk()->assertDontSee('Needs 2')->getContent();
+        $this->assertNotEmpty($this->classesOf($html));
+        $this->assertStringNotContainsString(' open', implode('|', $this->classesOf($html)));
+    }
+
+    public function test_a_coordinator_still_sees_a_started_shifts_open_place(): void
+    {
+        $this->shiftOn('2026-10-14', '08:00', '12:00', needed: 2);
+        $admin = $this->withRole(Role::Admin);
+
+        $html = $this->actingAs($admin)->get(route('calendar.week', ['date' => '2026-10-14']))->assertOk()->assertSee('2 open')->getContent();
+        $this->assertStringContainsString(' open', implode('|', $this->classesOf($html)));
+    }
+
     public function test_an_empty_shift_says_no_one_yet(): void
     {
         $this->shiftOn('2026-10-22');

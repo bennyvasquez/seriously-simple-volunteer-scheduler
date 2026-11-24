@@ -43,9 +43,7 @@ class CoverRequest extends Model
     /** The releaser as volunteers see them: their first name, or "Someone" once their account has been removed. Used on Home and in the ladder's emails; the take page does the same. */
     public function releaserName(): string
     {
-        $releaser = $this->releasedBy;
-
-        return $releaser === null || $releaser->is_removed_person ? 'Someone' : $releaser->shortName();
+        return $this->releasedBy?->releaserName() ?? 'Someone';
     }
 
     /** Requests nobody has taken yet. */

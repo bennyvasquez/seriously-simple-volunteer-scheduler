@@ -109,6 +109,7 @@ final class CoverFill
     {
         $lockedShift->loadMissing('area');
         $taker = $person->shortName();
+        $releaserName = $releaser?->releaserName();
         $sends = [];
 
         if ($releaser !== null && $releaser->id !== $person->id) {
@@ -117,7 +118,7 @@ final class CoverFill
 
         if ($nobodyButShadowsBefore && $releaser !== null) {
             foreach (self::shadows($lockedShift) as $shadow) {
-                $sends[$shadow->id] ??= [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::BackOn, $releaser?->shortName() ?? '', takerFirstName: $taker)];
+                $sends[$shadow->id] ??= [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::BackOn, $releaserName ?? '', takerFirstName: $taker)];
             }
         }
 
@@ -127,7 +128,7 @@ final class CoverFill
                 ->orderBy('id')->get();
 
             foreach ($leads as $lead) {
-                $sends[$lead->id] ??= [$lead, new ShiftTakenLeadNotification($lockedShift, $taker, $releaser?->shortName(), $releaser?->id === $person->id, $regularHow)];
+                $sends[$lead->id] ??= [$lead, new ShiftTakenLeadNotification($lockedShift, $taker, $releaserName, $releaser?->id === $person->id, $regularHow)];
             }
         }
 

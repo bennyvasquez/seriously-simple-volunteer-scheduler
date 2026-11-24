@@ -96,6 +96,40 @@ class ScheduleTest extends DuskTestCase
         });
     }
 
+    /** @return array<string, array{string}> */
+    public static function weekUsers(): array
+    {
+        return [
+            'volunteer' => [ExampleOrganizationSeeder::VOLUNTEER],
+            'coordinator' => [ExampleOrganizationSeeder::COORDINATOR],
+        ];
+    }
+
+    #[DataProvider('weekUsers')]
+    public function test_the_week_fits_at_1024_without_scrolling(string $email): void
+    {
+        $user = User::where('email', $email)->firstOrFail();
+
+        $this->browse(function (Browser $browser) use ($user) {
+            $browser->resize(1024, 768)->loginAs($user)->visit('/calendar')->assertVisible('.cal-grid');
+
+            // Neither the grid nor the box that scrolls it is wider than what it shows, so there's no sideways scroll.
+            [$gridScroll, $gridClient, $wrapScroll, $wrapClient] = $browser->script('const grid = document.querySelector(".cal-grid"), wrap = document.querySelector(".cal-grid-wrap"); return [grid.scrollWidth, grid.clientWidth, wrap.scrollWidth, wrap.clientWidth]')[0];
+            $this->assertLessThanOrEqual($gridClient, $gridScroll);
+            $this->assertLessThanOrEqual($wrapClient, $wrapScroll);
+
+            // The last day's header (Saturday) ends inside the window.
+            $saturdayRight = $browser->script('const heads = document.querySelectorAll(".cal-grid .dh"); return heads[heads.length - 1].getBoundingClientRect().right')[0];
+            $this->assertLessThanOrEqual(1024, $saturdayRight);
+            $this->assertSame(0, $browser->script('return window.scrollX')[0]);
+
+            // The month view's seven columns fit too.
+            $browser->visit('/calendar/month')->assertPresent('.month-grid');
+            [$monthScroll, $monthClient] = $browser->script('const box = document.querySelector(".month-scroll"); return box ? [box.scrollWidth, box.clientWidth] : [0, 0]')[0];
+            $this->assertLessThanOrEqual($monthClient, $monthScroll);
+        });
+    }
+
     public function test_a_short_week_does_not_scroll_past_its_end_on_a_computer(): void
     {
         $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();

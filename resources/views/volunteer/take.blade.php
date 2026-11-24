@@ -14,6 +14,7 @@
 @section('title', $heading)
 
 @section('content')
+@include('volunteer._status')
 @if ($mode === 'taken')
 <div role="status" class="result">
 <h1>{{ $heading }}</h1>

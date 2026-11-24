@@ -248,6 +248,12 @@ class User extends Authenticatable
         return $this->isActive() && $this->isInvited() && ! $this->is_removed_person;
     }
 
+    /** The name a volunteer or lead reads for someone who released a shift: their short name, or "Someone" once their account has been removed. The change log and coordinator screens keep "Removed person". */
+    public function releaserName(): string
+    {
+        return $this->is_removed_person ? 'Someone' : $this->shortName();
+    }
+
     /** Where to send mail. Laravel's mail channel sends nothing when this is null, so every notification, current and future, skips people who can't sign in. The one exception is an invitation, which is how an invited person gets in. */
     public function routeNotificationForMail(Notification $notification): ?string
     {
