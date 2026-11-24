@@ -24,8 +24,11 @@
 
 @section('content')
 <h1>Log in</h1>
-@if (preg_match('#^/shifts/\d+/take$#', (string) parse_url((string) session('url.intended'), PHP_URL_PATH)))
+@php $intended = (string) parse_url((string) session('url.intended'), PHP_URL_PATH); @endphp
+@if (preg_match('#^/shifts/\d+/take$#', $intended))
 <p role="status">Log in to take this shift. Once you're in, we'll take you straight back to it.</p>
+@elseif (preg_match('#^/changes/[0-9A-Za-z]+$#', $intended))
+<p role="status">Log in to answer about your shift. Once you're in, we'll take you straight back to it.</p>
 @endif
 @if (session('status'))
 <p role="status">{{ session('status') }}</p>

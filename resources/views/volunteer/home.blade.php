@@ -8,6 +8,10 @@
 @endif
 <h1>{{ trim('Hi '.$user->firstName()) }}</h1>
 
+@foreach ($notices as $notice)
+@include('volunteer._change-ask', ['notice' => $notice])
+@endforeach
+
 @if ($user->isCleared())
 <section class="shift-section">
 <h2>Your next shifts</h2>

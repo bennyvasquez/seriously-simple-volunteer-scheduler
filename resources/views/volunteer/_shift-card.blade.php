@@ -11,7 +11,7 @@
     $note = $cancelled ? $shift->cancel_reason : ($note ?? null);
 @endphp
 <div class="card{{ ($strong ?? false) ? ' card-strong' : '' }}">
-<div class="card-top"><span class="when">{{ $date }}</span>@if ($tag ?? null)<span class="tag{{ ($strong ?? false) ? ' tag-strong' : '' }}">{{ $tag }}</span>@endif</div>
+<div class="card-top"><span class="when">{{ $date }}</span>@if ($tag ?? null)<span class="tag{{ ($strong ?? false) ? ' tag-strong' : '' }}">{{ $tag }}</span>@endif @if (($shift->has_open_notice ?? false) && ! $cancelled)<span class="tag tag-strong">Time changed</span>@endif</div>
 <div>{{ $shift->area->name }}, {{ App\Calendar\TimeFormat::range($start, $shift->ends_at->setTimezone($timezone)) }}</div>
 @if ($note)
 <div class="muted">{{ $note }}</div>

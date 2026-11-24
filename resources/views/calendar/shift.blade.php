@@ -21,6 +21,18 @@
 @if ($shift->title)<p>{{ $shift->title }}</p>@endif
 <p class="muted">{{ $repeats }}</p>
 </div>
+@if ($changeNotice ?? null)
+<form method="POST" action="{{ route('changes.confirm', $changeNotice->batch) }}">
+@csrf
+<input type="hidden" name="from" value="shift">
+<input type="hidden" name="shift" value="{{ $shift->id }}">
+<p><b>The time changed. Does it still work for you?</b></p>
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Still works for me</button>
+<a href="{{ route('shifts.release', $shift) }}" class="btn">I can't make the new time</a>
+</div>
+</form>
+@endif
 @if ($shift->cancelled_at)
 <p><b>Cancelled: {{ $shift->cancel_reason }}</b></p>
 @if ($cancelledBy === 'closure')

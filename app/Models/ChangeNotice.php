@@ -60,4 +60,21 @@ class ChangeNotice extends Model
             ->orderBy('shifts.starts_at')->orderBy('change_notices.id')
             ->select('change_notices.*')->get();
     }
+
+    /**
+     * The person's open notices on shifts that are still ahead, not cancelled and that they're still on, earliest shift first, with the shift, its area and who changed it loaded. One query. Home, the shift panel and the shift cards ask with this.
+     *
+     * @return Collection<int, static>
+     */
+    public static function openFor(User $user): Collection
+    {
+        return static::query()->with(['shift.area', 'changedBy'])->open()
+            ->where('change_notices.user_id', $user->id)
+            ->join('shifts', 'shifts.id', '=', 'change_notices.shift_id')
+            ->whereNull('shifts.cancelled_at')->where('shifts.starts_at', '>', now())
+            ->whereExists(fn ($assignments) => $assignments->selectRaw('1')->from('assignments')
+                ->whereColumn('assignments.shift_id', 'change_notices.shift_id')->where('assignments.user_id', $user->id))
+            ->orderBy('shifts.starts_at')->orderBy('change_notices.id')
+            ->select('change_notices.*')->get();
+    }
 }

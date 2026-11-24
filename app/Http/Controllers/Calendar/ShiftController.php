@@ -18,6 +18,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Models\Area;
 use App\Models\Assignment;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -152,6 +153,8 @@ class ShiftController extends Controller
             'people' => $people,
             'shadowsTaken' => $shift->assignments->where('type', AssignmentType::Shadow)->count(),
             'volunteerAction' => $upcoming ? $this->volunteerAction($user, $shift) : null,
+            // The person's open time change on this shift, if any: the panel asks whether the new time works.
+            'changeNotice' => $upcoming ? ChangeNotice::openFor($user)->firstWhere('shift_id', $shift->id) : null,
             'canAssign' => false,
             'canCancel' => false,
             'canPut' => false,

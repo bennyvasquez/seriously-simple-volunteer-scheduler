@@ -7,6 +7,7 @@ use App\Cover\ShadowProgress;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -27,6 +28,7 @@ class HomeController extends Controller
         $organization = Organization::query()->first(['timezone', 'required_shadow_shifts']);
         $timezone = $organization?->timezone ?? 'UTC';
         $next = $this->nextShifts($user);
+        $notices = ChangeNotice::openFor($user)->groupBy('batch')->map(fn ($rows) => ChangeNoticeController::summary($rows) + ['batch' => $rows->first()->batch])->values();
 
         if (! $user->isCleared()) {
             $nextShadow = $next->first(fn (Shift $shift) => $shift->card_tag === 'Shadowing');
@@ -42,6 +44,7 @@ class HomeController extends Controller
                 'done' => ShadowProgress::done($user),
                 'required' => $organization?->required_shadow_shifts ?? 2,
                 'spots' => $this->openShadowSpots($user),
+                'notices' => $notices,
             ]);
         }
 
@@ -50,6 +53,7 @@ class HomeController extends Controller
             'timezone' => $timezone,
             'next' => $next,
             'open' => $this->openShifts($user),
+            'notices' => $notices,
         ]);
     }
 
@@ -129,7 +133,7 @@ class HomeController extends Controller
      */
     public function nextShifts(User $user, int $days = 14): Collection
     {
-        return $this->shiftsFrom($user, now()->addDays($days), true, true)->each(fn (Shift $shift) => $this->tag($shift, $user));
+        return $this->markNotices($this->shiftsFrom($user, now()->addDays($days), true, true)->each(fn (Shift $shift) => $this->tag($shift, $user)), $user);
     }
 
     /**
@@ -139,7 +143,20 @@ class HomeController extends Controller
      */
     private function allFuture(User $user): Collection
     {
-        return $this->shiftsFrom($user, null, true, true)->each(fn (Shift $shift) => $this->tag($shift, $user));
+        return $this->markNotices($this->shiftsFrom($user, null, true, true)->each(fn (Shift $shift) => $this->tag($shift, $user)), $user);
+    }
+
+    /**
+     * Sets `has_open_notice` on each shift the person has an open change notice for ("Time changed" on its card). One query for the whole list.
+     *
+     * @param  Collection<int, Shift>  $shifts
+     * @return Collection<int, Shift>
+     */
+    private function markNotices(Collection $shifts, User $user): Collection
+    {
+        $ids = ChangeNotice::openFor($user)->pluck('shift_id');
+
+        return $shifts->each(fn (Shift $shift) => $shift->setAttribute('has_open_notice', $ids->contains($shift->id)));
     }
 
     /**
