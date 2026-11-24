@@ -173,6 +173,10 @@
 <div class="add-actions">
 <a href="{{ $panelUrl(['restore' => 1]) }}" class="btn btn-primary">Bring this shift back</a>
 </div>
+@elseif ($volunteerAction ?? null)
+<div class="add-actions">
+<a href="{{ $volunteerAction['url'] }}" class="btn btn-primary">{{ $volunteerAction['label'] }}</a>
+</div>
 @elseif ($canEdit || $canPut || $canCancel || $canAddRegular)
 <div class="add-actions">
 @if ($canEdit)<a href="{{ $panelUrl(['edit' => 1]) }}" class="btn{{ $canPut ? '' : ' btn-primary' }}">Edit</a>@endif
