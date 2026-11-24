@@ -118,7 +118,7 @@
 </div>
 @if ($existing)
 <section class="panel slot-existing" aria-labelledby="existing-heading">
-<h2 id="existing-heading">Changes apply to future shifts nobody changed on their own</h2>
+<h2 id="existing-heading">{{ $from ? 'Changes apply to shifts from '.$from->format('l, F j').' on that nobody changed on their own. Earlier dates keep their details.' : 'Changes apply to future shifts nobody changed on their own' }}</h2>
 <p class="muted">{{ implode(' ', $existing) }}</p>
 <p class="muted">If you change the day, how often, or the first or last date, shifts nobody is on that no longer fit are cancelled. They stay on the calendar, marked cancelled. The day and how often can't change while people work this slot.</p>
 </section>

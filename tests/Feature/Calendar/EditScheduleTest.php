@@ -819,6 +819,38 @@ class EditScheduleTest extends TestCase
         $this->assertSame('17:00', $this->localStart($shift->fresh()));
     }
 
+    public function test_the_existing_shifts_box_describes_the_save_with_and_without_a_start_date(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $user = $this->coordinator();
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-10-29']))
+            ->assertOk()
+            ->assertSee('Changes apply to shifts from Thursday, October 29 on that nobody changed on their own. Earlier dates keep their details.')
+            ->assertDontSee('Changes apply to future shifts nobody changed on their own');
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', $slot))
+            ->assertOk()
+            ->assertSee('Changes apply to future shifts nobody changed on their own')
+            ->assertDontSee('Earlier dates keep their details.');
+    }
+
+    public function test_a_past_start_date_is_shown_as_today_and_a_date_that_is_not_real_is_ignored(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $user = $this->coordinator();
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-10-01']))
+            ->assertOk()
+            ->assertSee('Changes apply from Wednesday, October 14 on.')
+            ->assertSee('name="from" value="2026-10-14"', false);
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-02-31']))
+            ->assertOk()
+            ->assertDontSee('Changes apply from')
+            ->assertSee('Changes apply to future shifts nobody changed on their own');
+    }
+
     public function test_the_shift_edit_form_saves_one_shift(): void
     {
         $slot = $this->thursdaySlot('18:30', '21:30');

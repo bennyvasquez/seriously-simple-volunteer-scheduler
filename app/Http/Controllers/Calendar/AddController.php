@@ -214,7 +214,14 @@ class AddController extends Controller
 
         $date = CarbonImmutable::createFromFormat('!Y-m-d', $value, Organization::current()->timezone);
 
-        return $date !== false && $date->toDateString() === $value ? $date : null;
+        if ($date === false || $date->toDateString() !== $value) {
+            return null;
+        }
+
+        // A date before today counts as today, the same as the action.
+        $today = Organization::current()->today();
+
+        return $date->lessThan($today) ? $today : $date;
     }
 
     /** Creates a weekly slot from the full form. */
@@ -253,7 +260,7 @@ class AddController extends Controller
             'areaQuery' => $this->areaQuery($request),
             'preview' => $this->preview($organization, $area, $values),
             'weekdays' => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-            'existing' => $slot === null ? null : $this->existingShifts($slot),
+            'existing' => $slot === null ? null : $this->existingShifts($slot, $this->fromDate($request->input('from'))),
             'saved' => $slot === null ? null : $this->savedNotice($request, $organization),
             'from' => $slot === null ? null : $this->fromDate($request->input('from')),
         ]);
@@ -264,9 +271,10 @@ class AddController extends Controller
      *
      * @return list<string>|null
      */
-    private function existingShifts(WeeklySlot $slot): ?array
+    private function existingShifts(WeeklySlot $slot, ?CarbonImmutable $from = null): ?array
     {
         $shifts = $slot->shifts()->whereNull('cancelled_at')->where('starts_at', '>', now())->withCount('assignments')->orderBy('local_date')->get();
+        $shifts = $from === null ? $shifts : $shifts->filter(fn (Shift $shift) => $shift->local_date->toDateString() >= $from->toDateString())->values();
         $total = $shifts->count();
 
         if ($total === 0) {
