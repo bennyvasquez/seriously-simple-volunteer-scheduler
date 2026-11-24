@@ -21,7 +21,7 @@ class ShiftChangedNotification extends Notification
     public function __construct(Collection $changes)
     {
         $this->lines = $changes->map(fn (array $change) => self::line($change))->values()->all();
-        $this->subject = $changes->count() === 1 ? 'Your '.$changes->first()['shift']->area->name.' shift changed' : 'Your shifts changed';
+        $this->subject = EmailText::choice('shift_changed.subject', $changes->count(), ['area' => $changes->first()['shift']->area->name]);
     }
 
     public function via(object $notifiable): array
@@ -37,7 +37,7 @@ class ShiftChangedNotification extends Notification
             $mail->line($line);
         }
 
-        return $mail->line("If you can't make it, let your coordinator know.");
+        return $mail->line(EmailText::line('shift_changed.outro'));
     }
 
     /** @param  array{shift: Shift, was: string, wasTitle: ?string}  $change */
@@ -47,10 +47,10 @@ class ShiftChangedNotification extends Notification
         $timezone = Organization::current()->timezone;
         $start = $shift->starts_at->setTimezone($timezone);
         $now = TimeFormat::range($start, $shift->ends_at->setTimezone($timezone));
-        $line = 'Your '.$shift->area->name.' shift on '.$start->format('l, F j').' changed.';
+        $line = EmailText::line('shift_changed.changed', ['area' => $shift->area->name, 'date' => $start->format('l, F j')]);
 
         if ($now !== $change['was']) {
-            $line .= " It's now {$now}; it was {$change['was']}.";
+            $line .= ' '.EmailText::line('shift_changed.time', ['now' => $now, 'was' => $change['was']]);
         }
 
         return $line.self::titleSentence($shift, $change['wasTitle']);
@@ -63,6 +63,6 @@ class ShiftChangedNotification extends Notification
             return '';
         }
 
-        return $shift->title !== null ? " It's now for {$shift->title}." : " It's no longer for {$wasTitle}.";
+        return ' '.($shift->title !== null ? EmailText::line('shift_changed.title_now', ['title' => $shift->title]) : EmailText::line('shift_changed.title_removed', ['was_title' => $wasTitle]));
     }
 }

@@ -32,11 +32,11 @@ class ShiftRestoredNotification extends Notification
     {
         if (count($this->shifts) === 1) {
             return (new MailMessage)
-                ->subject("Your {$this->area} shift is back on")
+                ->subject(EmailText::choice('shift_restored.subject', 1, ['area' => $this->area]))
                 ->line(self::backOnLines($this->shifts)[0]);
         }
 
-        $mail = (new MailMessage)->subject("Your {$this->area} shifts are back on");
+        $mail = (new MailMessage)->subject(EmailText::choice('shift_restored.subject', count($this->shifts), ['area' => $this->area]));
 
         foreach (self::backOnLines($this->shifts) as $line) {
             $mail->line($line);
@@ -54,13 +54,13 @@ class ShiftRestoredNotification extends Notification
     public static function backOnLines(array $shifts): array
     {
         if (count($shifts) === 1) {
-            return ["The {$shifts[0]} is back on, and you're still on it. If you can't make it, let your coordinator know."];
+            return [EmailText::choice('shift_restored.body', 1, ['shift' => $shifts[0]])];
         }
 
         return [
-            'These shifts are back on, and you\'re still on them:',
-            ...array_map(fn (string $shift) => "The {$shift}.", $shifts),
-            'If you can\'t make one, let your coordinator know.',
+            EmailText::choice('shift_restored.body', count($shifts)),
+            ...array_map(fn (string $shift) => EmailText::line('shift_restored.shift_item', ['shift' => $shift]), $shifts),
+            EmailText::line('shift_restored.outro'),
         ];
     }
 }

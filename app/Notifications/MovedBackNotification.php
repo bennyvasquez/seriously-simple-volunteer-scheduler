@@ -46,12 +46,12 @@ class MovedBackNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject('You\'ve been moved back to shadowing')
-            ->greeting('Hi '.$notifiable->firstName().',')
-            ->line($this->coordinatorFirstName.' moved you back to shadowing at '.$this->organization.'. You can sign up for shadow spots from Home, and a coordinator will review you again once you\'ve done '.$this->required.' shadow '.($this->required === 1 ? 'shift' : 'shifts').'.');
+            ->subject(EmailText::line('moved_back.subject'))
+            ->greeting(EmailText::line('moved_back.greeting', ['first_name' => $notifiable->firstName()]))
+            ->line(EmailText::choice('moved_back.intro', $this->required, ['coordinator' => $this->coordinatorFirstName, 'organization' => $this->organization, 'required' => $this->required]));
 
         if ($this->shifts !== []) {
-            $mail->line('You\'re off these shifts, and other volunteers were asked to cover them:');
+            $mail->line(EmailText::line('moved_back.asked_intro'));
 
             foreach ($this->shifts as $shift) {
                 $mail->line($shift);
@@ -59,7 +59,7 @@ class MovedBackNotification extends Notification
         }
 
         if ($this->nobodyAsked !== []) {
-            $mail->line('You\'re off these shifts too. They still have the people they need, so nobody was asked:');
+            $mail->line(EmailText::line('moved_back.nobody_asked_intro'));
 
             foreach ($this->nobodyAsked as $shift) {
                 $mail->line($shift);
@@ -67,7 +67,7 @@ class MovedBackNotification extends Notification
         }
 
         if ($this->noLongerRegularOn !== []) {
-            $mail->line('You\'re no longer the regular on '.Arr::join($this->noLongerRegularOn, '; ', ' and ').'.');
+            $mail->line(EmailText::line('moved_back.no_longer_regular', ['slots' => Arr::join($this->noLongerRegularOn, '; ', ' and ')]));
         }
 
         return $mail;

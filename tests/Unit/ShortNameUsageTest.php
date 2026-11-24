@@ -17,6 +17,10 @@ class ShortNameUsageTest extends TestCase
         "greeting('Hi '.\$notifiable->firstName()",
         // The invitation's greeting line is in lang/en/emails.php; the code passes the first name in.
         "->greeting(EmailText::line('invitation.greeting', ['first_name' => \$notifiable->firstName()]))",
+        // The same shape for the greetings of the cleared, moved back and shadow signup emails.
+        "->greeting(EmailText::line('cleared.greeting', ['first_name' => \$notifiable->firstName()]))",
+        "->greeting(EmailText::line('moved_back.greeting', ['first_name' => \$notifiable->firstName()]))",
+        "->greeting(EmailText::line('shadow_signed_up.greeting', ['first_name' => \$notifiable->firstName()]))",
         "'Hi '.\$user->firstName()",
         // The taken page thanks the person who just took the shift, so it greets them.
         "'It\\'s yours. Thanks, '.\$user->firstName().'!'",

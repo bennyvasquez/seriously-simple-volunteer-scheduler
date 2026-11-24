@@ -26,21 +26,23 @@ class RemovedFromShiftsNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        if (count($this->shifts) === 1) {
+        $count = count($this->shifts);
+
+        if ($count === 1) {
             return (new MailMessage)
-                ->subject('You\'ve been removed from a '.explode(' shift on ', $this->shifts[0])[0].' shift')
-                ->line("You're no longer on the {$this->shifts[0]}.")
-                ->line('If you didn\'t expect this, ask your coordinator.');
+                ->subject(EmailText::choice('removed_from_shifts.subject', 1, ['area' => explode(' shift on ', $this->shifts[0])[0]]))
+                ->line(EmailText::choice('removed_from_shifts.intro', 1, ['shift' => $this->shifts[0]]))
+                ->line(EmailText::line('removed_from_shifts.outro'));
         }
 
         $mail = (new MailMessage)
-            ->subject('You\'ve been removed from '.count($this->shifts).' shifts')
-            ->line('You\'re no longer on these shifts:');
+            ->subject(EmailText::choice('removed_from_shifts.subject', $count, ['count' => $count]))
+            ->line(EmailText::choice('removed_from_shifts.intro', $count));
 
         foreach ($this->shifts as $shift) {
-            $mail->line("The {$shift}.");
+            $mail->line(EmailText::line('removed_from_shifts.shift_item', ['shift' => $shift]));
         }
 
-        return $mail->line('If you didn\'t expect this, ask your coordinator.');
+        return $mail->line(EmailText::line('removed_from_shifts.outro'));
     }
 }

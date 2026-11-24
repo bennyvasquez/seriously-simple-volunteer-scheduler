@@ -34,14 +34,14 @@ class ShadowSignedUpNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject('You\'re shadowing '.$this->area.' on '.$this->date)
-            ->greeting('Hi '.$notifiable->firstName().',')
-            ->line('You\'re signed up to shadow '.$this->area.' on '.$this->when.'.');
+            ->subject(EmailText::line('shadow_signed_up.subject', ['area' => $this->area, 'date' => $this->date]))
+            ->greeting(EmailText::line('shadow_signed_up.greeting', ['first_name' => $notifiable->firstName()]))
+            ->line(EmailText::line('shadow_signed_up.intro', ['area' => $this->area, 'when' => $this->when]));
 
         if ($this->regularFirstNames !== []) {
-            $mail->line(ReleaseController::endSentence('You\'ll shadow '.ReleaseController::names($this->regularFirstNames)));
+            $mail->line(ReleaseController::endSentence(EmailText::line('shadow_signed_up.regulars', ['names' => ReleaseController::names($this->regularFirstNames)])));
         }
 
-        return $mail->line('If you can\'t make it, press Can\'t make it on Home so a coordinator knows.');
+        return $mail->line(EmailText::line('shadow_signed_up.outro'));
     }
 }

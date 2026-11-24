@@ -28,8 +28,8 @@ class ClearedNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('You\'re cleared for regular shifts')
-            ->greeting('Hi '.$notifiable->firstName().',')
-            ->line($this->coordinatorFirstName.' cleared you to take regular shifts at '.$this->organization.'. You\'ll now get cover requests when someone can\'t make a shift you could take, and you can take open shifts from Home.');
+            ->subject(EmailText::line('cleared.subject'))
+            ->greeting(EmailText::line('cleared.greeting', ['first_name' => $notifiable->firstName()]))
+            ->line(EmailText::line('cleared.body', ['coordinator' => $this->coordinatorFirstName, 'organization' => $this->organization]));
     }
 }

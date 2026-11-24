@@ -37,13 +37,13 @@ class ShadowSignedUpLeadNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject($this->shadowFirstName.' is shadowing '.$this->area.', '.$this->date)
-            ->line($this->shadowFirstName.' signed up to shadow '.$this->area.' on '.$this->when.'.');
+            ->subject(EmailText::line('shadow_signed_up_lead.subject', ['shadow' => $this->shadowFirstName, 'area' => $this->area, 'date' => $this->date]))
+            ->line(EmailText::line('shadow_signed_up_lead.intro', ['shadow' => $this->shadowFirstName, 'area' => $this->area, 'when' => $this->when]));
 
         if ($this->regularFirstNames !== []) {
-            $mail->line(ReleaseController::names($this->regularFirstNames).(count($this->regularFirstNames) === 1 ? ' is' : ' are').' on that shift.');
+            $mail->line(EmailText::choice('shadow_signed_up_lead.regulars', count($this->regularFirstNames), ['names' => ReleaseController::names($this->regularFirstNames)]));
         }
 
-        return $mail->action('Open the shift', $this->url);
+        return $mail->action(EmailText::line('shadow_signed_up_lead.action'), $this->url);
     }
 }

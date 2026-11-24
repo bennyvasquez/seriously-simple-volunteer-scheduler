@@ -43,19 +43,19 @@ class RegularEndedNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject("You're no longer the regular for {$this->area} on {$this->weekdays}")
+            ->subject(EmailText::line('regular_ended.subject', ['area' => $this->area, 'weekdays' => $this->weekdays]))
             ->line($this->datePassed
-                ? "You're no longer the regular for the {$this->area} shift on {$this->weekdays}."
-                : "Your last date as the regular for the {$this->area} shift on {$this->weekdays} is {$this->lastDate}.");
+                ? EmailText::line('regular_ended.ended', ['area' => $this->area, 'weekdays' => $this->weekdays])
+                : EmailText::line('regular_ended.ending', ['area' => $this->area, 'weekdays' => $this->weekdays, 'last_date' => $this->lastDate]));
 
         if ($this->shifts !== []) {
-            $mail->line('You\'ve been removed from these shifts:');
+            $mail->line(EmailText::line('regular_ended.shifts_intro'));
 
             foreach ($this->shifts as $shift) {
-                $mail->line("The {$shift}.");
+                $mail->line(EmailText::line('regular_ended.shift_item', ['shift' => $shift]));
             }
         }
 
-        return $mail->line('If you didn\'t expect this, ask your coordinator.');
+        return $mail->line(EmailText::line('regular_ended.outro'));
     }
 }
