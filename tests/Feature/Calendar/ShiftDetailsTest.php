@@ -12,6 +12,7 @@ use App\Enums\Role;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\ChangeNotice;
 use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
@@ -25,6 +26,7 @@ use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
@@ -655,5 +657,111 @@ class ShiftDetailsTest extends TestCase
 
         $this->actingAs($this->coordinator())->get(route('calendar.shift', [$shift, 'cancel' => 1]))
             ->assertOk()->assertSee('1 person will be emailed this reason.');
+    }
+
+    private function notice(Shift $shift, User $person, array $attributes = []): ChangeNotice
+    {
+        return ChangeNotice::query()->create($attributes + [
+            'batch' => '01JCHANGEBATCH0000000000AA',
+            'user_id' => $person->id,
+            'shift_id' => $shift->id,
+            'changed_by' => $this->coordinator()->id,
+            'was_starts_at' => CarbonImmutable::parse('2026-10-22 17:00', self::TIMEZONE)->utc(),
+            'was_ends_at' => CarbonImmutable::parse('2026-10-22 20:00', self::TIMEZONE)->utc(),
+        ]);
+    }
+
+    private function onShift(Shift $shift, string $name): User
+    {
+        $person = User::factory()->create(['name' => $name]);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $person->id, 'type' => AssignmentType::Regular]);
+
+        return $person;
+    }
+
+    public function test_the_panel_shows_who_confirmed_and_who_hasnt(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 3);
+        $sam = $this->onShift($shift, 'Sam Example');
+        $robin = $this->onShift($shift, 'Robin Example');
+        $this->notice($shift, $sam, ['confirmed_at' => now()]);
+        $this->notice($shift, $robin);
+
+        $html = $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))->assertOk()
+            ->assertSee('Time changed on October 14 from 5 to 8pm.')
+            ->assertSee('Confirmed the new time')
+            ->assertSee('Hasn\'t answered yet', false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'Confirmed the new time'));
+        $this->assertSame(1, substr_count($html, 'Hasn\'t answered yet'));
+    }
+
+    public function test_the_newest_notice_that_hasnt_ended_decides(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30');
+        $sam = $this->onShift($shift, 'Sam Example');
+        $this->notice($shift, $sam, ['confirmed_at' => now(), 'batch' => '01JCHANGEBATCH0000000000AA']);
+        $this->notice($shift, $sam, ['batch' => '01JCHANGEBATCH0000000000BB']);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))->assertOk()
+            ->assertSee('Hasn\'t answered yet', false)->assertDontSee('Confirmed the new time');
+    }
+
+    public function test_someone_who_left_shows_nothing(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30');
+        $sam = $this->onShift($shift, 'Sam Example');
+        $this->notice($shift, $sam, ['ended_at' => now()]);
+
+        $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))->assertOk()
+            ->assertSee('Sam E.')->assertDontSee('Hasn\'t answered yet', false)->assertDontSee('Confirmed the new time');
+    }
+
+    public function test_a_shift_with_no_notices_shows_nothing(): void
+    {
+        $shift = $this->shiftWithPerson();
+
+        $this->actingAs($this->coordinator())->get(route('calendar.shift', $shift))->assertOk()
+            ->assertDontSee('Time changed on')->assertDontSee('Hasn\'t answered yet', false)->assertDontSee('Confirmed the new time');
+    }
+
+    public function test_volunteers_dont_see_answers(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 2);
+        $sam = $this->onShift($shift, 'Sam Example');
+        $robin = $this->onShift($shift, 'Robin Example');
+        $this->notice($shift, $sam, ['confirmed_at' => now()]);
+        $this->notice($shift, $robin);
+
+        $this->actingAs($robin)->get(route('calendar.shift', $shift))->assertOk()
+            ->assertDontSee('Time changed on')->assertDontSee('Confirmed the new time')->assertDontSee('Hasn\'t answered yet', false);
+    }
+
+    public function test_the_answers_add_one_query_not_one_per_person(): void
+    {
+        $coordinator = $this->coordinator();
+        $plain = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 5);
+        $noticed = $this->shiftOn('2026-10-23', '18:30', '21:30', peopleNeeded: 5);
+
+        foreach (['Sam Example', 'Robin Example', 'Alex Example', 'Jordan Example', 'Casey Example'] as $name) {
+            $this->onShift($plain, $name);
+            $this->notice($noticed, $this->onShift($noticed, $name));
+        }
+
+        $count = function (Shift $shift) use ($coordinator): int {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->actingAs($coordinator)->get(route('calendar.shift', $shift))->assertOk();
+            $queries = count(DB::getQueryLog());
+            DB::disableQueryLog();
+
+            return $queries;
+        };
+
+        // The first request also records when the coordinator was last seen, which is throttled, so measure from the second.
+        $count($plain);
+
+        $this->assertSame($count($plain) + 1, $count($noticed));
     }
 }

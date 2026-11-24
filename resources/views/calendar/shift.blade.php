@@ -20,6 +20,7 @@
 <p>{{ \App\Calendar\TimeFormat::range($shift->starts_at->setTimezone($organization->timezone), $shift->ends_at->setTimezone($organization->timezone)) }}</p>
 @if ($shift->title)<p>{{ $shift->title }}</p>@endif
 <p class="muted">{{ $repeats }}</p>
+@if ($timeChanged ?? null)<p class="muted">{{ $timeChanged }}</p>@endif
 </div>
 @if ($changeNotice ?? null)
 <form method="POST" action="{{ route('changes.confirm', $changeNotice->batch) }}">
@@ -45,7 +46,7 @@
 @endif
 <div aria-label="People on this shift" role="group">
 @forelse ($people as $person)
-<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif
+<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if (($person['answer'] ?? null) === 'confirmed') <span class="tag">Confirmed the new time</span>@elseif (($person['answer'] ?? null) === 'waiting') <span class="tag">Hasn't answered yet</span>@endif @if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif
 @if (($person['noShow'] ?? false) || ($person['canMark'] ?? false))
 @if ($person['noShow'])<b>No-show</b>@endif
 @if ($person['canMark'])
