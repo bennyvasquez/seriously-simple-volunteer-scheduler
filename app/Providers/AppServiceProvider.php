@@ -4,12 +4,15 @@ namespace App\Providers;
 
 use App\Enums\Role;
 use App\Models\ChangeLogEntry;
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -39,6 +42,18 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Laravel's mail layout puts the app name in each email's header, under "Regards," and in the footer, and the sender's name comes from the mail settings. Before an email goes out, both become the organization's name from Settings, so volunteers see who's writing to them rather than "SSVS". The address stays the one in MAIL_FROM_ADDRESS.
+        Event::listen(NotificationSending::class, function (NotificationSending $event) {
+            $name = $event->channel === 'mail' ? Organization::query()->value('name') : null;
+
+            if ($name === null || $name === '') {
+                return;
+            }
+
+            config(['app.name' => $name, 'mail.from.name' => $name]);
+            Mail::alwaysFrom((string) config('mail.from.address'), $name);
+        });
+
         // Long enough to resist guessing; no breached-password lookup, because that calls an outside service on every change.
         Password::defaults(fn () => Password::min(10));
 

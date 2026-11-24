@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Enums\ShadowSpotNotice;
-use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -70,7 +69,6 @@ class ShadowSpotNotification extends Notification
 
         if ($this->notice === ShadowSpotNotice::BackOn) {
             $vars['taker'] = (string) $this->takerFirstName;
-            $vars['taker_ended'] = ReleaseController::endSentence((string) $this->takerFirstName);
             $mail = (new MailMessage)
                 ->subject(EmailText::choice('shadow_spot.back_on.subject', $count, $vars))
                 ->line(EmailText::choice('shadow_spot.back_on.intro', $count, $vars));

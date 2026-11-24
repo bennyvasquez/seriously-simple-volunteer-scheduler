@@ -519,6 +519,11 @@ class ChangeNoticesTest extends TestCase
         $text = $this->text($sent, $this->sam);
         $this->assertLessThan(strpos($text, "Your Front desk shift on Thursday, October 22 changed. It's now for Open house."), strpos($text, 'Does the new time still work for you?'));
         $this->assertStringContainsString("Thursday, October 15: 5 to 8pm (was 6:30 to 9:30pm). It's now for Open house.", $text);
+
+        // The extra line is its own paragraph, not run onto the end of "You'll log in first...".
+        $login = strpos($text, "You'll log in first");
+        $between = substr($text, $login, strpos($text, 'Your Front desk shift on Thursday, October 22 changed') - $login);
+        $this->assertStringContainsString('</p>', $between);
     }
 
     public function test_a_shift_edit_that_changes_the_time_and_the_title_mentions_both(): void

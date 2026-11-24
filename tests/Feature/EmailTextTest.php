@@ -296,4 +296,23 @@ class EmailTextTest extends TestCase
             }
         }
     }
+
+    public function test_emails_are_signed_and_sent_in_the_organizations_name(): void
+    {
+        // setUp's made-up lines stop the real wording file from loading, so start from the real file.
+        app('translator')->setLoaded([]);
+        config(['app.name' => 'SSVS', 'mail.from.name' => 'SSVS']);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $sam = User::factory()->create();
+
+        $sam->notifyNow(new PasswordChangedNotification);
+
+        $email = app('mail.manager')->mailer()->getSymfonyTransport()->messages()->last()->getOriginalMessage();
+        $html = (string) $email->getHtmlBody();
+        $this->assertSame('Example Makers', $email->getFrom()[0]->getName());
+        $this->assertStringContainsString('Example Makers. All rights reserved.', $html);
+        $this->assertStringContainsString("Regards,<br>\nExample Makers", $html);
+        $this->assertStringNotContainsString('SSVS', $html);
+        $this->assertStringNotContainsString('SSVS', (string) $email->getTextBody());
+    }
 }

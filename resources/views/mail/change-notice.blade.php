@@ -18,6 +18,7 @@
 </x-mail::button>
 
 {{ $loginNote }}
+
 @foreach ($titleLines as $line)
 {{ $line }}
 
