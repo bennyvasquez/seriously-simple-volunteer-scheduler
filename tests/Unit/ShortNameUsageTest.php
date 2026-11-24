@@ -26,6 +26,10 @@ class ShortNameUsageTest extends TestCase
         "->greeting(EmailText::line('cover_request.greeting', ['first_name' => \$notifiable->firstName()]))",
         "->greeting(EmailText::line(\$this->tookBack ? 'shift_taken.greeting_back_on' : 'shift_taken.greeting_thanks', ['first_name' => \$notifiable->firstName()]))",
         "->greeting(EmailText::line('shift_covered.greeting', ['first_name' => \$notifiable->firstName()]))",
+        // The same shape for the greetings of the time change, heads-up and reminder emails.
+        "->greeting(EmailText::line('shift_time_changed.greeting', ['first_name' => \$notifiable->firstName()]))",
+        "->greeting(EmailText::line('no_answer_lead.greeting', ['first_name' => \$notifiable->firstName()]))",
+        "->greeting(EmailText::line('shift_reminder.greeting', ['first_name' => \$notifiable->firstName()]))",
         "'Hi '.\$user->firstName()",
         // The taken page thanks the person who just took the shift, so it greets them.
         "'It\\'s yours. Thanks, '.\$user->firstName().'!'",

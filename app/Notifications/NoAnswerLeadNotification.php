@@ -27,8 +27,8 @@ class NoAnswerLeadNotification extends Notification
         $timezone = Organization::current()->timezone;
         $start = $shift->starts_at->setTimezone($timezone);
         $this->date = $start->format('l, F j');
-        $this->subject = 'No answer yet: '.$shift->area->name.', '.$this->date;
-        $this->line = $shift->area->name.', '.TimeFormat::range($start, $shift->ends_at->setTimezone($timezone)).' (was '.$was.')';
+        $this->subject = EmailText::line('no_answer_lead.subject', ['area' => $shift->area->name, 'date' => $this->date]);
+        $this->line = EmailText::line('no_answer_lead.shift_line', ['area' => $shift->area->name, 'now' => TimeFormat::range($start, $shift->ends_at->setTimezone($timezone)), 'was' => $was]);
         $this->url = route('calendar.shift', $shift);
     }
 
@@ -41,12 +41,12 @@ class NoAnswerLeadNotification extends Notification
     {
         return (new MailMessage)
             ->subject($this->subject)
-            ->greeting('Hi '.$notifiable->firstName().',')
-            ->line('The time of this shift changed, and these people haven\'t said whether the new time works:')
-            ->line('**'.$this->date.'**  '."\n".$this->line.'  '."\n".implode(', ', $this->names))
-            ->line('It starts in less than 48 hours. You might check with them that they know.')
-            ->action('Open the shift', $this->url)
-            ->line('This is the only reminder. Nobody else is emailed.')
-            ->line('You\'re getting this because you\'re '.$this->reason.'.');
+            ->greeting(EmailText::line('no_answer_lead.greeting', ['first_name' => $notifiable->firstName()]))
+            ->line(EmailText::line('no_answer_lead.intro'))
+            ->line(EmailText::line('no_answer_lead.shift', ['date' => $this->date, 'shift_line' => $this->line, 'names' => implode(', ', $this->names)]))
+            ->line(EmailText::line('no_answer_lead.outro'))
+            ->action(EmailText::line('no_answer_lead.action'), $this->url)
+            ->line(EmailText::line('no_answer_lead.only_reminder'))
+            ->line(EmailText::line('no_answer_lead.reason', ['reason' => $this->reason]));
     }
 }

@@ -563,4 +563,119 @@ return [
         // The list of dates in the several-shifts email is built in code, one line each, such as Thursday, October 22.
     ],
 
+    'shift_time_changed' => [
+        // The greeting at the top. {first_name} is the first name of the person whose shifts moved.
+        'greeting' => 'Hi {first_name},',
+        'subject' => [
+            // The subject when every shift moved to the same time in one area. {area} is the area's name. {time} is the new time, such as 6:30 to 9:30pm.
+            'moved' => 'Your {area} shift moved to {time}',
+            // The subject when every shift is back on at the same new time in one area. {area} is the area's name. {time} is the new time.
+            'back_on' => 'Your {area} shift is back on at {time}',
+            // The subject when the shifts moved to different times or are in different areas. No variables.
+            'changed' => 'Your shifts changed',
+            // The subject when they're back on at different times or in different areas. No variables.
+            'back_on_several' => 'Your shifts are back on at new times',
+        ],
+        'intro' => [
+            // The first line when one shift is back on at a new time. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+            'back_on_one' => 'Your {area} shift on {date} is back on, at a new time.',
+            // The first line when several shifts are back on at new times. {area} is the area's name.
+            'back_on_several' => 'Your {area} shifts are back on, at new times.',
+            // The first line when someone changed the time of one shift. {changed_by} is the first name and last initial of the person who changed it. {area} is the area's name.
+            'changed_one' => '{changed_by} changed the time of your {area} shift.',
+            // The first line when someone changed the time of several shifts. {changed_by} is the first name and last initial of the person who changed them. {area} is the area's name.
+            'changed_several' => '{changed_by} changed the time of your {area} shifts.',
+            // The first line when the system changed the time, so there's nobody to name. {area} is the area's name.
+            'by_system' => 'The {area} schedule changed.',
+        ],
+        // One line per shift. {date} is the day, such as Thursday, October 22. {now} is the new time, such as 6:30 to 9:30pm. {was} is the old time.
+        'line' => '{date}: {now} (was {was})',
+        // One line per shift when its title changed too. {date}, {now} and {was} are as above. {title_sentence} is the sentence about the title, such as " It's now for Open house.", with its leading space.
+        'line_with_title' => '{date}: {now} (was {was}).{title_sentence}',
+        // The one line for several shifts of one weekly slot that are every date from the first to the last. {weekdays} is the day in the plural, such as Thursdays. {from} and {to} are the first and last days, such as October 22 and December 10. {now} is the new time. {was} is the old time.
+        'range' => '{weekdays} from {from} to {to}: {now} (was {was})',
+        // The question above the buttons. No variables.
+        'question' => 'Does the new time still work for you?',
+        // The label on the first button. No variables.
+        'still_works' => 'Still works for me',
+        // The label on the second button. No variables.
+        'cant' => 'I can\'t make the new time',
+        // The line below the buttons. No variables. When the shift is more than 48 hours away, the lead_checks line follows it, with a space between.
+        'login' => 'You\'ll log in first if you aren\'t already.',
+        // Added after the login line when the earliest shift starts in more than 48 hours. No variables. The 48 hours is fixed.
+        'lead_checks' => 'If you don\'t answer, your shift lead will check with you before the shift.',
+    ],
+
+    'no_answer_lead' => [
+        // The greeting at the top. {first_name} is the first name of the lead or coordinator.
+        'greeting' => 'Hi {first_name},',
+        // The subject. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+        'subject' => 'No answer yet: {area}, {date}',
+        // The first line. No variables.
+        'intro' => 'The time of this shift changed, and these people haven\'t said whether the new time works:',
+        // The shift's line, with the day in bold above it and the names below it (each line ends in two spaces so they stay on separate lines). {date} is the day, such as Thursday, October 22. {shift_line} is the area, the new time and the old time, built from the shift_line wording. {names} is the first names and last initials of the people who haven't answered, joined in code with commas.
+        'shift' => "**{date}**  \n{shift_line}  \n{names}",
+        // The area, the new time and the old time, used inside the shift lines above. {area} is the area's name. {now} is the new time, such as 6:30 to 9:30pm. {was} is the old time.
+        'shift_line' => '{area}, {now} (was {was})',
+        // The line after the shift. No variables. The 48 hours is fixed.
+        'outro' => 'It starts in less than 48 hours. You might check with them that they know.',
+        // The label on the button that opens the shift. No variables.
+        'action' => 'Open the shift',
+        // The line after the button. No variables.
+        'only_reminder' => 'This is the only reminder. Nobody else is emailed.',
+        // The last line, saying why they got the email. {reason} is why this person gets it, such as a shift lead for Front desk or a coordinator.
+        'reason' => 'You\'re getting this because you\'re {reason}.',
+    ],
+
+    'shift_reminder' => [
+        // The greeting at the top. {first_name} is the first name of the person on the shift.
+        'greeting' => 'Hi {first_name},',
+        'subject' => [
+            // The subject when the shift is today. {area} is the area's name. {time} is the time, such as 9am to 12pm.
+            'today' => 'Reminder: {area} today, {time}',
+            // The subject when the shift is tomorrow. {area} is the area's name. {time} is the time.
+            'tomorrow' => 'Reminder: {area} tomorrow, {time}',
+            // The subject when the shift is on a later day. {area} is the area's name. {date} is the day, such as Thursday, October 22. {time} is the time.
+            'date' => 'Reminder: {area} on {date}, {time}',
+        ],
+        'intro' => [
+            'regular' => [
+                // The first line for someone on the shift when it's today. {area} is the area's name. {date} is the day, such as Wednesday, October 21. {time} is the time. {timezone} is the organization's time zone, such as Eastern Time.
+                'today' => 'You\'re on {area} today, {date}, {time} ({timezone}).',
+                // The same when it's tomorrow. The variables are the same.
+                'tomorrow' => 'You\'re on {area} tomorrow, {date}, {time} ({timezone}).',
+                // The same when it's on a later day. The variables are the same.
+                'date' => 'You\'re on {area} {date}, {time} ({timezone}).',
+            ],
+            'shadow' => [
+                // The first line for someone shadowing when it's today. The variables are the same as above.
+                'today' => 'You\'re shadowing {area} today, {date}, {time} ({timezone}).',
+                // The same when it's tomorrow.
+                'tomorrow' => 'You\'re shadowing {area} tomorrow, {date}, {time} ({timezone}).',
+                // The same when it's on a later day.
+                'date' => 'You\'re shadowing {area} {date}, {time} ({timezone}).',
+            ],
+        ],
+        // Shown instead of who else is on the shift when the person is shadowing and nobody but shadows is on it. No variables.
+        'nobody_to_shadow' => 'Nobody is on this shift for you to shadow yet. Please reach out to the volunteer coordinators to confirm next steps.',
+        // Shown when nobody else is on the shift. No variables.
+        'nobody_else' => 'Nobody else is on this shift yet.',
+        // Shown when other people are on the shift. {names} is their first names and last initials joined in code with commas.
+        'also_on' => 'Also on this shift: {names}',
+        // Shown when shadows are on the shift. {names} is their first names and last initials joined in code with commas.
+        'shadowing' => 'Shadowing: {names}',
+        // Shown above the two buttons when the person hasn't answered a change of time for this shift. No variables.
+        'time_changed' => 'The time of this shift changed, and you haven\'t told us yet whether the new time works.',
+        // The label on the first button of that change. No variables.
+        'still_works' => 'Still works for me',
+        // The label on the second button of that change. No variables.
+        'cant' => 'I can\'t make the new time',
+        // The line below those two buttons. No variables.
+        'login' => 'You\'ll log in first if you aren\'t already.',
+        // The label on the button that lets the person off the shift. No variables.
+        'release' => 'Can\'t make it',
+        // The last line. {emails_url} is the link to the Emails page. The words in the square brackets are the link's text.
+        'turn_off' => 'You can turn these reminders off on the [Emails page]({emails_url}).',
+    ],
+
 ];

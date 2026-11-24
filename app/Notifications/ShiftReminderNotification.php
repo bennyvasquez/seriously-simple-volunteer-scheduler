@@ -47,9 +47,11 @@ class ShiftReminderNotification extends Notification
             default => null,
         };
 
-        $this->subject = 'Reminder: '.$area.' '.($day ?? 'on '.$start->format('l, F j')).', '.$time;
-        $verb = $assignment->type === AssignmentType::Shadow ? 'shadowing' : 'on';
-        $this->intro = 'You\'re '.$verb.' '.$area.' '.($day !== null ? $day.', ' : '').$start->format('l, F j').', '.$time.' ('.self::timezoneName($timezone).').';
+        $when = $day ?? 'date';
+        $date = $start->format('l, F j');
+        $this->subject = EmailText::line('shift_reminder.subject.'.$when, ['area' => $area, 'date' => $date, 'time' => $time]);
+        $role = $assignment->type === AssignmentType::Shadow ? 'shadow' : 'regular';
+        $this->intro = EmailText::line('shift_reminder.intro.'.$role.'.'.$when, ['area' => $area, 'date' => $date, 'time' => $time, 'timezone' => self::timezoneName($timezone)]);
 
         if ($shift->title !== null && $shift->title !== '') {
             $this->intro .= "\n\n".$shift->title;
@@ -80,18 +82,23 @@ class ShiftReminderNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)->subject($this->subject)->greeting('Hi '.$notifiable->firstName().',')->markdown('mail.shift-reminder', [
+        return (new MailMessage)->subject($this->subject)->greeting(EmailText::line('shift_reminder.greeting', ['first_name' => $notifiable->firstName()]))->markdown('mail.shift-reminder', [
             'intro' => $this->intro,
             'others' => match (true) {
-                $this->nobodyToShadow => 'Nobody is on this shift for you to shadow yet. Please reach out to the volunteer coordinators to confirm next steps.',
-                $this->others === [] => 'Nobody else is on this shift yet.',
-                default => 'Also on this shift: '.implode(', ', $this->others),
+                $this->nobodyToShadow => EmailText::line('shift_reminder.nobody_to_shadow'),
+                $this->others === [] => EmailText::line('shift_reminder.nobody_else'),
+                default => EmailText::line('shift_reminder.also_on', ['names' => implode(', ', $this->others)]),
             },
-            'shadows' => $this->shadows === [] ? null : 'Shadowing: '.implode(', ', $this->shadows),
+            'shadows' => $this->shadows === [] ? null : EmailText::line('shift_reminder.shadowing', ['names' => implode(', ', $this->shadows)]),
+            'timeChanged' => EmailText::line('shift_reminder.time_changed'),
+            'stillWorksLabel' => EmailText::line('shift_reminder.still_works'),
             'stillWorksUrl' => $this->stillWorksUrl,
+            'cantLabel' => EmailText::line('shift_reminder.cant'),
             'cantUrl' => $this->stillWorksUrl,
+            'loginNote' => EmailText::line('shift_reminder.login'),
+            'releaseLabel' => EmailText::line('shift_reminder.release'),
             'releaseUrl' => $this->showRelease ? $this->releaseUrl : null,
-            'emailsUrl' => $this->emailsUrl,
+            'turnOff' => EmailText::line('shift_reminder.turn_off', ['emails_url' => $this->emailsUrl]),
         ]);
     }
 }

@@ -7,18 +7,17 @@
 {{ $line }}
 
 @endforeach
-Does the new time still work for you?
+{{ $question }}
 
 <x-mail::button :url="$stillWorksUrl">
-Still works for me
+{{ $stillWorksLabel }}
 </x-mail::button>
 
 <x-mail::button :url="$cantUrl" color="error">
-I can't make the new time
+{{ $cantLabel }}
 </x-mail::button>
 
-You'll log in first if you aren't already.@if ($leadChecks) If you don't answer, your shift lead will check with you before the shift.@endif
-
+{{ $loginNote }}
 @foreach ($titleLines as $line)
 {{ $line }}
 
