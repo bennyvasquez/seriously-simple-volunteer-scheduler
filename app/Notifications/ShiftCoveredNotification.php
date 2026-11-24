@@ -38,22 +38,20 @@ class ShiftCoveredNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        if (count($this->dates) > 1) {
-            $mail = (new MailMessage)
-                ->subject($this->takerFirstName.' is covering '.count($this->dates).' of your shifts')
-                ->greeting('Hi '.$notifiable->firstName().',')
-                ->line($this->takerFirstName.' took your '.$this->area.' shifts on these dates. You don\'t need to do anything.');
+        $count = count($this->dates);
+        $vars = ['taker' => $this->takerFirstName, 'count' => $count, 'area' => $this->area, 'date' => $this->date];
 
+        $mail = (new MailMessage)
+            ->subject(EmailText::choice('shift_covered.subject', $count, $vars))
+            ->greeting(EmailText::line('shift_covered.greeting', ['first_name' => $notifiable->firstName()]))
+            ->line(EmailText::choice('shift_covered.body', $count, $vars));
+
+        if ($count > 1) {
             foreach ($this->dates as $date) {
                 $mail->line($date);
             }
-
-            return $mail;
         }
 
-        return (new MailMessage)
-            ->subject($this->takerFirstName.' is covering your '.$this->date.' shift')
-            ->greeting('Hi '.$notifiable->firstName().',')
-            ->line($this->takerFirstName.' took your '.$this->area.' shift on '.$this->date.'. You don\'t need to do anything.');
+        return $mail;
     }
 }

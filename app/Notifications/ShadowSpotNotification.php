@@ -51,58 +51,54 @@ class ShadowSpotNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $area = $this->area;
+        $count = count($this->shifts);
+        $vars = ['count' => $count, 'date' => $this->date, 'area' => $this->area, 'when' => $this->when, 'releaser' => $this->releaserFirstName];
 
-        if ($this->notice === ShadowSpotNotice::OnHold && count($this->shifts) > 1) {
+        if ($this->notice === ShadowSpotNotice::OnHold) {
             $mail = (new MailMessage)
-                ->subject('Your shadow shifts on '.count($this->shifts).' dates are on hold')
-                ->line($this->releaserFirstName.' can\'t make these shifts, so right now there\'s nobody for you to shadow on them:');
+                ->subject(EmailText::choice('shadow_spot.on_hold.subject', $count, $vars))
+                ->line(EmailText::choice('shadow_spot.on_hold.intro', $count, $vars));
 
-            foreach ($this->shifts as $shift) {
-                $mail->line($shift);
+            if ($count > 1) {
+                foreach ($this->shifts as $shift) {
+                    $mail->line($shift);
+                }
             }
 
-            return $mail->line('We\'ve asked other volunteers to cover them, and we\'ll email you as soon as someone does. You don\'t need to do anything.');
+            return $mail->line(EmailText::choice('shadow_spot.on_hold.outro', $count));
         }
 
-        if ($this->notice === ShadowSpotNotice::BackOn && count($this->shifts) > 1) {
+        if ($this->notice === ShadowSpotNotice::BackOn) {
+            $vars['taker'] = (string) $this->takerFirstName;
+            $vars['taker_ended'] = ReleaseController::endSentence((string) $this->takerFirstName);
             $mail = (new MailMessage)
-                ->subject('Your shadow shifts on '.count($this->shifts).' dates are back on')
-                ->line($this->takerFirstName.' is covering, so you\'ll shadow '.$this->takerFirstName.' on these shifts:');
+                ->subject(EmailText::choice('shadow_spot.back_on.subject', $count, $vars))
+                ->line(EmailText::choice('shadow_spot.back_on.intro', $count, $vars));
 
-            foreach ($this->shifts as $shift) {
-                $mail->line($shift);
+            if ($count > 1) {
+                foreach ($this->shifts as $shift) {
+                    $mail->line($shift);
+                }
             }
 
             return $mail;
         }
 
-        if ($this->notice === ShadowSpotNotice::StillUncovered && count($this->shifts) > 1) {
-            $mail = (new MailMessage)
-                ->subject('Your shadow shifts tomorrow still have nobody to shadow')
-                ->line('Nobody has taken these shifts yet. If someone does, we\'ll email you.');
+        $mail = (new MailMessage)
+            ->subject(EmailText::choice('shadow_spot.still_uncovered.subject', $count))
+            ->line(EmailText::choice('shadow_spot.still_uncovered.intro', $count, $vars));
 
+        // One shift names its lead if it has one. Several shifts name each lead once.
+        $leads = $count > 1 ? $this->leadTexts : ($this->leadText === null ? [] : [$this->leadText]);
+
+        if ($count > 1) {
             foreach ($this->shifts as $shift) {
                 $mail->line($shift);
             }
-
-            $know = $this->leadTexts === [] ? '' : ' '.Arr::join($this->leadTexts, ', ', ' and ').(count($this->leadTexts) === 1 ? ' knows.' : ' know.');
-
-            return $mail->line('If nobody does, there\'s nobody to shadow, so please reach out to the volunteer coordinators to confirm next steps.'.$know);
         }
 
-        return match ($this->notice) {
-            ShadowSpotNotice::OnHold => (new MailMessage)
-                ->subject('Your shadow shift on '.$this->date.' is on hold')
-                ->line($this->releaserFirstName.' can\'t make their '.$area.' shift on '.$this->date.', so right now there\'s nobody for you to shadow.')
-                ->line('We\'ve asked other volunteers to cover it, and we\'ll email you as soon as someone does. You don\'t need to do anything.'),
-            ShadowSpotNotice::BackOn => (new MailMessage)
-                ->subject('Your shadow shift on '.$this->date.' is back on')
-                ->line($this->takerFirstName.' is covering, so you\'ll shadow '.ReleaseController::endSentence($this->takerFirstName).' '.$this->area.', '.$this->when.'.'),
-            ShadowSpotNotice::StillUncovered => (new MailMessage)
-                ->subject('Your shadow shift tomorrow still has nobody to shadow')
-                ->line('Nobody has taken '.$this->releaserFirstName.'\'s '.$area.' shift on '.$this->date.' yet. If someone does, we\'ll email you.')
-                ->line('If nobody does, there\'s nobody to shadow, so please reach out to the volunteer coordinators to confirm next steps.'.($this->leadText !== null ? ' '.$this->leadText.' knows.' : '')),
-        };
+        $know = $leads === [] ? '' : ' '.EmailText::choice('shadow_spot.still_uncovered.knows', count($leads), ['leads' => Arr::join($leads, ', ', ' and ')]);
+
+        return $mail->line(EmailText::line('shadow_spot.still_uncovered.reach_out').$know);
     }
 }

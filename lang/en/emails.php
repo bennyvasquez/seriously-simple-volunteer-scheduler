@@ -282,4 +282,285 @@ return [
         'outro' => 'If you can\'t make one, let your coordinator know.',
     ],
 
+    'shifts_released' => [
+        // The greeting at the top. {first_name} is the first name of the person who released their shifts.
+        'greeting' => 'Hi {first_name},',
+        // The subject when they only gave up their weekly slot and none of its dates are on the calendar yet. {weekday} is the day of the slot, such as Thursday.
+        'subject_no_longer_regular' => 'You\'re no longer the {weekday} regular',
+        // Shown when they gave up their weekly slot. {weekday} is the day of the slot, such as Thursday. {from} is the first date they're no longer the regular, such as Thursday, October 29.
+        'no_longer_regular' => 'You\'re no longer the {weekday} regular from {from}.',
+        // Shown after that line when none of the slot's dates are on the calendar yet. No variables.
+        'none_on_calendar' => 'None of those dates are on the calendar yet, so nobody needed to be asked to cover them.',
+        'subject' => [
+            // The subject when they released one shift. {date} is the day, such as Thursday, October 22.
+            'one' => 'You\'re off {date}',
+            // The subject when they released several shifts. {count} is how many.
+            'other' => 'You\'re off {count} shifts',
+        ],
+        // The first line when it was one shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'off_shift' => 'You\'re off your {area} shift on {when}.',
+        // The second line when it was one shift and nobody else was asked to cover it. {area} is the area's name.
+        'nobody_asked' => '{area} still has the people it needs, so nobody else was asked.',
+        // The second line when it was one shift and other volunteers were asked to cover it. No variables.
+        'asked_one' => 'We\'ve asked other volunteers to cover it, and we\'ll email you when someone does.',
+        'shadows_told' => [
+            // Shown when it was one shift and one shadow was going to shadow it. {names} is that shadow's first name.
+            'one' => '{names} was going to shadow you, so we\'ve told them too.',
+            // Shown when it was one shift and several shadows were. {names} is their first names joined in code, such as Casey and Jo.
+            'other' => '{names} were going to shadow you, so we\'ve told them too.',
+        ],
+        // Shown when it was one shift and they stay the regular for it. {weekday} is the day of the weekly slot, such as Thursday. {date} is the day, such as Thursday, October 22.
+        'stay_regular' => 'You stay the {weekday} regular. This only changes {date}.',
+        'take_back' => [
+            // The last line when it was one shift that other volunteers were asked to cover. No variables.
+            'one' => 'If you can make it after all, you can take it back from your home page while it\'s still open.',
+            // The last line when it was several shifts and other volunteers were asked to cover some. No variables.
+            'other' => 'If you can make any of them after all, you can take them back from your home page while they\'re still open.',
+        ],
+        // The label on the button that opens their shifts. No variables.
+        'action' => 'Open my shifts',
+        // The first line when it was several shifts, above the list. No variables.
+        'list_intro' => 'You\'re off these shifts:',
+        // One line per shift in the list. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'shift_item' => '{area}, {when}',
+        // One line in the list for a shift where they only left a shadow spot. {date} is the day, such as Thursday, October 22. {area} is the area's name.
+        'shadow_spot_item' => '{date}: shadow spot on {area}',
+        // Shown once for each shift in the list that still has the people it needs. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+        'nobody_asked_on_date' => '{area} still has the people it needs on {date}, so nobody else was asked.',
+        // Shown when it was several shifts and other volunteers were asked to cover all of the ones left. No variables.
+        'asked_all' => 'We\'ve asked other volunteers to cover them, and we\'ll email you when someone does.',
+        // Shown instead of that line when some shifts in the list had nobody else asked. No variables.
+        'asked_rest' => 'We\'ve asked other volunteers to cover the rest, and we\'ll email you when someone does.',
+        'shadows_told_on_dates' => [
+            // Shown when it was several shifts and one shadow was going to shadow some of them. {names} is that shadow's first name. {dates} is the days joined in code, such as Thursday, October 22 and Thursday, October 29.
+            'one' => '{names} was going to shadow you on {dates}, so we\'ve told them too.',
+            // Shown when several shadows were going to shadow the same shifts. {names} is their first names joined in code, such as Casey and Jo. {dates} is the days joined in code.
+            'other' => '{names} were going to shadow you on {dates}, so we\'ve told them too.',
+        ],
+        'shadows_told_every_date' => [
+            // Shown instead of that line when one shadow was going to shadow every shift in the list. {names} is that shadow's first name.
+            'one' => '{names} was going to shadow you on these dates, so we\'ve told them too.',
+            // Shown when several shadows were going to shadow every shift in the list. {names} is their first names joined in code, such as Casey and Jo.
+            'other' => '{names} were going to shadow you on these dates, so we\'ve told them too.',
+        ],
+        // Shown when it was several shifts and they stay the regular for one weekday. {weekday} is the day of the weekly slot, such as Thursday.
+        'stay_regular_weekday' => 'You stay the {weekday} regular. This only changes these dates.',
+        // Shown when it was several shifts and they stay the regular for weekly slots on different days. No variables.
+        'stay_regular_weekly' => 'You stay the regular on your weekly shifts. This only changes these dates.',
+    ],
+
+    'cover_request' => [
+        // The greeting at the top. {first_name} is the first name of the volunteer being asked.
+        'greeting' => 'Hi {first_name},',
+        // The subject of the "Still open" email, sent 72 hours before the shift. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+        'subject_still_open' => 'Still open: {area} on {date}',
+        // The first line of the "Still open" email. {releaser} is the first name of the person who released the shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'still_open' => 'Nobody has taken {releaser}\'s {area} shift yet. It\'s {when}.',
+        'subject_gave_up' => [
+            // The subject when someone gave up their weekly slot and one date needs covering. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+            'one' => 'Can you cover {area} on {date}?',
+            // The subject when several dates need covering. {area} is the area's name. {weekdays} is the weekday in plural, such as Thursdays.
+            'other' => 'Can you cover {area} on some {weekdays}?',
+        ],
+        // The first line when someone gave up their weekly slot, above the dates. {releaser} is the first name of the person giving it up. {weekday} is the day of the slot, such as Thursday. {area} is the area's name.
+        'gave_up' => '{releaser} is giving up their weekly {weekday} {area} slot. These dates need someone:',
+        'subject' => [
+            // The subject when one shift needs covering. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+            'one' => 'Can you cover {area} on {date}?',
+            // The subject when several shifts need covering. {area} is the area's name. {count} is how many dates.
+            'other' => 'Can you cover {area} on {count} dates?',
+        ],
+        'cant_make' => [
+            // The first line when it was one shift. {releaser} is the first name of the person who can't make it. {area} is the area's name.
+            'one' => '{releaser} can\'t make their {area} shift. Can you take it?',
+            // The first line when it was several shifts. {releaser} is the first name of the person who can't make them. {area} is the area's name.
+            'other' => '{releaser} can\'t make their {area} shifts. Can you take one?',
+        ],
+        // The line for the shift when it was one shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'shift_item' => '{area}, {when}',
+        // One link per shift when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the page to take the shift.
+        'shift_link' => '[{area}, {when}]({url})',
+        // Shown when the person who released the shift left a note. {releaser} is their first name. {note} is what they typed.
+        'note' => 'Note from {releaser}: {note}',
+        // The label on the button that opens the page to take the shift, when it was one shift. No variables.
+        'action' => 'Take this shift',
+        // The line below the button when it was one shift. No variables.
+        'first_person_one' => 'The first person to take it gets it. You\'ll log in first if you aren\'t already.',
+        // The line after the list when it was several shifts. No variables.
+        'first_person_several' => 'Pick a date to take it. The first person to take each date gets it. You\'ll log in first if you aren\'t already.',
+        // Why they got the email. {organization} is the name of the organization.
+        'reason' => 'You\'re getting this because you volunteer with {organization} and cover request emails are on for you.',
+        // The last line, a link to turn these emails off. {url} is the address of the Emails page.
+        'stop' => '[Stop getting cover requests]({url})',
+    ],
+
+    'cover_urgent' => [
+        'subject' => [
+            // The subject when one shift needs someone. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+            'one' => 'Needs someone tomorrow: {area}, {date}',
+            // The subject when several shifts do. {count} is how many.
+            'other' => 'Needs someone tomorrow: {count} shifts',
+        ],
+        'unclaimed' => [
+            // The first line when it was one shift. The 24 hours is fixed, not a variable.
+            'one' => 'Nobody has taken this shift yet, and it starts in less than 24 hours.',
+            // The first line when it was several shifts. The 24 hours is fixed, not a variable.
+            'other' => 'Nobody has taken these shifts yet, and they start in less than 24 hours.',
+        ],
+        // The second line when it was one shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm. {needs} is how many more people it needs, from the needs lines below.
+        'shift_line' => '{area}, {when}. {needs}',
+        // One line per shift when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the shift. {needs} is how many more people it needs, from the needs lines below. {released} is who released it and who was emailed, from the released lines below.
+        'shift_link_line' => '[{area}, {when}]({url}). {needs} {released}',
+        'needs' => [
+            // How many more people a shift needs, when it's one. {count} is 1.
+            'one' => 'Needs {count} more person.',
+            // How many more people a shift needs, when it's none or several. {count} is how many.
+            'other' => 'Needs {count} more people.',
+        ],
+        // The first part of who released it. {releaser} is the first name of the person who released the shift. {released_on} is the day they released it, such as Thursday, October 15.
+        'released' => '{releaser} released it on {released_on}.',
+        'emailed' => [
+            // The second part, when one volunteer was emailed. {count} is 1.
+            'one' => 'We emailed {count} volunteer when it was released.',
+            // The second part when none or several were. {count} is how many.
+            'other' => 'We emailed {count} volunteers when it was released.',
+        ],
+        'emailed_again' => [
+            // The second part, when one volunteer was emailed and the email went out again 72 hours before. {count} is 1. The 72 hours is fixed, not a variable.
+            'one' => 'We emailed {count} volunteer when it was released and again 72 hours before.',
+            // The second part when none or several were. {count} is how many. The 72 hours is fixed, not a variable.
+            'other' => 'We emailed {count} volunteers when it was released and again 72 hours before.',
+        ],
+        // The label on the button that opens the shift, when it was one shift. No variables.
+        'action' => 'Open the shift',
+        'marked_urgent' => [
+            // The line after the shift when it was one shift. No variables.
+            'one' => 'It\'s marked urgent on the calendar until someone takes it. From the shift you can put someone on it yourself.',
+            // The line after the list when it was several shifts. No variables.
+            'other' => 'They\'re marked urgent on the calendar until someone takes them. From each shift you can put someone on it yourself.',
+        ],
+        // The last line, saying why they got the email. {reasons} is the reasons joined in code, such as a shift lead for Front desk and a coordinator.
+        'reason' => 'You\'re getting this because you\'re {reasons}.',
+    ],
+
+    'shadow_spot' => [
+        'on_hold' => [
+            'subject' => [
+                // The subject when one of their shadow shifts is on hold. {date} is the day, such as Thursday, October 22.
+                'one' => 'Your shadow shift on {date} is on hold',
+                // The subject when several are. {count} is how many dates.
+                'other' => 'Your shadow shifts on {count} dates are on hold',
+            ],
+            'intro' => [
+                // The first line when it was one shift. {releaser} is the first name of the person who can't make it. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+                'one' => '{releaser} can\'t make their {area} shift on {date}, so right now there\'s nobody for you to shadow.',
+                // The first line when it was several shifts, above the list. {releaser} is the first name of the person who can't make them.
+                'other' => '{releaser} can\'t make these shifts, so right now there\'s nobody for you to shadow on them:',
+            ],
+            'outro' => [
+                // The last line when it was one shift. No variables.
+                'one' => 'We\'ve asked other volunteers to cover it, and we\'ll email you as soon as someone does. You don\'t need to do anything.',
+                // The last line when it was several shifts. No variables.
+                'other' => 'We\'ve asked other volunteers to cover them, and we\'ll email you as soon as someone does. You don\'t need to do anything.',
+            ],
+        ],
+        'back_on' => [
+            'subject' => [
+                // The subject when one of their shadow shifts is back on. {date} is the day, such as Thursday, October 22.
+                'one' => 'Your shadow shift on {date} is back on',
+                // The subject when several are. {count} is how many dates.
+                'other' => 'Your shadow shifts on {count} dates are back on',
+            ],
+            'intro' => [
+                // The only line when it was one shift. {taker} is the first name of the person covering. {taker_ended} is the same name with a full stop added unless it already ends in one (a short name such as Jordan P. does), so the sentence ends right after it. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
+                'one' => '{taker} is covering, so you\'ll shadow {taker_ended} {area}, {when}.',
+                // The first line when it was several shifts, above the list. {taker} is the first name of the person covering.
+                'other' => '{taker} is covering, so you\'ll shadow {taker} on these shifts:',
+            ],
+        ],
+        'still_uncovered' => [
+            'subject' => [
+                // The subject when one of their shadow shifts still has nobody to shadow. No variables.
+                'one' => 'Your shadow shift tomorrow still has nobody to shadow',
+                // The subject when several still have nobody. No variables.
+                'other' => 'Your shadow shifts tomorrow still have nobody to shadow',
+            ],
+            'intro' => [
+                // The first line when it was one shift. {releaser} is the first name of the person who released it. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+                'one' => 'Nobody has taken {releaser}\'s {area} shift on {date} yet. If someone does, we\'ll email you.',
+                // The first line when it was several shifts, above the list. No variables.
+                'other' => 'Nobody has taken these shifts yet. If someone does, we\'ll email you.',
+            ],
+            // The last line. No variables. When the area has leads, a sentence from the knows lines below follows it, with a space between.
+            'reach_out' => 'If nobody does, there\'s nobody to shadow, so please reach out to the volunteer coordinators to confirm next steps.',
+            'knows' => [
+                // Added after the last line when one lead is named. {leads} is the lead's name and role, such as Alex (Shift lead).
+                'one' => '{leads} knows.',
+                // Added after the last line when several leads are named. {leads} is the leads joined in code, such as Alex (Shift lead) and Jo (Shift lead).
+                'other' => '{leads} know.',
+            ],
+        ],
+        // The list of shifts in the several-shifts emails is built in code, one line each, such as Front desk, Thursday, October 22, 6:30 to 9:30pm.
+    ],
+
+    'shift_taken' => [
+        // The subject of the email sent to someone who took an open shift. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+        'subject' => 'You\'re on {area}, {date}',
+        // The greeting at the top when they took a shift someone else released. {first_name} is their first name.
+        'greeting_thanks' => 'Hi {first_name}, thanks for covering!',
+        // The greeting at the top when they took back a shift they released themselves. {first_name} is their first name.
+        'greeting_back_on' => 'Hi {first_name}, you\'re back on.',
+        // Shown when they became the regular. {how} is how often, such as Thursday or every other Thursday. {area} is the area's name. {date} is the first day, such as Thursday, October 22.
+        'regular' => 'You\'re now the {how} regular for {area}, starting {date}.',
+        // The line giving the time. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm. {area} is the area's name.
+        'when_area' => '{when}, {area}.',
+        // Shown when the person who released the shift left a note. {releaser} is their first name. {note} is what they typed.
+        'note' => 'Note from {releaser}: {note}',
+        'shadowing' => [
+            // Shown when one shadow is on the shift. {names} is that person's first name.
+            'one' => '{names} is shadowing.',
+            // Shown when several shadows are. {names} is their first names joined in code, such as Casey and Jo.
+            'other' => '{names} are shadowing.',
+        ],
+        // Shown when they became the regular but some dates were left out because they're on another shift then. {dates} is the days joined in code with "or", such as Thursday, October 29 or Thursday, November 5.
+        'not_on_other_shift' => 'You\'re not on {dates} because you\'re already on another shift then.',
+        // Shown when some dates were left out because those shifts already have the people they need. {dates} is the days joined in code with "or".
+        'not_on_full' => 'You\'re not on {dates} because they already have the people they need.',
+    ],
+
+    'shift_taken_lead' => [
+        // The subject when someone covered a released shift. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+        'subject_covered' => 'Covered: {area} on {date}',
+        // The first line when the person who released the shift took it back. {taker} is their first name and last initial. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'took_back' => '{taker} took back their {area} shift on {when}.',
+        // The first line when someone covered a released shift. {taker} is the first name and last initial of the person who took it. {releaser} is the first name of the person who released it. {area} is the area's name. {when} is the date and time.
+        'covering' => '{taker} is covering {releaser}\'s {area} shift on {when}.',
+        // Shown when they became the regular. {taker} is their first name and last initial. {how} is how often, such as Thursday or every other Thursday. {date} is the first day, such as Thursday, October 22.
+        'regular' => '{taker} is now the {how} regular from {date}.',
+        // The subject when someone took an open place that wasn't a cover request. {taker} is their first name and last initial. {area} is the area's name. {date} is the day.
+        'subject_took' => '{taker} took {area} on {date}',
+        // The first line when someone took an open place that wasn't a cover request and didn't become the regular. {taker} is their first name and last initial. {area} is the area's name. {when} is the date and time.
+        'took_open' => '{taker} took the open {area} shift on {when}.',
+        // The label on the button that opens the shift. No variables.
+        'action' => 'Open the shift',
+    ],
+
+    'shift_covered' => [
+        'subject' => [
+            // The subject when someone is covering one of their shifts. {taker} is the first name of the person covering. {date} is the day, such as Thursday, October 22.
+            'one' => '{taker} is covering your {date} shift',
+            // The subject when someone is covering several. {taker} is the first name of the person covering. {count} is how many.
+            'other' => '{taker} is covering {count} of your shifts',
+        ],
+        // The greeting at the top. {first_name} is the first name of the person who released the shifts.
+        'greeting' => 'Hi {first_name},',
+        'body' => [
+            // The only line when it was one shift. {taker} is the first name of the person covering. {area} is the area's name. {date} is the day.
+            'one' => '{taker} took your {area} shift on {date}. You don\'t need to do anything.',
+            // The first line when it was several shifts, above the list of dates. {taker} is the first name of the person covering. {area} is the area's name.
+            'other' => '{taker} took your {area} shifts on these dates. You don\'t need to do anything.',
+        ],
+        // The list of dates in the several-shifts email is built in code, one line each, such as Thursday, October 22.
+    ],
+
 ];
