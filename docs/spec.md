@@ -238,7 +238,7 @@ SSVS is the record of volunteer hours.
 
 ## 10. Notifications
 
-In the email and status copy in this spec, "{Name}" is a person's first name and last initial ("Jordan P.", or just "Cher" for a one-word name), and a removed person is "Removed person". The only copy that uses a first name alone is a greeting to the person themselves ("Hi Sam" on Home and at the top of each email).
+In the email and status copy in this spec, "{Name}" is a person's first name and last initial ("Jordan P.", or just "Cher" for a one-word name), and a removed person is "Removed person" on coordinator screens and in the change log. A removed person who released a shift is "Someone" wherever a volunteer or lead reads it, in emails and on the take page, Home and the release screens. The only copy that uses a first name alone is a greeting to the person themselves ("Hi Sam" on Home and at the top of each email).
 
 - **Channels:** email (always available), chat webhooks, and text messages. Each person picks which channels get which kinds of notice: cover requests, changes to my shifts, reminders, and (for leads and coordinators) escalations.
 - **Email is the baseline.** Chat only reaches people who are active there, so it can't be the only channel for anything that matters.

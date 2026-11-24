@@ -109,8 +109,7 @@ final class CoverFill
     {
         $lockedShift->loadMissing('area');
         $taker = $person->shortName();
-        // The same name CoverRequest::releaserName() gives: "Someone" once the releaser's account has been removed.
-        $releaserName = $releaser === null ? null : ($releaser->is_removed_person ? 'Someone' : $releaser->shortName());
+        $releaserName = $releaser?->releaserName();
         $sends = [];
 
         if ($releaser !== null && $releaser->id !== $person->id) {

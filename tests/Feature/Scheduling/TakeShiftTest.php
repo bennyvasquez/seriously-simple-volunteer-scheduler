@@ -151,6 +151,7 @@ class TakeShiftTest extends TestCase
         app(ReleaseShifts::class)->one($this->robin, $shift, 'The key is in the drawer.');
         app(RemovePerson::class)->handle($this->coordinator, $this->robin);
         $this->assertSame('Someone', CoverRequest::query()->sole()->releaserName());
+        $this->assertNull(CoverRequest::query()->sole()->releasedBy->routeNotificationForMail(new ShiftCoveredNotification($shift, 'Jordan E.')));
         Notification::fake();
 
         app(TakeShift::class)->handle($this->jordan, $shift->fresh(), TakeHow::JustThisDate);

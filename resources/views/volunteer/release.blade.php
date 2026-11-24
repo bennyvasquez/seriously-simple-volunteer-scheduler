@@ -27,7 +27,7 @@
 <fieldset class="choices options" @error('scope') aria-describedby="scope-error" @enderror>
 <legend>Which shifts can't you make?</legend>
 @error('scope')<span class="field-error" id="scope-error" role="alert">{{ $message }}</span>@enderror
-<label class="opt"><input type="radio" name="scope" value="one" @checked($values['scope'] === 'one')><span><strong>Just {{ $card['date'] }}</strong>@if ($regular)<br><span class="muted">You stay on your other {{ $regular->weeklySlot->weekdayName() }}s.</span>@endif</span></label>
+<label class="opt"><input type="radio" name="scope" value="one" @checked($values['scope'] === 'one') aria-describedby="one-hint"><span><strong>Just {{ $card['date'] }}</strong>@if ($regular)<br><span class="muted">You stay on your other {{ $regular->weeklySlot->weekdayName() }}s.</span>@endif<br><span class="muted" id="one-hint">@if ($needsCover)We'll ask other volunteers to cover it right away, and tell your lead if it's still open 24 hours before.@else If you're off just {{ $dayName }}, {{ $shift->area->name }} still has the people it needs, so nobody else will be asked.@endif</span></span></label>
 <div class="opt-group">
 <label class="opt"><input type="radio" name="scope" value="range" @checked($values['scope'] === 'range') aria-describedby="range-hint"><span><strong>Several dates (I'm away)</strong><br><span class="muted" id="range-hint">Pick the first and last day you're gone.</span></span></label>
 <div class="opt-fields">
@@ -56,9 +56,7 @@
 </div>
 
 @unless ($shadow)
-<p class="muted">You're off the shift as soon as you confirm.
-@if (! $needsCover){{ $shift->area->name }} still has the people it needs, so nobody else will be asked.@else We'll ask other volunteers to cover it right away, and tell your lead if it's still open 24 hours before.@endif
-@if ($shadowNames !== []) {{ App\Http\Controllers\Volunteer\ReleaseController::names($shadowNames) }} {{ count($shadowNames) === 1 ? 'was' : 'were' }} shadowing you, so we'll let them know too.@endif</p>
+<p class="muted">You're off the shift as soon as you confirm. Other volunteers are asked to cover any shift that still needs someone. For several dates or your weekly slot, the next step shows which.@if ($shadowNames !== []) If you're off just {{ $dayName }}, {{ App\Http\Controllers\Volunteer\ReleaseController::names($shadowNames) }} {{ count($shadowNames) === 1 ? 'was' : 'were' }} shadowing you, so we'll let them know too.@endif</p>
 @endunless
 
 <button type="submit" class="btn btn-primary">{{ $shadow ? 'Leave this shadow spot' : 'Release this shift' }}</button>

@@ -60,6 +60,7 @@ class ReleaseController extends Controller
             'shadow' => $shadow,
             'shadowNames' => $shadowNames,
             'needsCover' => $needsCover,
+            'dayName' => $shift->local_date->format('l, F j'),
             'regular' => $shadow ? null : $this->regular($user, $shift),
             'values' => [
                 'scope' => (string) $request->old('scope', ''),
@@ -254,14 +255,23 @@ class ReleaseController extends Controller
     }
 
     /**
-     * The cards for the check step, each with `nobodyAsked` true when the shift keeps the people it needs without this person (so nobody is asked to cover it).
+     * The cards for the check step, each with `shadow` true for a shadow spot and `nobodyAsked` true when nobody is asked to cover it: a shadow spot, or a shift that keeps the people it needs without this person (so nobody is asked to cover it).
      *
      * @param  Collection<int, Shift>  $shifts
-     * @return list<array{date: string, area: string, what: string, nobodyAsked: bool}>
+     * @return list<array{date: string, area: string, what: string, shadow: bool, nobodyAsked: bool}>
      */
     private function checkCards(User $user, Collection $shifts): array
     {
-        return $shifts->map(fn (Shift $listed) => self::card($listed) + ['nobodyAsked' => ! $this->needsCover($listed, $this->assignment($user, $listed))])->values()->all();
+        $mine = Assignment::query()->where('user_id', $user->id)->whereIn('shift_id', $shifts->modelKeys())->get()->keyBy('shift_id');
+        $regulars = Assignment::query()->whereIn('shift_id', $shifts->modelKeys())->where('type', AssignmentType::Regular)->selectRaw('shift_id, count(*) as total')->groupBy('shift_id')->pluck('total', 'shift_id');
+
+        return $shifts->map(function (Shift $listed) use ($mine, $regulars) {
+            $assignment = $mine->get($listed->id);
+            $isShadow = $assignment?->type === AssignmentType::Shadow;
+            $covered = $assignment?->type === AssignmentType::Regular && $listed->cancelled_at === null && $listed->people_needed - ((int) $regulars->get($listed->id, 0) - 1) > 0;
+
+            return self::card($listed) + ['shadow' => $isShadow, 'nobodyAsked' => ! $covered];
+        })->values()->all();
     }
 
     /** The person's weekly regular for this shift's slot on its date, the one "Give up my weekly slot" ends, or null when they aren't its regular then. */
