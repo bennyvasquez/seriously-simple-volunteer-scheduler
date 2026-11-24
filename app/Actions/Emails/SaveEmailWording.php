@@ -75,12 +75,12 @@ class SaveEmailWording
     }
 
     /**
-     * Checks every line and returns the text to store for each, null meaning the default.
+     * Checks every line and returns the text to store for each, null meaning the default. It stores nothing, so the editor's preview uses it too, to refuse what a save would refuse. Throws a ValidationException keyed by line key.
      *
      * @param  array<string, ?string>  $lines
      * @return array<string, ?string>
      */
-    private function check(array $lines): array
+    public function check(array $lines): array
     {
         $errors = [];
         $wanted = [];
@@ -138,9 +138,16 @@ class SaveEmailWording
         $unknown = array_values(array_unique(array_filter($matches[0], fn (string $braced) => ! in_array(substr($braced, 1, -1), $allowed, true))));
 
         if ($unknown !== []) {
+            $start = count($unknown) === 1 ? $unknown[0].' isn\'t a word this line can use.' : self::list($unknown).' aren\'t words this line can use.';
+            $close = array_map(fn (string $braced) => self::closest(substr($braced, 1, -1), $allowed), $unknown);
+
+            if (! in_array(null, $close, true)) {
+                return $start.' Did you mean '.self::list(array_values(array_unique(array_map(fn (string $name) => '{'.$name.'}', $close)))).'?';
+            }
+
             $words = $allowed === [] ? 'This line has no words in braces you can use.' : 'The words in braces this line can use are '.self::list(array_map(fn (string $name) => '{'.$name.'}', $allowed)).'.';
 
-            return 'This line can\'t use '.self::list($unknown).'. '.$words;
+            return $start.' '.$words;
         }
 
         $missing = array_values(array_filter(EmailText::requiredVariables($key), fn (string $name) => ! str_contains($text, '{'.$name.'}')));
@@ -154,6 +161,29 @@ class SaveEmailWording
         }
 
         return null;
+    }
+
+    /**
+     * The allowed word a mistyped one most likely meant: one that starts with it or it starts with ({emails_page} for {emails_page_link}), or one a couple of letters away ({firstname} for {first_name}). Null when nothing is that close.
+     *
+     * @param  list<string>  $allowed
+     */
+    private static function closest(string $typed, array $allowed): ?string
+    {
+        $typed = strtolower(trim($typed));
+        $best = null;
+        $bestDistance = PHP_INT_MAX;
+
+        foreach ($allowed as $name) {
+            $distance = $typed !== '' && (str_starts_with($name, $typed) || str_starts_with($typed, $name)) ? 0 : levenshtein($typed, $name);
+
+            if ($distance < $bestDistance && $distance <= max(2, intdiv(strlen($name), 4))) {
+                $best = $name;
+                $bestDistance = $distance;
+            }
+        }
+
+        return $best;
     }
 
     /** @param list<string> $items "{a}", "{a} and {b}", "{a}, {b} and {c}". */

@@ -13,6 +13,7 @@ use App\Http\Controllers\Calendar\RegularController;
 use App\Http\Controllers\Calendar\ShiftController;
 use App\Http\Controllers\ChangeLogController;
 use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\EmailWordingController;
 use App\Http\Controllers\People\ClearanceController;
 use App\Http\Controllers\People\InviteController;
 use App\Http\Controllers\People\PeopleController;
@@ -97,6 +98,16 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/areas/{area}', [AreaController::class, 'update'])->name('calendar.areas.update');
     });
     Route::get('/change-log', [ChangeLogController::class, 'index'])->middleware('can:view-change-log')->name('change-log.index');
+    // The email editor (wireframes 61 to 63). Changing what every volunteer receives is for active coordinators and admins only.
+    Route::middleware('can:manage-emails')->where(['email' => '[a-z_]+', 'line' => '[a-z0-9_.]+'])->group(function () {
+        Route::get('/emails', [EmailWordingController::class, 'index'])->name('emails.index');
+        Route::get('/emails/{email}', [EmailWordingController::class, 'edit'])->name('emails.edit');
+        Route::middleware('throttle:email-editor')->group(function () {
+            Route::put('/emails/{email}', [EmailWordingController::class, 'update'])->name('emails.update');
+            Route::post('/emails/{email}/preview', [EmailWordingController::class, 'preview'])->name('emails.preview');
+            Route::delete('/emails/{email}/lines/{line}', [EmailWordingController::class, 'reset'])->name('emails.reset');
+        });
+    });
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings');
     Route::put('/settings', [SettingsController::class, 'update']);
     Route::put('/settings/shadowing', [SettingsController::class, 'updateShadowing'])->name('settings.shadowing');

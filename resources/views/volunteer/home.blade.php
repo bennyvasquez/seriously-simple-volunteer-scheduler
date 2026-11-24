@@ -36,6 +36,9 @@
 @can('view-change-log')
 <a class="btn" href="{{ route('change-log.index') }}">Change log</a>
 @endcan
+@can('manage-emails')
+<a class="btn" href="{{ route('emails.index') }}">Emails we send</a>
+@endcan
 <a class="btn" href="{{ route('account.emails') }}">Emails</a>
 <a class="btn" href="{{ route('account.show') }}">Login and security</a>
 <x-log-out />

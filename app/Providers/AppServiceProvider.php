@@ -61,6 +61,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('view-schedule', fn (User $user) => $user->isActive());
         Gate::define('view-change-log', fn (User $user) => $user->isActive() && $user->isCoordinator());
         Gate::define('manage-shadowing', fn (User $user) => $user->isActive() && $user->isCoordinator());
+        // Changing the wording of the emails reaches every volunteer's inbox, so it's for active coordinators and admins, who sign in with two-factor (spec section 6).
+        Gate::define('manage-emails', fn (User $user) => $user->isActive() && $user->isCoordinator());
         // Only admins change organization settings (spec section 6).
         Gate::define('manage-settings', fn (User $user) => $user->isActive() && $user->hasRole(Role::Admin));
 
@@ -68,6 +70,8 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('login-link-use', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
         RateLimiter::for('email-change', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change|'.$request->user()?->id));
         RateLimiter::for('email-change-identity', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change-identity|'.$request->user()?->id));
+        // Saving, resetting and previewing email wording, per person, so a stolen session can't hammer the editor.
+        RateLimiter::for('email-editor', fn (Request $request) => Limit::perMinute(30)->by('email-editor|'.$request->user()?->id));
         RateLimiter::for('two-factor-email', fn (Request $request) => Limit::perMinutes(10, 3)->by('two-factor-email|'.$request->session()->get('login.id')));
 
         // A query-builder update, so signing in fires no model events and writes no change log entry. Login also fires when a remember-me cookie signs someone back in.

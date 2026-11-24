@@ -37,6 +37,26 @@ class EmailWording extends Model
         app()->forgetInstance(self::CACHE);
     }
 
+    /**
+     * Runs the callback with these edits standing in for the stored ones, then reads the table again afterwards. The editor's preview uses it to show typed text exactly the way an email would, without saving anything.
+     *
+     * @template T
+     *
+     * @param  array<string, string>  $edits  Every edited line to use, keyed by line key.
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    public static function previewing(array $edits, callable $callback): mixed
+    {
+        app()->instance(self::CACHE, $edits);
+
+        try {
+            return $callback();
+        } finally {
+            self::forgetCache();
+        }
+    }
+
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
