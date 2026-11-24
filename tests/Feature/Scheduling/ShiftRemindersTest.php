@@ -262,11 +262,30 @@ class ShiftRemindersTest extends TestCase
     public function test_a_shadow_is_told_theyre_shadowing(): void
     {
         $casey = User::factory()->create(['name' => 'Casey Moss']);
-        $this->shiftWith([[$casey, AssignmentType::Shadow]]);
+        $shift = $this->shiftWith([$this->person('Sam Example'), [$casey, AssignmentType::Shadow]]);
         $this->at('2026-10-20 10:00');
         $this->run24();
 
-        $this->assertStringContainsString("You're shadowing Front desk tomorrow, Wednesday, October 21, 9am to 12pm (Eastern Time).", $this->text($this->sentTo($casey), $casey));
+        $text = $this->text($this->sentTo($casey), $casey);
+        $this->assertStringContainsString("You're shadowing Front desk tomorrow, Wednesday, October 21, 9am to 12pm (Eastern Time).", $text);
+        $this->assertStringContainsString('Also on this shift: Sam E.', $text);
+        $this->assertStringContainsString('href="'.route('shifts.release', $shift).'"', (string) $this->sentTo($casey)->toMail($casey)->render());
+    }
+
+    public function test_a_lone_shadow_is_told_not_to_come_in_and_gets_no_button(): void
+    {
+        $casey = User::factory()->create(['name' => 'Casey Moss']);
+        $shift = $this->shiftWith([[$casey, AssignmentType::Shadow]]);
+        $this->at('2026-10-20 10:00');
+        $this->run24();
+
+        $text = $this->text($this->sentTo($casey), $casey);
+        $html = (string) $this->sentTo($casey)->toMail($casey)->render();
+        $this->assertStringContainsString("Nobody is on this shift for you to shadow yet. If nobody takes it, please don't come in.", $text);
+        $this->assertStringNotContainsString('Nobody else is on this shift yet.', $text);
+        $this->assertStringNotContainsString("Can't make it", $text);
+        $this->assertStringNotContainsString(route('shifts.release', $shift), $html);
+        $this->assertStringContainsString('Emails page', $text);
     }
 
     public function test_an_unanswered_time_change_is_asked_again(): void
@@ -290,7 +309,14 @@ class ShiftRemindersTest extends TestCase
         $this->assertStringContainsString('Still works for me', $text);
         $this->assertStringContainsString("I can't make the new time", $text);
 
+        // Exactly the two change buttons: no separate release link or "Can't make it" button.
+        $this->assertStringNotContainsString(route('shifts.release', $shift), $html);
+        $this->assertStringNotContainsString("Can't make it", $text);
+        $this->assertSame(2, substr_count($html, 'class="button'));
+
+        $jordanHtml = (string) $this->sentTo($jordan)->toMail($jordan)->render();
         $this->assertStringNotContainsString('The time of this shift changed', $this->text($this->sentTo($jordan), $jordan));
+        $this->assertStringContainsString(route('shifts.release', $shift), $jordanHtml);
     }
 
     public function test_the_email_has_cant_make_it_and_links_to_the_emails_page(): void

@@ -23,9 +23,12 @@ I can't make the new time
 You'll log in first if you aren't already.
 
 @endif
+@if ($releaseUrl !== null)
 <x-mail::button :url="$releaseUrl" color="error">
 Can't make it
 </x-mail::button>
+
+@endif
 
 You can turn these reminders off on the [Emails page]({{ $emailsUrl }}).
 </x-mail::message>
