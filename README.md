@@ -27,7 +27,7 @@ Built so far: the foundation and shift generation, accounts and sign-in with the
 
 ## Reference deployment
 
-The first deployment is the [Lansing Makers Network](docs/deployments/lmn.md) in Lansing, Michigan.
+The first deployment is the Lansing Makers Network in Lansing, Michigan.
 
 ## License
 

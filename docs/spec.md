@@ -2,7 +2,7 @@
 
 Status: draft, October 2026. Owner: benny Vasquez.
 
-This spec describes what the app does and why. It's written for anyone building or deploying it. Organization-specific setup lives in [deployments/](deployments/), starting with [the Lansing Makers Network](deployments/lmn.md).
+This spec describes what the app does and why. It's written for anyone building or deploying it. Each organization keeps its own setup notes outside this repository; [deployments/README.md](deployments/README.md) says what they cover.
 
 ## 1. The problem
 
@@ -560,6 +560,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-11-24 | Per-channel choices for reminders wait for chat. Only email exists, so the only choice for now is the "Remind me before my shifts" checkbox. |
 | 2026-11-24 | The reminder's "Can't make it" button is shown only when the person has no open time change notice (the email's "I can't make the new time" and the answer page already offer it, so two red buttons meaning nearly the same thing are avoided), and not for a shadow on a shift nobody but shadows is on. That shadow's spot is on hold (decision 6 of section 8.2), so the reminder says "Nobody is on this shift for you to shadow yet. If nobody takes it, please don't come in." instead of "Nobody else is on this shift yet.", matching the cover ladder's email (my call, for benny to check, 2026-11-24). |
 | 2026-11-24 | A shadow left with nobody to shadow is never told not to come in. The cover ladder's 24-hour "still has nobody to shadow" email and the reminder both ask them to "reach out to the volunteer coordinators to confirm next steps" instead. This replaces the "please don't come in" wording in the 2026-11-21 row and the row above. The email doesn't name a chat channel, because each organization reaches its coordinators differently (benny, 2026-11-24). |
+| 2026-11-24 | Each organization's setup notes (people, schedule shape, integrations, hosting, launch plan) live outside this repository, so the repository can be public. LMN's moved to a private repository for now; docs/deployments/README.md says what the notes should cover. Earlier plans in docs/plans/ still mention docs/deployments/lmn.md as a record of what was done then. |
 
 ## 19. Open questions
 

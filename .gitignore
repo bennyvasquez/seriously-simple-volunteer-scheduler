@@ -31,3 +31,5 @@ CLAUDE.local.md
 /tests/Browser/screenshots
 /tests/Browser/console
 /tests/Browser/source
+/docs/deployments/*
+!/docs/deployments/README.md
