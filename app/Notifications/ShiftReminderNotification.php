@@ -26,7 +26,7 @@ class ShiftReminderNotification extends Notification
 
     public ?string $stillWorksUrl = null;
 
-    /** True for a shadow on a shift nobody but shadows is on: their spot is on hold and the email tells them not to come in. */
+    /** True for a shadow on a shift nobody but shadows is on: their spot is on hold and the email asks them to check with the volunteer coordinators. */
     public bool $nobodyToShadow;
 
     public bool $showRelease;
@@ -83,7 +83,7 @@ class ShiftReminderNotification extends Notification
         return (new MailMessage)->subject($this->subject)->greeting('Hi '.$notifiable->firstName().',')->markdown('mail.shift-reminder', [
             'intro' => $this->intro,
             'others' => match (true) {
-                $this->nobodyToShadow => 'Nobody is on this shift for you to shadow yet. If nobody takes it, please don\'t come in.',
+                $this->nobodyToShadow => 'Nobody is on this shift for you to shadow yet. Please reach out to the volunteer coordinators to confirm next steps.',
                 $this->others === [] => 'Nobody else is on this shift yet.',
                 default => 'Also on this shift: '.implode(', ', $this->others),
             },

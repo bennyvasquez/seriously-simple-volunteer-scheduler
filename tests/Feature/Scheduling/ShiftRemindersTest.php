@@ -281,7 +281,7 @@ class ShiftRemindersTest extends TestCase
 
         $text = $this->text($this->sentTo($casey), $casey);
         $html = (string) $this->sentTo($casey)->toMail($casey)->render();
-        $this->assertStringContainsString("Nobody is on this shift for you to shadow yet. If nobody takes it, please don't come in.", $text);
+        $this->assertStringContainsString('Nobody is on this shift for you to shadow yet. Please reach out to the volunteer coordinators to confirm next steps.', $text);
         $this->assertStringNotContainsString('Nobody else is on this shift yet.', $text);
         $this->assertStringNotContainsString("Can't make it", $text);
         $this->assertStringNotContainsString(route('shifts.release', $shift), $html);
