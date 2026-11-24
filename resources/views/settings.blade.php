@@ -1,4 +1,4 @@
-{{-- Screen 38: organization settings. Name, time zone and weeks ahead are for admins; the Shadowing panel is for coordinators too. $isAdmin says which the viewer is. --}}
+{{-- Screen 38: organization settings. Name, time zone, weeks ahead and reminders are for admins; the Shadowing panel is for coordinators too. $isAdmin says which the viewer is. --}}
 @extends('layouts.app')
 
 @section('title', 'Organization settings')
@@ -39,6 +39,18 @@
 
 <h2>The schedule</h2>
 <x-field name="weeks_ahead" type="number" label="Make shifts this many weeks ahead" :value="old('weeks_ahead', $organization->weeks_ahead)" hint="Every night, weekly slots turn into dated shifts this far ahead. More weeks lets volunteers plan further, and means more shifts to fix if a slot changes. You can choose from 1 to 26 weeks. Lowering it doesn't remove shifts already made." min="1" max="26" step="1" required />
+@php $reminder = old('reminder_hours', $organization->reminder_hours === null ? 'off' : (string) $organization->reminder_hours); @endphp
+<div class="field">
+<label for="reminder_hours">Remind people before their shifts</label>
+<select name="reminder_hours" id="reminder_hours" aria-describedby="reminder_hours-hint @error('reminder_hours') reminder_hours-error @enderror" @error('reminder_hours') aria-invalid="true" @enderror>
+<option value="off" @selected((string) $reminder === 'off')>Off</option>
+@foreach (\App\Models\Organization::REMINDER_CHOICES as $hours)
+<option value="{{ $hours }}" @selected((string) $reminder === (string) $hours)>{{ $hours }} hours</option>
+@endforeach
+</select>
+<span class="field-hint" id="reminder_hours-hint">Everyone on a shift gets an email this long before it starts. People can turn reminders off for themselves.</span>
+@error('reminder_hours')<span class="field-error" id="reminder_hours-error">{{ $message }}</span>@enderror
+</div>
 
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Save settings</button>

@@ -88,7 +88,7 @@ class ShadowSpotNotification extends Notification
 
             $know = $this->leadTexts === [] ? '' : ' '.Arr::join($this->leadTexts, ', ', ' and ').(count($this->leadTexts) === 1 ? ' knows.' : ' know.');
 
-            return $mail->line('If nobody does, there\'s nobody to shadow, so please don\'t come in for them.'.$know);
+            return $mail->line('If nobody does, there\'s nobody to shadow, so please reach out to the volunteer coordinators to confirm next steps.'.$know);
         }
 
         return match ($this->notice) {
@@ -102,7 +102,7 @@ class ShadowSpotNotification extends Notification
             ShadowSpotNotice::StillUncovered => (new MailMessage)
                 ->subject('Your shadow shift tomorrow still has nobody to shadow')
                 ->line('Nobody has taken '.$this->releaserFirstName.'\'s '.$area.' shift on '.$this->date.' yet. If someone does, we\'ll email you.')
-                ->line('If nobody does, there\'s nobody to shadow, so please don\'t come in for it.'.($this->leadText !== null ? ' '.$this->leadText.' knows.' : '')),
+                ->line('If nobody does, there\'s nobody to shadow, so please reach out to the volunteer coordinators to confirm next steps.'.($this->leadText !== null ? ' '.$this->leadText.' knows.' : '')),
         };
     }
 }

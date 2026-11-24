@@ -130,6 +130,6 @@ class CoverEmailsTest extends TestCase
         $this->assertStringContainsString('Sam is covering, so you\'ll shadow Sam. Front desk, Thursday, October 22, 6:30 to 9:30pm.', $this->text($backOn));
 
         $uncovered = (new ShadowSpotNotification($shift, ShadowSpotNotice::StillUncovered, 'Robin'))->toMail($this->morgan);
-        $this->assertStringEndsWith('please don\'t come in for it.', $uncovered->introLines[1]);
+        $this->assertStringEndsWith('please reach out to the volunteer coordinators to confirm next steps.', $uncovered->introLines[1]);
     }
 }

@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * The escalation ladder for cover requests (spec section 8.3), with the default timings. A shift still open RESEND_HOURS before it starts gets its cover request sent again, once per shift, counting only requests made before that window (decision 11). A shift still open URGENT_HOURS before it starts is escalated, once: the area's active leads and everyone with the coordinator role get the urgent email (decision 12), and when nobody but shadows is left on it, the shadows are told not to come in if nobody takes it (decision 6). Cancelled shifts are skipped and picked up again if they're brought back. Only a shift's oldest openPlaces() open requests count (openRequestsLocked()), so a request left open by a path that put someone on the shift without filling it is never sent again or escalated. run() is the scheduled step; escalateLocked() is shared with releasing a shift inside URGENT_HOURS.
+ * The escalation ladder for cover requests (spec section 8.3), with the default timings. A shift still open RESEND_HOURS before it starts gets its cover request sent again, once per shift, counting only requests made before that window (decision 11). A shift still open URGENT_HOURS before it starts is escalated, once: the area's active leads and everyone with the coordinator role get the urgent email (decision 12), and when nobody but shadows is left on it, the shadows are asked to check with the volunteer coordinators (decision 6, reworded 2026-11-24). Cancelled shifts are skipped and picked up again if they're brought back. Only a shift's oldest openPlaces() open requests count (openRequestsLocked()), so a request left open by a path that put someone on the shift without filling it is never sent again or escalated. run() is the scheduled step; escalateLocked() is shared with releasing a shift inside URGENT_HOURS.
  */
 final class CoverLadder
 {
@@ -168,7 +168,7 @@ final class CoverLadder
     }
 
     /**
-     * The shadows' "still nobody to shadow, please don't come in if nobody takes it" email for a shift nobody but shadows is left on, keyed by user id, naming the area's first lead in `$audience` (urgentAudience(), minus anyone left out) as the person who knows. escalateLocked() uses it, and so does ReleaseShifts when the last regular releases a shift that was already escalated, so the shadows still hear.
+     * The shadows' "still nobody to shadow, please check with the volunteer coordinators" email for a shift nobody but shadows is left on, keyed by user id, naming the area's first lead in `$audience` (urgentAudience(), minus anyone left out) as the person who knows. escalateLocked() uses it, and so does ReleaseShifts when the last regular releases a shift that was already escalated, so the shadows still hear.
      *
      * @param  array<int, array{0: User, 1: string}>  $audience
      * @return array<int, array{0: User, 1: ShadowSpotNotification}>
