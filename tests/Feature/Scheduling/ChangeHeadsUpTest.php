@@ -212,6 +212,35 @@ class ChangeHeadsUpTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_a_shift_cancelled_with_an_open_notice_sends_nothing(): void
+    {
+        $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $this->notice($this->sam);
+        $this->travelTo(CarbonImmutable::parse('2026-10-20 19:00', self::TIMEZONE));
+        // Set directly, not through the cancel action (which ends notices), to pin the cancelled check itself.
+        $this->shift->forceFill(['cancelled_at' => now()])->save();
+        $this->assertNotNull(ChangeNotice::query()->open()->first());
+
+        $this->assertSame(0, $this->run48());
+
+        Notification::assertNothingSent();
+        $this->assertNull(ChangeNotice::query()->first()->lead_told_at);
+    }
+
+    public function test_a_lead_who_cant_sign_in_is_skipped_and_the_coordinators_are_emailed(): void
+    {
+        // Not invited yet, so they can't sign in: that's "no active lead" for this email.
+        $lead = $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $lead->forceFill(['invited_at' => null])->save();
+        $this->notice($this->sam);
+        $this->travelTo(CarbonImmutable::parse('2026-10-20 19:00', self::TIMEZONE));
+
+        $this->assertSame(1, $this->run48());
+
+        Notification::assertNotSentTo($lead, NoAnswerLeadNotification::class);
+        Notification::assertSentToTimes($this->coordinator, NoAnswerLeadNotification::class, 1);
+    }
+
     public function test_it_is_logged_as_the_system(): void
     {
         $this->notice($this->sam);
