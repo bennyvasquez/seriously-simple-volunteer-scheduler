@@ -115,7 +115,7 @@ class AddRegularScreenTest extends TestCase
 
         $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'])
             ->assertRedirect(route('calendar.week', ['date' => '2026-10-23']))
-            ->assertSessionHas('status', 'Avery is now a regular, every week from Oct 23. We added them to 3 shifts already on the schedule. We\'ll email Avery to let them know.');
+            ->assertSessionHas('status', 'Avery S. is now a regular, every week from Oct 23. We added them to 3 shifts already on the schedule. We\'ll email Avery S. to let them know.');
 
         Notification::assertSentTo($avery, MadeRegularNotification::class);
         $this->assertSame(3, Shift::query()->whereHas('assignments', fn ($query) => $query->where('user_id', $avery->id))->count());
@@ -133,7 +133,7 @@ class AddRegularScreenTest extends TestCase
         $other->assignments()->create(['user_id' => $avery->id, 'type' => 'regular']);
 
         $this->postRegular($slot, $coordinator, ['user' => $avery->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-16'])
-            ->assertSessionHas('status', 'Avery is now a regular, every week from Oct 16. We added them to 3 shifts already on the schedule. Not added on Oct 30, which overlaps another shift they\'re on. We\'ll email Avery to let them know.');
+            ->assertSessionHas('status', 'Avery S. is now a regular, every week from Oct 16. We added them to 3 shifts already on the schedule. Not added on Oct 30, which overlaps another shift they\'re on. We\'ll email Avery S. to let them know.');
 
         $later = app(CreateOneTimeShift::class)->handle($coordinator, $this->hostedEvents, '2026-11-06', '15:00', '16:00', 1, 0, null);
         $later->assignments()->create(['user_id' => $avery->id, 'type' => 'regular']);
@@ -144,7 +144,7 @@ class AddRegularScreenTest extends TestCase
         $second = $this->fridaySlot(area: $this->hostedEvents);
 
         $this->postRegular($second, $coordinator, ['user' => $alex->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-16'])
-            ->assertSessionHas('status', 'Alex is now a regular, every week from Oct 16. We added them to 2 shifts already on the schedule. Not added on Oct 30 and Nov 6, which overlap other shifts they\'re on. We\'ll email Alex to let them know.');
+            ->assertSessionHas('status', 'Alex S. is now a regular, every week from Oct 16. We added them to 2 shifts already on the schedule. Not added on Oct 30 and Nov 6, which overlap other shifts they\'re on. We\'ll email Alex S. to let them know.');
     }
 
     public function test_the_email_says_what_they_are_regular_for(): void
@@ -166,7 +166,7 @@ class AddRegularScreenTest extends TestCase
         $avery = User::factory()->create(['name' => 'Avery Stone']);
 
         $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'every_other_week', 'weeks' => '2026-10-16', 'starts_on' => '2026-10-14'])
-            ->assertSessionHas('status', 'Avery is now a regular, every other week from Oct 16. We added them to 2 shifts already on the schedule. We\'ll email Avery to let them know.');
+            ->assertSessionHas('status', 'Avery S. is now a regular, every other week from Oct 16. We added them to 2 shifts already on the schedule. We\'ll email Avery S. to let them know.');
 
         $regular = SlotRegular::query()->where('user_id', $avery->id)->sole();
         $this->assertSame(SlotFrequency::EveryOtherWeek, $regular->frequency);
@@ -220,7 +220,7 @@ class AddRegularScreenTest extends TestCase
             ->assertSee('Friday, October 30 at 2 people. It needs 1.')
             ->assertSee('Friday, November 20 at 2 people. It needs 1.')
             ->assertDontSee('Friday, November 27 at 2 people')
-            ->assertSee('Add Robin anyway')->assertSee('Change the dates')
+            ->assertSee('Add Robin E. anyway')->assertSee('Change the dates')
             ->assertSee('name="over_confirmed" value="1"', false);
         $this->assertMatchesRegularExpression('/and \d+ more dates/', $page->getContent());
 
@@ -271,7 +271,7 @@ class AddRegularScreenTest extends TestCase
         }
 
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Sam has been turned off');
+        $this->expectExceptionMessage('Sam R. has been turned off');
 
         app(AddRegular::class)->handle(null, $slot, $off, '2026-10-23');
     }
@@ -324,7 +324,7 @@ class AddRegularScreenTest extends TestCase
         $avery = User::factory()->create(['name' => 'Avery Stone']);
 
         $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $avery->id]))
-            ->assertSee('Avery Stone')->assertSee('name="user" value="'.$avery->id.'"', false)->assertSee('Add Avery');
+            ->assertSee('Avery Stone')->assertSee('name="user" value="'.$avery->id.'"', false)->assertSee('Add Avery S.');
     }
 
     public function test_the_shift_panel_offers_add_a_regular_only_for_weekly_slots_that_are_not_rotations(): void
@@ -353,7 +353,7 @@ class AddRegularScreenTest extends TestCase
         // Typed first date is Oct 16, but the same weeks as Carol start Oct 23.
         $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'every_other_week', 'weeks' => '2026-10-23', 'starts_on' => '2026-10-16'])
             ->assertRedirect(route('calendar.week', ['date' => '2026-10-23']))
-            ->assertSessionHas('status', 'Avery is now a regular, every other week from Oct 23. We added them to 2 shifts already on the schedule. We\'ll email Avery to let them know.');
+            ->assertSessionHas('status', 'Avery S. is now a regular, every other week from Oct 23. We added them to 2 shifts already on the schedule. We\'ll email Avery S. to let them know.');
 
         $regular = SlotRegular::query()->where('user_id', $avery->id)->sole();
         $this->assertSame('2026-10-23', $regular->firstWorkedDate()->toDateString());

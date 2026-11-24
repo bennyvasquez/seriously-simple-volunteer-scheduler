@@ -100,7 +100,7 @@ class EndRegular
             // Read under the locks, so the checks below see the regular as it is now.
             $locked = SlotRegular::query()->with('user')->whereKey($regular->id)->where('weekly_slot_id', $slot->id)->lockForUpdate()->firstOrFail();
             $person = $locked->user;
-            $first = $person->firstName();
+            $first = $person->shortName();
 
             $bound = $this->boundary($locked, $lastDate);
             $endsOn = $locked->ends_on?->toDateString();

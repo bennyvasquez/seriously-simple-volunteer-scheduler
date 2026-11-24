@@ -49,7 +49,7 @@ class RemoveFromShift
             $current = Assignment::query()->with('user')->where('shift_id', $locked->id)->whereKey($assignment->id)->first();
 
             if ($current === null) {
-                throw new DomainException($assignment->user->firstName().' isn\'t on this shift any more.');
+                throw new DomainException($assignment->user->shortName().' isn\'t on this shift any more.');
             }
 
             if ($locked->starts_at->lessThanOrEqualTo(now())) {
@@ -89,7 +89,7 @@ class RemoveFromShift
             $shifts = $shifts->filter(fn (Shift $shift) => $assignments->has($shift->id))->values();
 
             if ($shifts->isEmpty()) {
-                throw new DomainException($person->firstName().' isn\'t on any shifts you manage on those dates.');
+                throw new DomainException($person->shortName().' isn\'t on any shifts you manage on those dates.');
             }
 
             foreach ($shifts as $shift) {

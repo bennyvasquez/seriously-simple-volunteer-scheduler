@@ -198,6 +198,12 @@ class User extends Authenticatable
         return $this->roles()->exists();
     }
 
+    /** True once they have what their role needs to sign in fully: nothing for a volunteer, a password and confirmed two-factor for anyone with a role. EnsureAccountIsSecure and the main menu both ask this, so they can't drift apart. */
+    public function hasFinishedSecuritySetup(): bool
+    {
+        return ! $this->requiresTwoFactor() || ($this->password !== null && $this->hasEnabledTwoFactorAuthentication());
+    }
+
     /** The first word of the name, for places that show a person to someone who can't see their full name. */
     public function firstName(): string
     {

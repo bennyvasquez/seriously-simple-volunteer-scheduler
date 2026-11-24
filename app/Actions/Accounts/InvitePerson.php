@@ -31,11 +31,11 @@ class InvitePerson
             }
 
             if (! $locked->isActive()) {
-                throw new DomainException($locked->firstName().' has been turned off and can\'t be invited.');
+                throw new DomainException($locked->shortName().' has been turned off and can\'t be invited.');
             }
 
             if ($locked->email_verified_at !== null) {
-                throw new DomainException($locked->firstName().' has already accepted their invitation.');
+                throw new DomainException($locked->shortName().' has already accepted their invitation.');
             }
 
             $firstTime = $locked->invited_at === null;
@@ -57,6 +57,6 @@ class InvitePerson
         });
 
         // After the response, so a mail failure never shows an error for a change that was saved.
-        defer(fn () => $person->notify(new InvitationNotification($url, $actor->name)));
+        defer(fn () => $person->notify(new InvitationNotification($url, $actor->shortName())));
     }
 }

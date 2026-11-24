@@ -59,6 +59,44 @@ class VolunteerScreensAccessibilityTest extends DuskTestCase
         });
     }
 
+    public function test_the_schedule_on_a_computer(): void
+    {
+        $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
+
+        $this->browse(function (Browser $browser) use ($volunteer) {
+            $browser->resize(1280, 900)->loginAs($volunteer)->visit('/calendar')->assertVisible('.cal-grid');
+
+            $this->assertAccessible($browser);
+        });
+    }
+
+    public function test_the_schedule_on_a_phone(): void
+    {
+        $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
+
+        $this->browse(function (Browser $browser) use ($volunteer) {
+            $browser->resize(390, 844)->loginAs($volunteer)->visit('/calendar')->assertVisible('.cal-list');
+
+            $this->assertAccessible($browser);
+        });
+    }
+
+    public function test_a_volunteers_shift_panel(): void
+    {
+        $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
+        $slot = WeeklySlot::query()->whereDoesntHave('regulars')->firstOrFail();
+        $open = Shift::query()->where('weekly_slot_id', $slot->id)->where('starts_at', '>', now())->orderBy('starts_at')->firstOrFail();
+        $own = $this->volunteersShift($volunteer);
+
+        $this->browse(function (Browser $browser) use ($volunteer, $open, $own) {
+            $browser->resize(1280, 900)->loginAs($volunteer)->visit(route('calendar.shift', $open))->assertSee('Take this shift');
+            $this->assertAccessible($browser);
+
+            $browser->visit(route('calendar.shift', $own))->assertSee('Can\'t make it');
+            $this->assertAccessible($browser);
+        });
+    }
+
     public function test_all_my_shifts(): void
     {
         $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();

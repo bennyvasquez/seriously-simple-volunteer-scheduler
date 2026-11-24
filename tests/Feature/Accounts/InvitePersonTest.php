@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Accounts;
 
-use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\CreatePerson;
+use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\InvitePerson;
 use App\Enums\Role;
 use App\Models\ChangeLogEntry;
@@ -50,6 +50,25 @@ class InvitePersonTest extends TestCase
         Notification::assertSentTo($user, InvitationNotification::class);
         $this->assertTrue(ChangeLogEntry::query()->where('action', 'user.invited')->where('actor_id', $this->coordinator->id)->exists());
         $this->assertArrayNotHasKey('password', ChangeLogEntry::query()->where('action', 'user.created')->sole()->changes);
+    }
+
+    public function test_the_invitation_greets_by_first_name_and_names_the_inviter_by_short_name(): void
+    {
+        $inviter = User::factory()->create(['name' => 'Jordan Pell']);
+        app(GrantRole::class)->handle(null, $inviter, Role::Coordinator);
+        $person = app(CreatePerson::class)->handle($inviter, 'Sam Rivera', 'sam@example.org');
+        app(InvitePerson::class)->handle($inviter, $person);
+
+        Notification::assertSentTo($person, InvitationNotification::class, function (InvitationNotification $notification) use ($person) {
+            $mail = $notification->toMail($person);
+
+            $this->assertSame('Hi Sam,', $mail->greeting);
+            $this->assertStringContainsString('Jordan P. added you to', $mail->introLines[0]);
+            $this->assertStringNotContainsString('Pell', $mail->introLines[0]);
+            $this->assertStringNotContainsString('Rivera', $mail->greeting);
+
+            return true;
+        });
     }
 
     public function test_the_invitation_link_logs_the_volunteer_in(): void

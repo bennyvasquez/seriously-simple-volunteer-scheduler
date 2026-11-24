@@ -34,3 +34,5 @@
 @include('volunteer._shadow-spots')
 
 <p class="muted">You'll be able to take shifts once a coordinator clears you.</p>
+
+<p class="muted">You can see the full schedule under Schedule.</p>

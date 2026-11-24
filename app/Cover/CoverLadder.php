@@ -180,7 +180,7 @@ final class CoverLadder
         // Leads come first in the audience, in id order, so the first with the lead reason is the first lead.
         $leadReason = Describe::roleName(Role::AreaLead, $area);
         $lead = collect($audience)->first(fn (array $entry) => $entry[1] === $leadReason);
-        $leadText = $lead === null ? null : $lead[0]->firstName().' ('.$area->leadTitle().')';
+        $leadText = $lead === null ? null : $lead[0]->shortName().' ('.$area->leadTitle().')';
         $sends = [];
 
         foreach (Assignment::query()->with('user')->where('shift_id', $lockedShift->id)->where('type', AssignmentType::Shadow)->orderBy('id')->get() as $shadow) {

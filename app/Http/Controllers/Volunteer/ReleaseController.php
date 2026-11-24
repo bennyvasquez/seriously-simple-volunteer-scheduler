@@ -50,7 +50,7 @@ class ReleaseController extends Controller
 
         // The shadows who'd hear their spot is on hold: only when this person is the last one filling a place.
         $shadowNames = ! $shadow && $shift->filledCount() === 1
-            ? $shift->assignments->where('type', AssignmentType::Shadow)->sortBy('id')->pluck('user')->filter(fn (User $person) => $person->canSignIn())->map(fn (User $person) => $person->firstName())->values()->all()
+            ? $shift->assignments->where('type', AssignmentType::Shadow)->sortBy('id')->pluck('user')->filter(fn (User $person) => $person->canSignIn())->map(fn (User $person) => $person->shortName())->values()->all()
             : [];
 
         return view('volunteer.release', [
@@ -332,7 +332,7 @@ class ReleaseController extends Controller
             }
 
             $shadows = $shift->assignments()->with('user')->where('type', AssignmentType::Shadow)->orderBy('id')->get()->pluck('user');
-            array_push($told, ...$shadows->filter(fn (User $shadow) => $shadow->canSignIn())->map(fn (User $shadow) => $shadow->firstName())->all());
+            array_push($told, ...$shadows->filter(fn (User $shadow) => $shadow->canSignIn())->map(fn (User $shadow) => $shadow->shortName())->all());
         }
 
         $weekdays = $noLonger === null ? $this->regularsOn($user, $regularShifts)->map(fn (SlotRegular $regular) => $regular->weeklySlot->weekdayName())->values() : collect();
@@ -374,5 +374,11 @@ class ReleaseController extends Controller
     public static function names(array $names): string
     {
         return Arr::join($names, ', ', ' and ');
+    }
+
+    /** Ends a sentence with a full stop, unless the text already ends in one. A short name like "Jordan P." has its own full stop, so a sentence that ends on a name shouldn't get a second. */
+    public static function endSentence(string $text): string
+    {
+        return str_ends_with($text, '.') ? $text : $text.'.';
     }
 }

@@ -206,14 +206,14 @@ class EndRegularTest extends TestCase
             app(EndRegular::class)->handle($coordinator, $regular, '2026-11-19');
             $this->fail('A later date should be refused.');
         } catch (DomainException $e) {
-            $this->assertSame('Robin already stops after Thursday, November 12. To extend it, add them as a regular again.', $e->getMessage());
+            $this->assertSame('Robin E. already stops after Thursday, November 12. To extend it, add them as a regular again.', $e->getMessage());
         }
 
         try {
             app(EndRegular::class)->handle($coordinator, $regular, '2026-11-12');
             $this->fail('The same date should be refused.');
         } catch (DomainException $e) {
-            $this->assertSame('Robin already stops after Thursday, November 12.', $e->getMessage());
+            $this->assertSame('Robin E. already stops after Thursday, November 12.', $e->getMessage());
         }
 
         $this->assertSame('2026-11-12', $regular->fresh()->ends_on->toDateString());
@@ -294,7 +294,7 @@ class EndRegularTest extends TestCase
 
         $this->actingAs($this->coordinator())->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-10-28', 'date' => '2026-10-29'])
             ->assertRedirect(route('calendar.shift', $shift))
-            ->assertSessionHas('status', 'Robin is no longer a regular after Wednesday, October 28. They were removed from '.$removed.' shifts.');
+            ->assertSessionHas('status', 'Robin E. is no longer a regular after Wednesday, October 28. They were removed from '.$removed.' shifts.');
 
         $this->assertSame('2026-10-28', $regular->fresh()->ends_on->toDateString());
         Notification::assertSentTo($this->robin, RegularEndedNotification::class);
@@ -313,11 +313,11 @@ class EndRegularTest extends TestCase
 
         $this->actingAs($coordinator)->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-09-23', 'date' => '2026-10-14'])
             ->assertOk()
-            ->assertSee('Robin is on 2 past shifts after Wednesday, September 23. Ending their time as a regular removes them from those too, so they don\'t count as worked:', false)
+            ->assertSee('Robin E. is on 2 past shifts after Wednesday, September 23. Ending their time as a regular removes them from those too, so they don\'t count as worked:', false)
             ->assertSee('Wednesday, September 30')
             ->assertSee('Wednesday, October 7')
             ->assertSee('name="past_confirmed" value="1"', false)
-            ->assertSee('Remove Robin from 2 past shifts and end their time as a regular')
+            ->assertSee('Remove Robin E. from 2 past shifts and end their time as a regular')
             ->assertSee('Change the date');
 
         $this->assertSame($before, Assignment::query()->where('user_id', $this->robin->id)->count());
@@ -339,8 +339,8 @@ class EndRegularTest extends TestCase
 
         $this->actingAs($this->coordinator())->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-10-06', 'date' => '2026-10-14'])
             ->assertOk()
-            ->assertSee('Robin is on 1 past shift after Tuesday, October 6. Ending their time as a regular removes them from it too, so it doesn\'t count as worked:', false)
-            ->assertSee('Remove Robin from 1 past shift and end their time as a regular');
+            ->assertSee('Robin E. is on 1 past shift after Tuesday, October 6. Ending their time as a regular removes them from it too, so it doesn\'t count as worked:', false)
+            ->assertSee('Remove Robin E. from 1 past shift and end their time as a regular');
     }
 
     public function test_a_bad_date_goes_back_to_the_page_with_a_message(): void
@@ -353,7 +353,7 @@ class EndRegularTest extends TestCase
             ->assertRedirect()->assertSessionHasErrors('last_date');
 
         $this->actingAs($coordinator)->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-11-19', 'date' => '2026-10-29'])
-            ->assertRedirect()->assertSessionHasErrors(['last_date' => 'Robin already stops after Thursday, November 12. To extend it, add them as a regular again.']);
+            ->assertRedirect()->assertSessionHasErrors(['last_date' => 'Robin E. already stops after Thursday, November 12. To extend it, add them as a regular again.']);
     }
 
     public function test_the_shift_panel_links_to_ending_a_regular_for_people_who_can_manage_the_schedule(): void
@@ -384,7 +384,7 @@ class EndRegularTest extends TestCase
 
         $this->actingAs($this->coordinator())->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-10-20', 'date' => '2026-10-29'])
             ->assertRedirect(route('calendar.shift', $shift))
-            ->assertSessionHas('status', 'Robin is no longer a regular. They were removed from '.$removed.' shifts.');
+            ->assertSessionHas('status', 'Robin E. is no longer a regular. They were removed from '.$removed.' shifts.');
 
         Notification::assertSentTo($this->robin, RegularEndedNotification::class, function (RegularEndedNotification $notification) {
             $this->assertSame('You\'re no longer the regular for the Front desk shift on Thursdays.', $notification->toMail($this->robin)->introLines[0]);
@@ -494,6 +494,6 @@ class EndRegularTest extends TestCase
         // Shifts are on the calendar through December 8, so none come after December 31.
         $this->actingAs($this->coordinator())->post(route('calendar.slots.regulars.end.store', [$slot, $regular]), ['last_date' => '2026-12-31', 'date' => '2026-10-29'])
             ->assertRedirect(route('calendar.shift', $shift))
-            ->assertSessionHas('status', 'Robin is no longer a regular after Thursday, December 31.');
+            ->assertSessionHas('status', 'Robin E. is no longer a regular after Thursday, December 31.');
     }
 }

@@ -1,5 +1,7 @@
-{{-- The week and day sidebar: add, add a closure (for people who can close an area), the area filter, Needs attention, the border key and settings. --}}
+{{-- The week and day sidebar: add, add a closure (for people who can close an area), the area filter, Needs attention (Your next shift for a volunteer), the border key and settings. $tools is true for anyone with a role. --}}
+@if ($tools)
 <a href="{{ route('calendar.add', ['date' => $date->toDateString()] + $areaQuery) }}" class="btn btn-primary cal-add">+ Add</a>
+@endif
 @if ($canClose)
 <a href="{{ route('calendar.closures.create', $areaQuery) }}" class="btn cal-add">Add a closure</a>
 @endif
@@ -29,6 +31,7 @@
 @endcan
 </section>
 
+@if ($tools)
 <section class="cal-side-section attention">
 <h2>Needs attention</h2>
 @forelse ($needsAttention as $item)
@@ -37,10 +40,28 @@
 <p class="muted">Nothing for the next {{ \App\Calendar\NeedsAttention::DAYS }} days.</p>
 @endforelse
 </section>
+@else
+<section class="cal-side-section attention">
+<h2>Your next shift</h2>
+@if ($nextShift)
+<a href="{{ route('calendar.shift', [$nextShift] + $areaQuery) }}" class="muted attention-item"><strong>{{ $nextShift->local_date->format('D M j') }}, {{ \App\Calendar\TimeFormat::range($nextShift->starts_at->setTimezone($organization->timezone), $nextShift->ends_at->setTimezone($organization->timezone)) }}</strong><br>{{ $nextShift->area->name }}@if ($nextShift->others->isNotEmpty()), with {{ $nextShift->others->join(', ', ' and ') }}@endif</a>
+@else
+<p class="muted">You're not on any shifts yet.</p>
+@endif
+</section>
+@endif
 
 <section class="muted cal-key">
+@if ($tools)
 <div>Dashed border: open places</div>
 <div>Thick border: open within 24 hours</div>
+@if ($hasOwnShift)
+<div>Dark border: your shift</div>
+@endif
+@else
+<div>Dashed border: needs someone</div>
+<div>Dark border: your shift</div>
+@endif
 </section>
 
 @can('manage-shadowing')

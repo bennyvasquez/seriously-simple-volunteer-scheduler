@@ -90,7 +90,7 @@ class TwoFactorResetTest extends TestCase
 
         $mail = (new TwoFactorResetNotification($admin))->toMail($jordan);
 
-        $this->assertStringContainsString('Morgan, an admin at Example Makers, reset the second step for your login. Next time you log in with your password, you\'ll set up your authenticator app again. If you didn\'t ask for this, contact a coordinator right away.', implode(' ', $mail->introLines));
+        $this->assertStringContainsString('Morgan R., an admin at Example Makers, reset the second step for your login. Next time you log in with your password, you\'ll set up your authenticator app again. If you didn\'t ask for this, contact a coordinator right away.', implode(' ', $mail->introLines));
         $this->assertStringNotContainsString('Rivera', implode(' ', $mail->introLines));
     }
 
@@ -191,7 +191,7 @@ class TwoFactorResetTest extends TestCase
         $sam->forceFill(['remember_token' => 'keep'])->save();
 
         $this->actingAs($this->adminWithTwoFactor())->post(route('people.two-factor.reset', $sam), ['identity_checked' => '1'])
-            ->assertSessionHasErrors(['identity_checked' => 'Sam doesn\'t have an authenticator app connected.']);
+            ->assertSessionHasErrors(['identity_checked' => 'Sam L. doesn\'t have an authenticator app connected.']);
 
         Notification::assertNothingSent();
         $this->assertSame(0, ChangeLogEntry::query()->about($sam)->count());

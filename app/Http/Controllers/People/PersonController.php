@@ -55,7 +55,7 @@ class PersonController extends Controller
 
         return view('people.show', [
             'person' => $person,
-            'firstName' => $person->firstName(),
+            'firstName' => $person->shortName(),
             'roleRows' => $this->roleRows($person),
             'addable' => $canManage ? $this->addableRoles($viewer, $person) : [],
             'canManage' => $canManage,
@@ -88,7 +88,7 @@ class PersonController extends Controller
         $had = $person->roles()->where('role', $role->value)->where('area_id', $area?->id)->exists();
         $grantRole->handle($request->user(), $person, $role, $area);
 
-        return redirect()->route('people.show', $person)->with('status', $had ? 'Nothing changed.' : $person->firstName().' is now '.Describe::roleName($role, $area).'.');
+        return redirect()->route('people.show', $person)->with('status', $had ? 'Nothing changed.' : $person->shortName().' is now '.Describe::roleName($role, $area).'.');
     }
 
     public function removeRole(Request $request, string $user, RevokeRole $revokeRole): RedirectResponse
@@ -101,7 +101,7 @@ class PersonController extends Controller
         $held = $person->roles()->where('role', $role->value)->where('area_id', $area?->id)->exists();
         $revokeRole->handle($request->user(), $person, $role, $area);
 
-        return redirect()->route('people.show', $person)->with('status', $held ? $person->firstName().' is no longer '.Describe::roleName($role, $area).'.' : 'Nothing changed.');
+        return redirect()->route('people.show', $person)->with('status', $held ? $person->shortName().' is no longer '.Describe::roleName($role, $area).'.' : 'Nothing changed.');
     }
 
     public function invite(Request $request, string $user, InvitePerson $invitePerson): RedirectResponse
@@ -129,7 +129,7 @@ class PersonController extends Controller
             return redirect()->route('people.show', $person)->with('status', 'Nothing changed.');
         }
 
-        $status = $person->firstName().'\'s account is turned off.';
+        $status = $person->shortName().'\'s account is turned off.';
 
         if ($released['shifts'] > 0) {
             $status .= ' They were removed from '.$released['shifts'].' future '.($released['shifts'] === 1 ? 'shift' : 'shifts').'.';
@@ -145,7 +145,7 @@ class PersonController extends Controller
 
         return view('people.remove', [
             'person' => $person,
-            'firstName' => $person->firstName(),
+            'firstName' => $person->shortName(),
             'releases' => ReleaseFutureSchedule::counts($person),
         ]);
     }
@@ -154,10 +154,11 @@ class PersonController extends Controller
     {
         $person = $this->manageable($request, $user);
         // Kept from this request: once the row is gone there's nothing to read it from.
-        $firstName = $person->firstName();
+        $firstName = $person->shortName();
         $typed = trim((string) $request->input('confirm', ''));
 
-        if (mb_strtolower($typed) !== mb_strtolower($firstName)) {
+        // The short name ends in a period ("Robin E."), and typing it without the period is fine too.
+        if (mb_strtolower(rtrim($typed, '.')) !== mb_strtolower(rtrim($firstName, '.'))) {
             throw ValidationException::withMessages(['confirm' => 'Type '.$firstName.' to confirm.']);
         }
 
@@ -186,11 +187,11 @@ class PersonController extends Controller
             $starts = $shift->starts_at->setTimezone($timezone);
             $regulars = $shift->assignments
                 ->filter(fn (Assignment $assignment) => $assignment->type === AssignmentType::Regular && $assignment->user_id !== $person->id)
-                ->map(fn (Assignment $assignment) => $assignment->user->firstName())
+                ->map(fn (Assignment $assignment) => $assignment->user->shortName())
                 ->values()->all();
 
             return [
-                'text' => $starts->format('D M j').', '.$shift->area->name.' '.TimeFormat::range($starts, $shift->ends_at->setTimezone($timezone)).($regulars === [] ? '' : ', with '.ReleaseController::names($regulars)).'.',
+                'text' => ReleaseController::endSentence($starts->format('D M j').', '.$shift->area->name.' '.TimeFormat::range($starts, $shift->ends_at->setTimezone($timezone)).($regulars === [] ? '' : ', with '.ReleaseController::names($regulars))),
                 'status' => match (true) {
                     $shift->cancelled_at !== null => 'Cancelled',
                     $shadow->no_show_at !== null => 'No-show',

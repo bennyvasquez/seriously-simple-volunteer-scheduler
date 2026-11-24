@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Enums\ShadowSpotNotice;
+use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -97,7 +98,7 @@ class ShadowSpotNotification extends Notification
                 ->line('We\'ve asked other volunteers to cover it, and we\'ll email you as soon as someone does. You don\'t need to do anything.'),
             ShadowSpotNotice::BackOn => (new MailMessage)
                 ->subject('Your shadow shift on '.$this->date.' is back on')
-                ->line($this->takerFirstName.' is covering, so you\'ll shadow '.$this->takerFirstName.'. '.$this->area.', '.$this->when.'.'),
+                ->line($this->takerFirstName.' is covering, so you\'ll shadow '.ReleaseController::endSentence($this->takerFirstName).' '.$this->area.', '.$this->when.'.'),
             ShadowSpotNotice::StillUncovered => (new MailMessage)
                 ->subject('Your shadow shift tomorrow still has nobody to shadow')
                 ->line('Nobody has taken '.$this->releaserFirstName.'\'s '.$area.' shift on '.$this->date.' yet. If someone does, we\'ll email you.')

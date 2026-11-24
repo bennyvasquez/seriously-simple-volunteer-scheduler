@@ -16,7 +16,7 @@
 @if ($shadows !== [])
 <p class="muted">{{ App\Http\Controllers\Volunteer\ReleaseController::names($shadows) }} {{ count($shadows) === 1 ? 'is' : 'are' }} shadowing this shift, so they'll be learning from you.</p>
 @endif
-<p class="muted">We've emailed you the details{{ $told === [] ? '.' : ', and told '.App\Http\Controllers\Volunteer\ReleaseController::names($told).'.' }}</p>
+<p class="muted">We've emailed you the details{{ $told === [] ? '.' : App\Http\Controllers\Volunteer\ReleaseController::endSentence(', and told '.App\Http\Controllers\Volunteer\ReleaseController::names($told)) }}</p>
 </div>
 <p class="muted">Can't make it after all? It's under "Your next shifts" on your home page.</p>
 <a href="{{ route('home') }}" class="btn btn-primary">Back to home</a>

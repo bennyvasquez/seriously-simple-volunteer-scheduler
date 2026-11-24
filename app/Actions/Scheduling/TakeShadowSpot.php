@@ -51,7 +51,7 @@ class TakeShadowSpot
 
             ChangeLogEntry::record($current, 'assignment.added', $locked, ['assignment_id' => $assignment->id, 'type' => AssignmentType::Shadow->value, 'via' => 'shadow_signup'], $changes, about: $current);
 
-            $regulars = $locked->assignments()->with('user')->where('type', AssignmentType::Regular)->orderBy('id')->get()->map(fn (Assignment $regular) => $regular->user->firstName())->all();
+            $regulars = $locked->assignments()->with('user')->where('type', AssignmentType::Regular)->orderBy('id')->get()->map(fn (Assignment $regular) => $regular->user->shortName())->all();
 
             return [$assignment, $locked, $current, $regulars];
         });
@@ -62,7 +62,7 @@ class TakeShadowSpot
         $sends = [[$current, new ShadowSignedUpNotification($locked, $regulars)]];
 
         foreach ($leads as $lead) {
-            $sends[] = [$lead, new ShadowSignedUpLeadNotification($locked, $current->firstName(), $regulars)];
+            $sends[] = [$lead, new ShadowSignedUpLeadNotification($locked, $current->shortName(), $regulars)];
         }
 
         defer(CoverFill::sender($sends));

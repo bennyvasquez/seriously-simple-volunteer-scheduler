@@ -137,7 +137,7 @@ class ShiftDetailsTest extends TestCase
         }
 
         $this->assertSame([
-            'Robin is already on this shift.',
+            'Robin E. is already on this shift.',
             "There's no shadow spot left on this shift.",
         ], array_slice($messages, 0, 2));
         $this->assertCount(3, $messages);
@@ -200,7 +200,7 @@ class ShiftDetailsTest extends TestCase
         $shift = $this->shiftWithPerson('Sam Example', shadow: 'Robin Example');
         $robin = User::query()->where('name', 'Robin Example')->sole();
 
-        $this->expectExceptionMessage('Robin is already on this shift.');
+        $this->expectExceptionMessage('Robin E. is already on this shift.');
 
         app(PutOnShift::class)->handle($this->coordinator(), $shift, $robin, AssignmentType::Shadow);
     }
@@ -219,7 +219,7 @@ class ShiftDetailsTest extends TestCase
             app(PutOnShift::class)->handle($coordinator, $this->shiftOn('2026-10-22', '18:30', '21:30', shadowSpots: 1), $robin, AssignmentType::Shadow);
             $this->fail('An overlapping shift was allowed.');
         } catch (DomainException $e) {
-            $this->assertSame('Robin is already on Wood shop, Thursday, October 22, 6 to 9pm.', $e->getMessage());
+            $this->assertSame('Robin E. is already on Wood shop, Thursday, October 22, 6 to 9pm.', $e->getMessage());
         }
 
         // Back to back is fine, and so is a cancelled shift at the same time.
@@ -421,7 +421,7 @@ class ShiftDetailsTest extends TestCase
 
         $this->actingAs($coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular', 'areas' => [$this->frontDesk->id]])
             ->assertRedirect(route('calendar.shift', [$shift, 'areas' => [$this->frontDesk->id]]))
-            ->assertSessionHas('status', 'Robin is on this shift instead of shadowing it. They were emailed.');
+            ->assertSessionHas('status', 'Robin E. is on this shift instead of shadowing it. They were emailed.');
 
         $this->assertSame(AssignmentType::Regular, $shift->assignments()->where('user_id', $robin->id)->sole()->type);
         $this->assertTrue(ChangeLogEntry::query()->forSubject($shift)->ofAction('assignment.type_changed')->about($robin)->exists());
@@ -430,7 +430,7 @@ class ShiftDetailsTest extends TestCase
         $other = $this->shiftWithPerson('Alex Example', shadow: 'Jamie Example');
         $jamie = User::query()->where('name', 'Jamie Example')->sole();
         $this->actingAs($coordinator)->post(route('calendar.shift.assign', $other), ['person' => $jamie->id, 'type' => 'shadow'])
-            ->assertSessionHasErrors(['shift' => 'Jamie is already on this shift.']);
+            ->assertSessionHasErrors(['shift' => 'Jamie E. is already on this shift.']);
     }
 
     public function test_a_shadow_on_a_full_shift_goes_through_the_confirm_step(): void
@@ -445,10 +445,10 @@ class ShiftDetailsTest extends TestCase
         $this->actingAs($coordinator)->get(route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $robin->id, 'type' => 'regular']))
             ->assertOk()
             ->assertSee('This puts Thursday, October 22 at 2 people. It needs 1.')
-            ->assertSee('Put Robin on anyway');
+            ->assertSee('Put Robin E. on anyway');
 
         $this->actingAs($coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular', 'over_confirmed' => 1])
-            ->assertSessionHas('status', 'Robin is on this shift instead of shadowing it. They were emailed.');
+            ->assertSessionHas('status', 'Robin E. is on this shift instead of shadowing it. They were emailed.');
         $this->assertSame(AssignmentType::Regular, $shift->assignments()->where('user_id', $robin->id)->sole()->type);
     }
 
@@ -581,11 +581,11 @@ class ShiftDetailsTest extends TestCase
         $this->actingAs($coordinator)->get(route('calendar.shift', [$shift, 'confirm' => 1, 'person' => $robin->id, 'type' => 'regular']))
             ->assertOk()
             ->assertSee('This puts Thursday, October 22 at 4 people. It needs 3.')
-            ->assertSee('Put Robin on anyway')->assertSee('Keep it as it is')
+            ->assertSee('Put Robin E. on anyway')->assertSee('Keep it as it is')
             ->assertSee('name="over_confirmed" value="1"', false);
 
         $this->actingAs($coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $robin->id, 'type' => 'regular', 'over_confirmed' => 1])
-            ->assertRedirect(route('calendar.shift', $shift))->assertSessionHas('status', 'Robin is on this shift. They were emailed.');
+            ->assertRedirect(route('calendar.shift', $shift))->assertSessionHas('status', 'Robin E. is on this shift. They were emailed.');
         $this->assertSame(4, $shift->assignments()->count());
     }
 

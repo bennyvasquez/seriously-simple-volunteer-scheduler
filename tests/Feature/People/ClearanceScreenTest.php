@@ -92,9 +92,9 @@ class ClearanceScreenTest extends TestCase
             ->assertSeeText('Ready for review: 2 of 2 shadow shifts done')
             ->assertSeeText('Required shadow shifts: 2. Coordinators can change this in Settings.')
             ->assertSeeTextInOrder([
-                'Thu Oct 8, Front desk 6:30 to 9:30pm, with Sam. No-show',
-                'Tue Oct 6, Front desk 3:30 to 6:30pm, with Sam. Done',
-                'Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam. Done',
+                'Thu Oct 8, Front desk 6:30 to 9:30pm, with Sam E. No-show',
+                'Tue Oct 6, Front desk 3:30 to 6:30pm, with Sam E. Done',
+                'Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam E. Done',
             ])
             ->assertSeeText('Note for the change log (optional)')
             ->assertSee('action="'.route('people.clear', $this->jamie).'"', false)
@@ -107,7 +107,7 @@ class ClearanceScreenTest extends TestCase
 
         $this->actingAs($this->coordinator)->get(route('people.show', $this->jamie))
             ->assertOk()
-            ->assertSeeText('Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam. Cancelled')
+            ->assertSeeText('Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam E. Cancelled')
             ->assertSeeText('Shadow shifts done: 0 of 2');
     }
 
@@ -128,7 +128,7 @@ class ClearanceScreenTest extends TestCase
 
         $this->actingAs($this->coordinator)->post(route('people.clear', $this->jamie), ['note' => 'Ready early.'])
             ->assertRedirect(route('people.show', $this->jamie))
-            ->assertSessionHas('status', 'Jamie is cleared for regular shifts.');
+            ->assertSessionHas('status', 'Jamie E. is cleared for regular shifts.');
 
         $this->assertTrue($this->jamie->fresh()->isCleared());
         $entry = ChangeLogEntry::query()->where('action', 'user.cleared')->about($this->jamie)->sole();
@@ -148,7 +148,7 @@ class ClearanceScreenTest extends TestCase
         $this->actingAs($this->coordinator)->from(route('people.show', $this->jamie))
             ->post(route('people.clear', $this->jamie), ['note' => 'Ready'])
             ->assertRedirect(route('people.show', $this->jamie))
-            ->assertSessionHasErrors(['clear' => 'Jamie is already cleared.']);
+            ->assertSessionHasErrors(['clear' => 'Jamie E. is already cleared.']);
     }
 
     public function test_a_long_note_is_refused_and_kept(): void
@@ -172,7 +172,7 @@ class ClearanceScreenTest extends TestCase
         $this->actingAs($this->lead)->get(route('people.show', $this->jamie))
             ->assertOk()
             ->assertSeeText('Ready for review: 2 of 2 shadow shifts done')
-            ->assertSeeText('Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam. Done')
+            ->assertSeeText('Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam E. Done')
             ->assertDontSeeText('Clear for regular shifts')
             ->assertDontSeeText('Note for the change log (optional)')
             ->assertDontSee(route('people.clear', $this->jamie), false);
@@ -248,7 +248,7 @@ class ClearanceScreenTest extends TestCase
 
         $this->actingAs($this->coordinator)->get(route('people.show', $this->jamie))
             ->assertSeeText('Shadow shifts done: 1 of 2')
-            ->assertSeeText('Tue Oct 6, Front desk 3:30 to 6:30pm, with Sam. No-show');
+            ->assertSeeText('Tue Oct 6, Front desk 3:30 to 6:30pm, with Sam E. No-show');
     }
 
     public function test_the_picker_says_not_cleared_yet(): void
@@ -281,9 +281,9 @@ class ClearanceScreenTest extends TestCase
             ->assertOk()
             ->assertSeeText('Shadow shifts done: 1 of 2')
             ->assertSeeTextInOrder([
-                'Thu Oct 8, Front desk 6:30 to 9:30pm, with Sam. Done',
-                'Tue Oct 6, Front desk 3:30 to 6:30pm, with Sam. Done (before moving back)',
-                'Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam. Done (before moving back)',
+                'Thu Oct 8, Front desk 6:30 to 9:30pm, with Sam E. Done',
+                'Tue Oct 6, Front desk 3:30 to 6:30pm, with Sam E. Done (before moving back)',
+                'Thu Oct 1, Front desk 6:30 to 9:30pm, with Sam E. Done (before moving back)',
             ]);
     }
 

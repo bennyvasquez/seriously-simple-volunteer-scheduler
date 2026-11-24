@@ -58,15 +58,18 @@ Route::middleware('auth')->group(function () {
     Route::get('/account/email', [EmailChangeController::class, 'edit'])->name('account.email.edit');
     Route::post('/account/email', [EmailChangeController::class, 'update'])->middleware('throttle:email-change')->name('account.email.update');
     Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change-identity')->name('account.email.identity.send');
-    Route::middleware('can:viewAny,App\Models\Area')->group(function () {
+    // Everyone active can read the schedule; the routes below it that change it need a role.
+    Route::middleware('can:view-schedule')->group(function () {
         Route::get('/calendar', [CalendarController::class, 'week'])->name('calendar.week');
         Route::get('/calendar/day', [CalendarController::class, 'day'])->name('calendar.day');
         Route::get('/calendar/month', [CalendarController::class, 'month'])->name('calendar.month');
+        Route::get('/calendar/shifts/{shift}', [ShiftController::class, 'show'])->name('calendar.shift');
+    });
+    Route::middleware('can:viewAny,App\Models\Area')->group(function () {
         Route::get('/calendar/add', [AddController::class, 'panel'])->name('calendar.add');
         Route::post('/calendar/add', [AddController::class, 'store'])->name('calendar.add.store');
         Route::get('/calendar/slots/create', [AddController::class, 'createSlot'])->name('calendar.slots.create');
         Route::post('/calendar/slots', [AddController::class, 'storeSlot'])->name('calendar.slots.store');
-        Route::get('/calendar/shifts/{shift}', [ShiftController::class, 'show'])->name('calendar.shift');
         Route::post('/calendar/shifts/{shift}/assign', [ShiftController::class, 'assign'])->name('calendar.shift.assign');
         Route::get('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePerson'])->name('calendar.shift.remove-person');
         Route::post('/calendar/shifts/{shift}/remove-person', [ShiftController::class, 'removePersonStore'])->name('calendar.shift.remove-person.store');

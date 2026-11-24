@@ -20,9 +20,6 @@ class ClearanceAccessibilityTest extends DuskTestCase
 {
     use ChecksAccessibility;
 
-    /** The shift panel beside the coordinator calendar's week (screen 32). */
-    private const SHIFT_PANEL = 'section[aria-label="Shift details"]';
-
     public function test_clearing_someone_from_the_person_page(): void
     {
         $coordinator = User::where('email', ExampleOrganizationSeeder::COORDINATOR)->firstOrFail();
@@ -35,7 +32,7 @@ class ClearanceAccessibilityTest extends DuskTestCase
             $this->assertAccessible($browser);
 
             $browser->type('note', 'Ready early.')->press('Clear for regular shifts')
-                ->waitForText('Riley is cleared for regular shifts.')
+                ->waitForText('Riley B. is cleared for regular shifts.')
                 ->assertSee('Cleared for regular shifts since');
             $this->assertAccessible($browser);
         });
@@ -45,7 +42,7 @@ class ClearanceAccessibilityTest extends DuskTestCase
     {
         $coordinator = User::where('email', ExampleOrganizationSeeder::COORDINATOR)->firstOrFail();
         $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
-        $first = $volunteer->firstName();
+        $first = $volunteer->shortName();
 
         $this->browse(function (Browser $browser) use ($coordinator, $volunteer, $first) {
             $browser->loginAs($coordinator)->visit(route('people.show', $volunteer))
@@ -107,11 +104,10 @@ class ClearanceAccessibilityTest extends DuskTestCase
             $browser->loginAs($lead)->visit(route('calendar.shift', $shift))
                 ->assertSee('Shadowing')
                 ->assertSee('Mark no-show');
-            // Only the panel: the week grid behind it has its own axe findings, tracked separately.
-            $this->assertAccessible($browser, self::SHIFT_PANEL);
+            $this->assertAccessible($browser);
 
             $browser->press('Mark no-show')->waitForText('as a no-show.')->assertSee('Marked Rosa')->assertSee('Undo no-show');
-            $this->assertAccessible($browser, self::SHIFT_PANEL);
+            $this->assertAccessible($browser);
         });
 
         $this->assertNotNull($shadow->fresh()->no_show_at);

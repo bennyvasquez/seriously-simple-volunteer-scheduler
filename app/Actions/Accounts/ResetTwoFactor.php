@@ -28,7 +28,7 @@ class ResetTwoFactor
         }
 
         if ($user->two_factor_secret === null) {
-            throw new DomainException($user->firstName()." doesn't have an authenticator app connected.");
+            throw new DomainException($user->shortName()." doesn't have an authenticator app connected.");
         }
 
         DB::transaction(function () use ($admin, $user) {

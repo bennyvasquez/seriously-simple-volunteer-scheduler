@@ -7,14 +7,14 @@ use App\Models\User;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-/** Sent to the person whose two-factor an admin reset, so they hear about it even if they didn't ask. Names the admin by first name only. */
+/** Sent to the person whose two-factor an admin reset, so they hear about it even if they didn't ask. Names the admin by first name and last initial. */
 class TwoFactorResetNotification extends Notification
 {
     public string $adminFirstName;
 
     public function __construct(User $admin)
     {
-        $this->adminFirstName = $admin->firstName();
+        $this->adminFirstName = $admin->shortName();
     }
 
     public function via(object $notifiable): array

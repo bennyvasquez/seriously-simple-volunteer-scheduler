@@ -415,7 +415,7 @@ class EmailChangeTest extends TestCase
         // Sam opens the link on a shared computer where Robin is logged in. The page mustn't send Sam to Robin's login and security page (issue #14).
         $this->actingAs($robin)->post(route('account.email.confirm', $token))->assertOk()
             ->assertSee('Your email address is now sam.new@example.org')
-            ->assertDontSee('href="'.route('account.show').'"', false)
+            ->assertDontSee('Back to login and security')
             ->assertSee('Someone else is logged in on this device. Use the new address next time you log in on yours.');
     }
 

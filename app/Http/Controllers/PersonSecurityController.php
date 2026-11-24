@@ -24,7 +24,7 @@ class PersonSecurityController extends Controller
 
         return view('people.security', [
             'person' => $user,
-            'firstName' => $user->firstName(),
+            'firstName' => $user->shortName(),
             'roles' => $user->roleLabels(),
             'timezone' => Organization::query()->value('timezone') ?? 'UTC',
             'isSelf' => $request->user()->is($user),
@@ -45,7 +45,7 @@ class PersonSecurityController extends Controller
             throw ValidationException::withMessages(['identity_checked' => $e->getMessage()]);
         }
 
-        return redirect()->route('people.security', $user)->with('status', $user->firstName().'\'s second step is reset. They\'ll set it up again next time they log in.');
+        return redirect()->route('people.security', $user)->with('status', $user->shortName().'\'s second step is reset. They\'ll set it up again next time they log in.');
     }
 
     private function authorizeAdmin(Request $request): void

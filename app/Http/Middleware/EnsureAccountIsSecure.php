@@ -42,11 +42,7 @@ class EnsureAccountIsSecure
             return $this->endSessionOfDeactivatedUser($request);
         }
 
-        if (! $user->requiresTwoFactor()) {
-            return $next($request);
-        }
-
-        if ($user->password !== null && $user->hasEnabledTwoFactorAuthentication()) {
+        if ($user->hasFinishedSecuritySetup()) {
             return $next($request);
         }
 

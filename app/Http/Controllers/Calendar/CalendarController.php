@@ -8,6 +8,8 @@ use App\Calendar\NeedsAttention;
 use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\Organization;
+use App\Models\Shift;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -15,7 +17,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 
 /**
- * The coordinator calendar's read-only views: week (screen 30), day, and month (screen 33). The phone list (screen 34) is part of the week and day pages. Access is checked by the route's can:viewAny,App\Models\Area middleware.
+ * The calendar's read-only views, open to every active person: week (screen 30), day, and month (screen 33). The phone list (screen 34) is part of the week and day pages. Access is checked by the route's can:view-schedule middleware; the editing routes still need a role (can:viewAny,App\Models\Area).
  */
 class CalendarController extends Controller
 {
@@ -70,6 +72,7 @@ class CalendarController extends Controller
             'previous' => $month->subMonth()->format('Y-m'),
             'next' => $month->addMonth()->format('Y-m'),
             'nothingShown' => $shown === [],
+            'tools' => $request->user()->canViewCalendar(),
             'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
             'closableAreaIds' => $this->closableAreaIds($request, $areas),
         ]);
@@ -79,6 +82,8 @@ class CalendarController extends Controller
     private function gridData(Request $request, Organization $organization, CalendarWeek $week, Collection $areas, array $shown): array
     {
         $areaQuery = $this->areaQuery($request, $shown);
+        $user = $request->user();
+        $tools = $user->canViewCalendar();
 
         return [
             'organization' => $organization,
@@ -86,13 +91,32 @@ class CalendarController extends Controller
             'areas' => $areas,
             'shown' => $shown,
             'areaQuery' => $areaQuery,
-            'needsAttention' => NeedsAttention::for($organization, $shown, $areaQuery, $request->user()),
+            'tools' => $tools,
+            'needsAttention' => $tools ? NeedsAttention::for($organization, $shown, $areaQuery, $user) : collect(),
+            'nextShift' => $tools ? null : $this->nextShift($user),
+            'hasOwnShift' => $week->hasShiftOf($user),
+            'viewer' => $user,
             'now' => CarbonImmutable::now(),
             'today' => $organization->today()->toDateString(),
             'nothingShown' => $shown === [],
             'canClose' => $areas->contains(fn (Area $area) => Gate::forUser($request->user())->allows('close', $area)),
             'closableAreaIds' => $this->closableAreaIds($request, $areas),
         ];
+    }
+
+    /** The person's next uncancelled shift that hasn't started, in any area, as a regular or a shadow. Its `others` attribute is who else is on it, by first name and last initial. */
+    private function nextShift(User $user): ?Shift
+    {
+        $shift = Shift::query()->active()
+            ->whereHas('assignments', fn ($assignments) => $assignments->where('user_id', $user->id))
+            ->where('starts_at', '>', now())
+            ->with(['area', 'assignments.user'])
+            ->orderBy('starts_at')->orderBy('id')
+            ->first();
+
+        $shift?->setAttribute('others', $shift->assignments->where('user_id', '!=', $user->id)->map(fn ($assignment) => $assignment->user->shortName())->values());
+
+        return $shift;
     }
 
     /**

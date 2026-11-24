@@ -8,6 +8,7 @@ use App\Models\AreaClosure;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -29,6 +30,12 @@ final class CalendarWeek
 
     /** @var array{0: int, 1: int}|null */
     private ?array $hours = null;
+
+    /** @var array<int, bool> Person id to whether they have a role. */
+    private array $tools = [];
+
+    /** @var array<int, array<int, bool>> Person id to area id to whether they manage it. */
+    private array $manageable = [];
 
     /**
      * @param  list<string>  $days
@@ -208,21 +215,25 @@ final class CalendarWeek
     }
 
     /**
-     * What a shift block says, for the grid and the phone list.
+     * What a shift block says, for the grid and the phone list. Someone who can use the coordinator tools (has a role) sees "{n} open", every shadow spot and "No regular". Anyone else sees "You", "Needs {n}", "No one yet" and shadow spots only when they could take one (spec section 13).
      *
-     * @return array{time: string, area: string, lines: list<string>, classes: string, label: string}
+     * @return array{date: string, time: string, area: string, lines: list<string>, classes: string, mine: bool}
      */
-    public function describe(Shift $shift, CarbonImmutable $now): array
+    public function describe(Shift $shift, CarbonImmutable $now, User $viewer): array
     {
         $timezone = $this->organization->timezone;
         $date = $shift->local_date->toDateString();
         $open = $shift->openPlaces();
         $urgent = $shift->isUrgent($now);
-
-        $regulars = $shift->assignments->where('type', AssignmentType::Regular)->map(fn ($assignment) => $assignment->user->firstName());
-        $shadows = $shift->assignments->where('type', AssignmentType::Shadow)->map(fn ($assignment) => $assignment->user->firstName());
+        $tools = $this->hasTools($viewer);
 
         $cancelled = $shift->cancelled_at !== null;
+        $mine = ! $cancelled && $shift->assignments->contains('user_id', $viewer->id);
+
+        $regulars = $this->names($shift, AssignmentType::Regular, $viewer, $tools);
+        $shadows = $this->names($shift, AssignmentType::Shadow, $viewer, $tools);
+        $hasRegular = $shift->assignments->contains('type', AssignmentType::Regular);
+
         $lines = [];
 
         $title = $shift->title ?? ($shift->weeklySlot?->is_rotation ? 'Rotation' : null);
@@ -235,15 +246,20 @@ final class CalendarWeek
             $lines = [...$lines, 'Cancelled: '.$shift->cancel_reason];
             $regulars = collect();
             $shadows = collect();
+            $hasRegular = false;
         }
 
         $people = $regulars->values()->all();
-        if ($open > 0) {
-            $openText = "{$open} open";
-            if ($urgent) {
-                $openText .= ', '.($date === CarbonImmutable::now($timezone)->toDateString() ? 'today' : 'tomorrow');
+        if ($tools) {
+            if ($open > 0) {
+                $openText = "{$open} open";
+                if ($urgent) {
+                    $openText .= ', '.($date === CarbonImmutable::now($timezone)->toDateString() ? 'today' : 'tomorrow');
+                }
+                $people[] = $openText;
             }
-            $people[] = $openText;
+        } elseif ($people === [] && $shadows->isEmpty() && ! $cancelled) {
+            $people[] = 'No one yet';
         }
         if ($people !== []) {
             $lines[] = implode(', ', $people);
@@ -253,13 +269,19 @@ final class CalendarWeek
             $lines[] = ($shadows->count() === 1 ? 'Shadow: ' : 'Shadows: ').$shadows->implode(', ');
         }
 
-        $openShadowSpots = $cancelled ? 0 : max(0, $shift->shadow_spots - $shadows->count());
-        if ($openShadowSpots > 0) {
+        if (! $tools && $open > 0) {
+            $lines[] = "Needs {$open}";
+        }
+
+        $shadowCount = $shift->assignments->where('type', AssignmentType::Shadow)->count();
+        $openShadowSpots = $cancelled ? 0 : max(0, $shift->shadow_spots - $shadowCount);
+        // Someone who isn't cleared only hears about a spot they could take, and a spot needs a regular to learn from.
+        if ($openShadowSpots > 0 && ($tools || (! $viewer->isCleared() && $hasRegular))) {
             $lines[] = $openShadowSpots === 1 ? '1 shadow spot open' : "{$openShadowSpots} shadow spots open";
         }
 
         $slot = $shift->weeklySlot;
-        if (! $cancelled && $slot !== null && ! $slot->is_rotation && ! $slot->regulars->contains(fn (SlotRegular $regular) => $regular->activeOn($date))) {
+        if ($tools && ! $cancelled && $slot !== null && ! $slot->is_rotation && ! $slot->regulars->contains(fn (SlotRegular $regular) => $regular->activeOn($date))) {
             $lines[] = 'No regular';
         }
 
@@ -270,23 +292,57 @@ final class CalendarWeek
         if ($open > 0) {
             $classes .= ' open';
         }
-        if ($urgent) {
+        if ($mine) {
+            $classes .= ' mine';
+        }
+        // The thick 24-hour border is for the people who can fix it. For everyone else the dark border means "your shift".
+        if ($urgent && $this->manages($viewer, $shift->area)) {
             $classes .= ' urgent';
         }
 
         $time = TimeFormat::range($shift->starts_at->setTimezone($timezone), $shift->ends_at->setTimezone($timezone));
 
-        // The visible spans run together for screen readers, so the block gets one name read as a sentence.
-        $spoken = array_map(fn (string $line) => preg_replace_callback('/^(Shadows?): /', fn (array $match) => strtolower($match[1]).' ', $line), $lines);
-        $label = implode(', ', [$shift->area->name, $shift->local_date->format('l, F j'), $time, ...$spoken]);
-
+        // The block's accessible name is its visible text, so speech input users can say what they see (WCAG 2.5.3). The date isn't shown on the block, so the views add it as hidden text.
         return [
-            'label' => $label,
+            'date' => $shift->local_date->format('l, F j'),
             'time' => $time,
             'area' => $shift->area->name,
             'lines' => $lines,
             'classes' => $classes,
+            'mine' => $mine,
         ];
+    }
+
+    /** First names and last initials of the people of this type on the shift. For someone without the coordinator tools the viewer is "You", listed first. */
+    private function names(Shift $shift, AssignmentType $type, User $viewer, bool $tools): Collection
+    {
+        $assignments = $shift->assignments->where('type', $type);
+
+        if ($tools) {
+            return $assignments->map(fn ($assignment) => $assignment->user->shortName());
+        }
+
+        $others = $assignments->where('user_id', '!=', $viewer->id)->map(fn ($assignment) => $assignment->user->shortName());
+
+        return $assignments->contains('user_id', $viewer->id) ? $others->prepend('You') : $others;
+    }
+
+    /** Whether this person has a role, so they get the coordinator-style block lines. Worked out once per person. */
+    private function hasTools(User $viewer): bool
+    {
+        return $this->tools[$viewer->id] ??= $viewer->canViewCalendar();
+    }
+
+    /** Whether this person can manage the area's schedule. Worked out once per person and area. */
+    private function manages(User $viewer, Area $area): bool
+    {
+        return $this->manageable[$viewer->id][$area->id] ??= $viewer->canManageArea($area);
+    }
+
+    /** Whether this person is on any uncancelled shift in the days shown, for the "Dark border: your shift" key. */
+    public function hasShiftOf(User $person): bool
+    {
+        return $this->shiftsByDay->flatten(1)->contains(fn (Shift $shift) => $shift->cancelled_at === null && $shift->assignments->contains('user_id', $person->id));
     }
 
     /** Minutes from local midnight on the shift's date to its start, by the wall clock. */

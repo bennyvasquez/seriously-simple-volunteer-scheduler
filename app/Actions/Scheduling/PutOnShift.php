@@ -38,14 +38,14 @@ class PutOnShift
             $current = User::query()->whereKey($person->id)->sharedLock()->first();
 
             if ($current === null || ! $current->isActive()) {
-                throw new DomainException($person->firstName().' has been turned off and can\'t be put on a shift.');
+                throw new DomainException($person->shortName().' has been turned off and can\'t be put on a shift.');
             }
 
             // Locked after the shift. A shadow put on as a regular moves to a regular place instead of being refused (#21).
             $existing = $shift->assignments()->where('user_id', $person->id)->lockForUpdate()->first();
 
             if ($existing !== null && ! ($existing->type === AssignmentType::Shadow && $type === AssignmentType::Regular)) {
-                throw new DomainException($person->firstName().' is already on this shift.');
+                throw new DomainException($person->shortName().' is already on this shift.');
             }
 
             if ($type === AssignmentType::Regular && ! $overConfirmed && $shift->openPlaces() === 0) {
@@ -59,7 +59,7 @@ class PutOnShift
             $overlapping = self::overlappingShift($person, $shift);
 
             if ($overlapping !== null) {
-                throw new DomainException($person->firstName().' is already on '.$overlapping->area->name.', '.$overlapping->whenText().'.');
+                throw new DomainException($person->shortName().' is already on '.$overlapping->area->name.', '.$overlapping->whenText().'.');
             }
 
             $nobodyButShadowsBefore = $shift->filledCount() === 0;

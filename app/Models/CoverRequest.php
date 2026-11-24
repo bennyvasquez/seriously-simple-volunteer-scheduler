@@ -45,7 +45,7 @@ class CoverRequest extends Model
     {
         $releaser = $this->releasedBy;
 
-        return $releaser === null || $releaser->is_removed_person ? 'Someone' : $releaser->firstName();
+        return $releaser === null || $releaser->is_removed_person ? 'Someone' : $releaser->shortName();
     }
 
     /** Requests nobody has taken yet. */

@@ -15,6 +15,7 @@
 @else
 <div class="bar-name">@hasSection('header')@yield('header')@else{{ \App\Models\Organization::query()->value('name') ?? config('app.name') }}@endif</div>
 @endif
+@include('_main-nav')
 </header>
 <main class="@yield('main-class', 'page')">
 @yield('content')
