@@ -2,7 +2,7 @@
 
 Status: draft, October 2026. Owner: benny Vasquez.
 
-This spec describes what the app does and why. It's written for anyone building or deploying it. Organization-specific setup lives in [deployments/](deployments/), starting with [the Lansing Makers Network](deployments/lmn.md).
+This spec describes what the app does and why. It's written for anyone building or deploying it. Each organization keeps its own setup notes outside this repository; [deployments/README.md](deployments/README.md) says what they cover.
 
 ## 1. The problem
 
@@ -548,6 +548,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-11-23 | Bringing a shift back at a new time asks the question. A shift comes back with its slot's current details (decision of 2026-11-13), so when the slot's time changed while it was cancelled, the people on it get a change notice, the same as any time change, through "Bring this shift back", a changed closure and a removed closure. Their one email is the time email, which says the shift is back on at a new time, in place of "back on"; regulars who join as it comes back, and everyone whose shift came back at the same time, still get "back on" (my call, for benny to check, 2026-11-23). |
 | 2026-11-23 | A slot edit never moves today's shift to a start that has already passed: it keeps its own times, takes the other new details, and the form lists it as kept with "The new time has already passed". The change notice email's "I can't make the new time" links to the answer page (which offers "Can't make it" for the earliest shift still ahead), and its line about the shift lead checking is left out when the first shift is within 48 hours. A newer change's notice keeps the replaced notice's "was" time. The answer page says "This shift was cancelled." for a cancelled shift and has its own copy for a shift the person left and was put back on. The panel and Home say which or how many shifts one "Still works for me" covers (my call, for benny to check, 2026-11-23). |
 | 2026-11-23 | An undone time change asks nothing. When a newer change puts a shift back at the time the person was last asked about (6pm moved to 7pm, then back to 6pm before they answered), the open notice ends and no new notice or email is made for that shift, because nothing differs from what they were last told. Their other changed shifts in the same edit still go in their one email, and a person whose only change was undone gets no time email. A title change made in the same edit is still told, as a line in their time email or, when it's their only change, as the plain title email (my call, for benny to check, 2026-11-23). |
+| 2026-11-24 | Each organization's setup notes (people, schedule shape, integrations, hosting, launch plan) live outside this repository, so the repository can be public. LMN's moved to a private repository for now; docs/deployments/README.md says what the notes should cover. Earlier plans in docs/plans/ still mention docs/deployments/lmn.md as a record of what was done then. |
 
 ## 19. Open questions
 
