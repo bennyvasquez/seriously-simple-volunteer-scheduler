@@ -34,6 +34,14 @@ class AccountPageTest extends TestCase
         $this->actingAs($volunteer)->get(route('account.show'))->assertOk()->assertSee('Add a password (optional)')->assertDontSee('Make new recovery codes');
     }
 
+    public function test_the_page_has_its_own_heading_and_links_back_home(): void
+    {
+        $this->actingAs(User::factory()->create())->get(route('account.show'))
+            ->assertSee('<h1>Login and security</h1>', false)
+            ->assertSee('Back to home')
+            ->assertDontSee('Back to Me');
+    }
+
     public function test_a_volunteer_with_a_password_can_change_it(): void
     {
         $volunteer = User::factory()->create();

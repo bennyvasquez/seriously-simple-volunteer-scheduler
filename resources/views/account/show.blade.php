@@ -4,10 +4,11 @@
 @section('header', 'Login and security')
 
 @section('content')
+<h1>Login and security</h1>
 @if ($status)
 <p role="status">{{ $status }}</p>
 @endif
-<p><a href="{{ route('home') }}">Back to Me</a></p>
+<p><a href="{{ route('home') }}">Back to home</a></p>
 
 <section class="panel">
 <h2>How you log in</h2>
