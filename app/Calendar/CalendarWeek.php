@@ -215,7 +215,7 @@ final class CalendarWeek
     }
 
     /**
-     * What a shift block says, for the grid and the phone list. Someone who can use the coordinator tools (has a role) sees "{n} open", every shadow spot and "No regular". Anyone else sees "You", "Needs {n}", "No one yet" and shadow spots only when they could take one (spec section 13).
+     * What a shift block says, for the grid and the phone list. Someone who can use the coordinator tools (has a role) sees "{n} open", every shadow spot and "No regular". Anyone else sees "You", "Needs {n}" (not once the shift has started), "No one yet" and shadow spots only when they could take one (spec section 13).
      *
      * @return array{date: string, time: string, area: string, lines: list<string>, classes: string, mine: bool}
      */
@@ -226,6 +226,8 @@ final class CalendarWeek
         $open = $shift->openPlaces();
         $urgent = $shift->isUrgent($now);
         $tools = $this->hasTools($viewer);
+        // A volunteer can't fill a place on a shift that has started, so it doesn't ask them to (issue 72). People with the tools still see it.
+        $askable = $tools || $shift->starts_at->greaterThan($now);
 
         $cancelled = $shift->cancelled_at !== null;
         $mine = ! $cancelled && $shift->assignments->contains('user_id', $viewer->id);
@@ -269,7 +271,7 @@ final class CalendarWeek
             $lines[] = ($shadows->count() === 1 ? 'Shadow: ' : 'Shadows: ').$shadows->implode(', ');
         }
 
-        if (! $tools && $open > 0) {
+        if (! $tools && $askable && $open > 0) {
             $lines[] = "Needs {$open}";
         }
 
@@ -289,7 +291,7 @@ final class CalendarWeek
         if ($cancelled) {
             $classes .= ' cancelled';
         }
-        if ($open > 0) {
+        if ($open > 0 && $askable) {
             $classes .= ' open';
         }
         if ($mine) {
