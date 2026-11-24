@@ -8,6 +8,7 @@
 @endphp
 
 @section('content')
+@include('volunteer._status')
 <p><a href="{{ route('home') }}">Back to home</a></p>
 <h1>Can't make it</h1>
 

@@ -17,6 +17,7 @@
 @section('title', $heading)
 
 @section('content')
+@include('volunteer._status')
 @if ($mode === 'thanks')<div role="status">@endif
 <h1>{{ $heading }}</h1>
 @if ($mode === 'thanks')</div>@endif
