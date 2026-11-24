@@ -24,6 +24,7 @@ class SendChangeNotices
      */
     public function recordLocked(?User $actor, array $changes): array
     {
+        // A shift that has started or is cancelled is never noticed. The old start has to be ahead too: a shift that was already under way or over can't be moved, so a notice for it would ask about a time that never applied.
         $changes = collect($changes)->filter(fn (array $change) => $change['shift']->cancelled_at === null
             && $change['shift']->starts_at->greaterThan(now())
             && $change['was_starts_at']->greaterThan(now()))->keyBy(fn (array $change) => $change['shift']->id);

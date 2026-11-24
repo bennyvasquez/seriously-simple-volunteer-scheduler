@@ -18,6 +18,7 @@ use App\Import\HelloClubExport;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\ChangeNotice;
 use App\Models\CoverRequest;
 use App\Models\LoginLink;
 use App\Models\Organization;
@@ -208,6 +209,37 @@ class RemovePersonTest extends TestCase
         $this->assertSame(2, $shift->assignments()->where('user_id', User::removedPerson()->id)->count());
         $this->assertSame(2, ChangeLogEntry::query()->ofAction('user.removed')->count());
         $this->assertSame(1, User::query()->where('is_removed_person', true)->count());
+    }
+
+    public function test_removal_repoints_change_notices_for_the_person_and_the_editor(): void
+    {
+        $shift = $this->shift('2026-10-22');
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $sam = User::factory()->create(['name' => 'Sam Example']);
+        $editor = User::factory()->create(['name' => 'Editor Example']);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $robin->id, 'type' => AssignmentType::Regular]);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);
+        $was = ['was_starts_at' => $shift->starts_at->subHour(), 'was_ends_at' => $shift->ends_at];
+        $robinsNotice = ChangeNotice::create(['batch' => '01HZZZZZZZZZZZZZZZZZZZZZZ1', 'user_id' => $robin->id, 'shift_id' => $shift->id, 'changed_by' => $editor->id] + $was);
+        $samsNotice = ChangeNotice::create(['batch' => '01HZZZZZZZZZZZZZZZZZZZZZZ2', 'user_id' => $sam->id, 'shift_id' => $shift->id, 'changed_by' => $editor->id] + $was);
+
+        // Removing the person releases them first, which ends their open notice.
+        app(RemovePerson::class)->handle($this->coordinator, $robin);
+
+        $removed = User::removedPerson();
+        $this->assertDatabaseMissing('users', ['id' => $robin->id]);
+        $this->assertSame($removed->id, $robinsNotice->fresh()->user_id);
+        $this->assertNotNull($robinsNotice->fresh()->ended_at);
+        $this->assertSame($editor->id, $robinsNotice->fresh()->changed_by);
+        $this->assertNull($samsNotice->fresh()->ended_at);
+
+        // Removing the person who made the change keeps the notices, pointing at the removed-person record.
+        app(RemovePerson::class)->handle($this->coordinator, $editor);
+
+        $this->assertDatabaseMissing('users', ['id' => $editor->id]);
+        $this->assertSame($removed->id, $samsNotice->fresh()->changed_by);
+        $this->assertSame($sam->id, $samsNotice->fresh()->user_id);
+        $this->assertSame($removed->id, $robinsNotice->fresh()->changed_by);
     }
 
     public function test_removal_repoints_cover_requests(): void

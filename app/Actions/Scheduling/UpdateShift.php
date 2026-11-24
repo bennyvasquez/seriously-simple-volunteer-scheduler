@@ -103,7 +103,7 @@ class UpdateShift
                 ChangeLogEntry::record($actor, 'shift.updated', $fresh, ['area_id' => $fresh->area_id], $logged);
 
                 if ($timeChanged) {
-                    $timeNotices = $this->notices->recordLocked($actor, [['shift' => $fresh->load('area'), 'was_starts_at' => $wasStartsAt, 'was_ends_at' => $wasEndsAt]]);
+                    $timeNotices = $this->notices->recordLocked($actor, [['shift' => $fresh->load('area'), 'was_starts_at' => $wasStartsAt, 'was_ends_at' => $wasEndsAt, 'was_title' => $wasTitle]]);
                 }
 
                 if ($notify && ! $timeChanged) {

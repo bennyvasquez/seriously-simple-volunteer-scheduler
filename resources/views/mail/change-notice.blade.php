@@ -18,4 +18,9 @@ I can't make the new time
 </x-mail::button>
 
 You'll log in first if you aren't already. If you don't answer, your shift lead will check with you before the shift.
+
+@foreach ($titleLines as $line)
+{{ $line }}
+
+@endforeach
 </x-mail::message>

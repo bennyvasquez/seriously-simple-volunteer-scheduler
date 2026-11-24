@@ -161,7 +161,7 @@ class EditScheduleTest extends TestCase
 
         // One email asks about all three of Robin's Thursdays at once.
         Notification::assertSentTo($robin, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm'
-            && $notification->lines === ['Thursday, October 15, and every Thursday after: 5 to 8pm (was 6 to 9pm)']);
+            && $notification->lines === ['Thursdays from October 15 to October 29: 5 to 8pm (was 6 to 9pm)']);
         Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
         Notification::assertSentTimes(ShiftChangedNotification::class, 0);
     }
@@ -189,8 +189,9 @@ class EditScheduleTest extends TestCase
         $this->assertSame([$kept->id], $entry->details['kept_shift_ids']);
         $this->assertStringNotContainsString('Robin', json_encode($entry->details));
 
-        // Robin is asked about the two shifts that moved, not the one kept.
-        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm');
+        // Robin is asked about the two shifts that moved, not the one kept, and the lines don't claim a range that includes the kept one.
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm'
+            && $notification->lines === ['Thursday, October 15: 5 to 8pm (was 6 to 9pm)', 'Thursday, October 29: 5 to 8pm (was 6 to 9pm)']);
         Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
         $this->assertSame(2, ChangeNotice::query()->where('user_id', $robin->id)->count());
         $this->assertSame(0, ChangeNotice::query()->where('shift_id', $kept->id)->count());

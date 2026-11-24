@@ -141,20 +141,22 @@ class UpdateWeeklySlot
                     $shift->setRelation('area', $slot->area);
 
                     if ($timeChanged) {
-                        $timeChanges[] = ['shift' => $shift, 'was_starts_at' => $wasStartsAt, 'was_ends_at' => $wasEndsAt];
+                        $timeChanges[] = ['shift' => $shift, 'was_starts_at' => $wasStartsAt, 'was_ends_at' => $wasEndsAt, 'was_title' => $wasTitle];
                     }
 
-                    foreach ($people->filter(fn (User $person) => $person->canSignIn()) as $person) {
+                    // A shift whose time changed goes in the time email, with its title change on its line.
+                    foreach ($timeChanged ? [] : $people->filter(fn (User $person) => $person->canSignIn()) as $person) {
                         $emails[$person->id] ??= ['person' => $person, 'changes' => []];
                         $emails[$person->id]['changes'][] = ['shift' => $shift, 'was' => $was, 'wasTitle' => $wasTitle];
                     }
                 }
             }
 
-            // After the shift and assignment locks above. A person with a time change gets the one time email, not the plain one as well.
+            // After the shift and assignment locks above. A person with a time change gets the one time email, which also carries the title-only changes to their other shifts, not a plain email as well.
             $timeNotices = $this->notices->recordLocked($actor, $timeChanges);
 
             foreach ($timeNotices as $sent) {
+                $sent['notification']->withTitleChanges(collect($emails[$sent['user']->id]['changes'] ?? []));
                 unset($emails[$sent['user']->id]);
             }
 

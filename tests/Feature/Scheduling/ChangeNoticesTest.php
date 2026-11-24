@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Actions\Accounts\DeactivateUser;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CreateOneTimeShift;
@@ -9,6 +10,7 @@ use App\Actions\Scheduling\EndRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\ReleaseShifts;
 use App\Actions\Scheduling\RemoveFromShift;
+use App\Actions\Scheduling\SendChangeNotices;
 use App\Actions\Scheduling\UpdateShift;
 use App\Actions\Scheduling\UpdateWeeklySlot;
 use App\ChangeLog\Describe;
@@ -231,7 +233,7 @@ class ChangeNoticesTest extends TestCase
         $this->assertSame('Your Front desk shift moved to 5 to 8pm', $sent->subject);
         $this->assertStringContainsString('Hi Sam,', $text);
         $this->assertStringContainsString('Coordinator E. changed the time of your Front desk shifts.', $text);
-        $this->assertStringContainsString('Thursday, October 15, and every Thursday after: 5 to 8pm (was 6:30 to 9:30pm)', $text);
+        $this->assertStringContainsString('Thursdays from October 15 to October 29: 5 to 8pm (was 6:30 to 9:30pm)', $text);
         $this->assertStringContainsString('Does the new time still work for you?', $text);
         $this->assertStringContainsString('Still works for me', $text);
         $this->assertStringContainsString("I can't make the new time", $text);
@@ -256,7 +258,7 @@ class ChangeNoticesTest extends TestCase
         $this->assertStringContainsString('The Front desk schedule changed.', $text);
         $this->assertStringContainsString('Thursday, October 22: 6 to 9pm (was 5 to 9pm)', $text);
         $this->assertStringContainsString('Friday, October 23: 6 to 9pm (was 6 to 9pm)', $text);
-        $this->assertStringNotContainsString('and every', $text);
+        $this->assertStringNotContainsString('Thursdays from', $text);
     }
 
     public function test_releasing_a_shift_ends_your_notice_on_it(): void
@@ -312,5 +314,94 @@ class ChangeNoticesTest extends TestCase
         $this->assertSame([$this->shiftOn('2026-10-29')->id], ChangeNotice::query()->where('user_id', $this->sam->id)->pluck('shift_id')->all());
         $this->assertSame(0, ChangeNotice::query()->where('shift_id', $this->shiftOn('2026-10-15')->id)->count());
         $this->assertSame(0, ChangeNotice::query()->where('shift_id', $cancelled->id)->count());
+    }
+
+    public function test_a_consecutive_run_of_one_slot_reads_as_a_range_and_a_gap_lists_each_date(): void
+    {
+        $dates = ['2026-10-15', '2026-10-22', '2026-10-29'];
+        $item = fn (string $date) => ['shift' => $this->shiftOn($date)->load('area'), 'was_starts_at' => $this->shiftOn($date)->starts_at->subHour(), 'was_ends_at' => $this->shiftOn($date)->ends_at];
+
+        $run = new ShiftTimeChangedNotification('01HZZZZZZZZZZZZZZZZZZZZZZZ', collect(array_map($item, $dates)), null);
+        $this->assertSame(['Thursdays from October 15 to October 29: 6:30 to 9:30pm (was 5:30 to 9:30pm)'], $run->lines);
+
+        // October 22 isn't in the batch, so "Thursdays from October 15 to October 29" would be wrong.
+        $gap = new ShiftTimeChangedNotification('01HZZZZZZZZZZZZZZZZZZZZZZZ', collect(array_map($item, ['2026-10-15', '2026-10-29'])), null);
+        $this->assertSame([
+            'Thursday, October 15: 6:30 to 9:30pm (was 5:30 to 9:30pm)',
+            'Thursday, October 29: 6:30 to 9:30pm (was 5:30 to 9:30pm)',
+        ], $gap->lines);
+    }
+
+    public function test_a_slot_edit_with_a_time_change_and_a_title_only_change_sends_one_email_with_both(): void
+    {
+        app(AddRegular::class)->handle(null, $this->slot, $this->sam, '2026-10-15', '2026-10-22');
+        // October 22 is already at the new time, so the edit changes only its title.
+        $already = $this->shiftOn('2026-10-22');
+        $already->update(['starts_at' => CarbonImmutable::parse('2026-10-22 17:00', self::TIMEZONE)->utc(), 'ends_at' => CarbonImmutable::parse('2026-10-22 20:00', self::TIMEZONE)->utc()]);
+        Notification::fake();
+
+        app(UpdateWeeklySlot::class)->handle($this->coordinator, $this->slot->fresh(), $this->slotAttributes(['start_time' => '17:00', 'end_time' => '20:00', 'title' => 'Open house']));
+
+        Notification::assertSentToTimes($this->sam, ShiftTimeChangedNotification::class, 1);
+        Notification::assertNotSentTo($this->sam, ShiftChangedNotification::class);
+        $this->assertSame([$this->shiftOn('2026-10-15')->id], ChangeNotice::query()->where('user_id', $this->sam->id)->pluck('shift_id')->all());
+
+        $sent = Notification::sent($this->sam, ShiftTimeChangedNotification::class)->sole();
+        $this->assertSame(["Thursday, October 15: 5 to 8pm (was 6:30 to 9:30pm). It's now for Open house."], $sent->lines);
+        $this->assertSame(["Your Front desk shift on Thursday, October 22 changed. It's now for Open house."], $sent->titleLines);
+
+        $text = $this->text($sent, $this->sam);
+        $this->assertLessThan(strpos($text, "Your Front desk shift on Thursday, October 22 changed. It's now for Open house."), strpos($text, 'Does the new time still work for you?'));
+        $this->assertStringContainsString("Thursday, October 15: 5 to 8pm (was 6:30 to 9:30pm). It's now for Open house.", $text);
+    }
+
+    public function test_a_shift_edit_that_changes_the_time_and_the_title_mentions_both(): void
+    {
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:00', '21:00', 2, 0, 'Tour night');
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->sam->id, 'type' => AssignmentType::Regular]);
+
+        app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '17:00', 'end_time' => '20:00', 'title' => '']);
+
+        Notification::assertNotSentTo($this->sam, ShiftChangedNotification::class);
+        $sent = Notification::sent($this->sam, ShiftTimeChangedNotification::class)->sole();
+        $this->assertSame(["Thursday, October 22: 5 to 8pm (was 6 to 9pm). It's no longer for Tour night."], $sent->lines);
+        $this->assertStringContainsString("It's no longer for Tour night.", $this->text($sent, $this->sam));
+    }
+
+    public function test_started_cancelled_and_already_started_shifts_are_skipped_directly(): void
+    {
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-10-22', '18:00', '21:00', 2, 0, null)->load('area');
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->sam->id, 'type' => AssignmentType::Regular]);
+        $was = ['was_starts_at' => $shift->starts_at->subHour(), 'was_ends_at' => $shift->ends_at];
+        $notices = app(SendChangeNotices::class);
+
+        $cancelled = $shift->replicate();
+        $cancelled->id = $shift->id;
+        $cancelled->cancelled_at = now();
+        $this->assertSame([], $notices->recordLocked($this->coordinator, [['shift' => $cancelled] + $was]));
+
+        $started = $shift->replicate();
+        $started->id = $shift->id;
+        $started->starts_at = now()->subHour();
+        $this->assertSame([], $notices->recordLocked($this->coordinator, [['shift' => $started] + $was]));
+
+        // The old start has passed, the new one hasn't: a shift that was under way can't have been moved.
+        $this->assertSame([], $notices->recordLocked($this->coordinator, [['shift' => $shift, 'was_starts_at' => now()->subHour(), 'was_ends_at' => now()->addHour()]]));
+
+        $this->assertSame(0, ChangeNotice::query()->count());
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('change_notice.sent')->count());
+        $this->assertCount(1, $notices->recordLocked($this->coordinator, [['shift' => $shift] + $was]));
+    }
+
+    public function test_turning_someone_off_ends_their_open_notices(): void
+    {
+        $this->regularsOnThreeThursdays();
+        $this->moveSlot();
+
+        app(DeactivateUser::class)->handle($this->coordinator, $this->sam);
+
+        $this->assertSame(3, ChangeNotice::query()->where('user_id', $this->sam->id)->whereNotNull('ended_at')->count());
+        $this->assertSame(0, ChangeNotice::query()->open()->where('user_id', $this->sam->id)->count());
+        $this->assertSame(3, ChangeNotice::query()->open()->where('user_id', $this->jordan->id)->count());
     }
 }
