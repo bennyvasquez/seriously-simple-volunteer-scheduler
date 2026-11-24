@@ -49,7 +49,7 @@ final class Describe
             'user.deactivated' => 'Turned off '.$possessive.' account',
             'user.removed' => 'Removed a person\'s account',
             'user.email_changed' => 'Changed '.($self ? 'their' : $possessive).' email address',
-            'user.email_settings_changed' => 'Turned '.(($changes['cover_request_emails']['new'] ?? true) ? 'on' : 'off').' cover request emails'.($self ? '' : ' for '.$person),
+            'user.email_settings_changed' => self::emailSettings($changes).($self ? '' : ' for '.$person),
             'user.member_id_added' => 'Added a membership ID for '.$person,
             'user.password_set' => 'Set '.($self ? 'a' : $possessive).' password',
             'user.password_changed' => 'Changed '.($self ? 'their' : $possessive).' password',
@@ -187,6 +187,33 @@ final class Describe
     private static function article(string $word): string
     {
         return in_array(mb_strtolower($word[0]), ['a', 'e', 'i', 'o', 'u'], true) ? 'an' : 'a';
+    }
+
+    /** Names each email setting that changed, grouped by direction: "Turned off cover request emails and shift reminder emails". */
+    private static function emailSettings(array $changes): string
+    {
+        $names = ['cover_request_emails' => 'cover request emails', 'reminder_emails' => 'shift reminder emails'];
+        $on = [];
+        $off = [];
+        foreach ($names as $field => $name) {
+            if (isset($changes[$field])) {
+                if ($changes[$field]['new']) {
+                    $on[] = $name;
+                } else {
+                    $off[] = $name;
+                }
+            }
+        }
+
+        $parts = [];
+        if ($off) {
+            $parts[] = 'Turned off '.implode(' and ', $off);
+        }
+        if ($on) {
+            $parts[] = ($parts ? 'turned on ' : 'Turned on ').implode(' and ', $on);
+        }
+
+        return implode(' and ', $parts) ?: 'Changed email settings';
     }
 
     private static function areaName(ChangeLogEntry $entry): string
