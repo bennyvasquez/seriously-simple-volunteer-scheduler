@@ -32,6 +32,7 @@ class ChangeLogController extends Controller
         'clearance' => ['Clearance', ['user.cleared', 'user.moved_back']],
         'generation' => ['Shift generation', ['shifts.generated']],
         'settings' => ['Settings', ['organization.*']],
+        'emails' => ['Emails', ['email_wording.*']],
     ];
 
     public function index(Request $request): View

@@ -95,8 +95,8 @@ class ShadowSpotNotification extends Notification
             }
         }
 
-        $know = $leads === [] ? '' : ' '.EmailText::choice('shadow_spot.still_uncovered.knows', count($leads), ['leads' => Arr::join($leads, ', ', ' and ')]);
+        $reachOut = EmailText::line('shadow_spot.still_uncovered.reach_out');
 
-        return $mail->line(EmailText::line('shadow_spot.still_uncovered.reach_out').$know);
+        return $mail->line($leads === [] ? $reachOut : EmailText::join($reachOut, ' ', EmailText::choice('shadow_spot.still_uncovered.knows', count($leads), ['leads' => Arr::join($leads, ', ', ' and ')])));
     }
 }

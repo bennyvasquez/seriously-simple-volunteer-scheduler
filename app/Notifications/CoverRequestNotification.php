@@ -62,7 +62,7 @@ class CoverRequestNotification extends Notification
         }
 
         if ($this->note !== null && $this->note !== '') {
-            $mail->line(PlainText::line(EmailText::line('cover_request.note', ['releaser' => $this->releaserFirstName, 'note' => $this->note])));
+            $mail->line(EmailText::plainTextLine('cover_request.note', ['releaser' => $this->releaserFirstName, 'note' => $this->note]));
         }
 
         if (! $several) {

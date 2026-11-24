@@ -6,14 +6,15 @@ use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /** Sent to everyone on shifts that were cancelled. Takes a collection so a closure that cancels several shifts sends one email; a single cancelled date passes a one-item collection. When a changed closure also brings back other shifts the person is on, those come in the same email, so nobody gets two. */
 class ShiftCancelledNotification extends Notification
 {
-    /** @var list<string> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
+    /** @var list<string|HtmlString> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
     public array $shifts;
 
-    /** @var list<string> The same for each shift that is back on, when a changed closure brought some back. */
+    /** @var list<string|HtmlString> The same for each shift that is back on, when a changed closure brought some back. */
     public array $restored;
 
     /**
@@ -53,8 +54,8 @@ class ShiftCancelledNotification extends Notification
     /**
      * The email's lines for cancelled shifts, also used when the change notice email carries them.
      *
-     * @param  list<string>  $shifts
-     * @return list<string>
+     * @param  list<string|HtmlString>  $shifts
+     * @return list<string|HtmlString>
      */
     public static function cancelledLines(array $shifts, string $reason): array
     {
@@ -66,7 +67,7 @@ class ShiftCancelledNotification extends Notification
 
         return [
             EmailText::choice('shift_cancelled.body', count($shifts), ['reason' => $sentence]),
-            ...array_map(fn (string $shift) => EmailText::line('shift_cancelled.shift_item', ['shift' => $shift]), $shifts),
+            ...array_map(fn (string|HtmlString $shift) => EmailText::line('shift_cancelled.shift_item', ['shift' => $shift]), $shifts),
             EmailText::line('shift_cancelled.outro'),
         ];
     }

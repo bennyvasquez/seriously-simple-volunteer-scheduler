@@ -6,13 +6,14 @@ use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /** Sent to everyone still on shifts that were brought back: a shift a coordinator cancelled and then restored, or the shifts a changed or removed closure no longer covers. Takes one shift or a collection, so a closure change that brings back several shifts sends one email. */
 class ShiftRestoredNotification extends Notification
 {
     public string $area;
 
-    /** @var list<string> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
+    /** @var list<string|HtmlString> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
     public array $shifts;
 
     /** @param  Shift|Collection<int, Shift>  $shifts */
@@ -48,8 +49,8 @@ class ShiftRestoredNotification extends Notification
     /**
      * The email's lines for shifts that are back on, also used when one email says some shifts are cancelled and others are back on.
      *
-     * @param  list<string>  $shifts
-     * @return list<string>
+     * @param  list<string|HtmlString>  $shifts
+     * @return list<string|HtmlString>
      */
     public static function backOnLines(array $shifts): array
     {
@@ -59,7 +60,7 @@ class ShiftRestoredNotification extends Notification
 
         return [
             EmailText::choice('shift_restored.body', count($shifts)),
-            ...array_map(fn (string $shift) => EmailText::line('shift_restored.shift_item', ['shift' => $shift]), $shifts),
+            ...array_map(fn (string|HtmlString $shift) => EmailText::line('shift_restored.shift_item', ['shift' => $shift]), $shifts),
             EmailText::line('shift_restored.outro'),
         ];
     }

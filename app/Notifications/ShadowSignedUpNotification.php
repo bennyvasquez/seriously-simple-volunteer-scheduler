@@ -39,7 +39,9 @@ class ShadowSignedUpNotification extends Notification
             ->line(EmailText::line('shadow_signed_up.intro', ['area' => $this->area, 'when' => $this->when]));
 
         if ($this->regularFirstNames !== []) {
-            $mail->line(ReleaseController::endSentence(EmailText::line('shadow_signed_up.regulars', ['names' => ReleaseController::names($this->regularFirstNames)])));
+            $regulars = EmailText::line('shadow_signed_up.regulars', ['names' => ReleaseController::names($this->regularFirstNames)]);
+            // Ends the sentence, unless it already ends on a short name's full stop ("Jordan P.").
+            $mail->line(str_ends_with((string) $regulars, '.') ? $regulars : EmailText::join($regulars, '.'));
         }
 
         return $mail->line(EmailText::line('shadow_signed_up.outro'));

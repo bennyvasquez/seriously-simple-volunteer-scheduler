@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 
 /**
  * The 48-hour heads-up (screen 59), sent once per shift to the area's leads (or the coordinators when it has none): the time of the shift changed and these people haven't said whether the new time works. `$names` are short names, `$was` is the old time, `$reason` is why this person gets it ("a shift lead for Front desk" or "a coordinator").
@@ -17,7 +18,7 @@ class NoAnswerLeadNotification extends Notification
 
     public string $date;
 
-    public string $line;
+    public string|HtmlString $line;
 
     public string $url;
 

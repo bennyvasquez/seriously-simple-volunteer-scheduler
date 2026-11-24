@@ -59,6 +59,6 @@ class ShadowLeftNotification extends Notification
 
     private function withNote(MailMessage $mail): MailMessage
     {
-        return $this->note === null || $this->note === '' ? $mail : $mail->line(PlainText::line(EmailText::line('shadow_left.note', ['shadow' => $this->shadowFirstName, 'note' => $this->note])));
+        return $this->note === null || $this->note === '' ? $mail : $mail->line(EmailText::plainTextLine('shadow_left.note', ['shadow' => $this->shadowFirstName, 'note' => $this->note]));
     }
 }

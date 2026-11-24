@@ -93,6 +93,8 @@ final class Describe
             'closure.created' => self::closureWords($entry->subject),
             'closure.updated' => self::closureChanged($entry, $areas),
             'closure.removed' => self::closureRemoved($entry, $areas),
+            'email_wording.changed' => 'Changed a line of '.self::emailName($details),
+            'email_wording.reset' => 'Put a line of '.self::emailName($details).' back to the default',
             default => str_starts_with($entry->action, 'user.')
                 ? 'Changed '.$possessive.' account'
                 : ucfirst(str_replace(['.', '_'], ' ', $entry->action)),
@@ -333,6 +335,12 @@ final class Describe
         $to = CarbonImmutable::parse($last)->format('M j');
 
         return $from === $to ? $from : $from.' to '.$to;
+    }
+
+    /** "the login link email" for the login_link email, from the entry's details. The editor's catalog will name emails properly. */
+    private static function emailName(array $details): string
+    {
+        return isset($details['email']) ? 'the '.str_replace('_', ' ', $details['email']).' email' : 'an email';
     }
 
     private static function closureWords(mixed $closure): string

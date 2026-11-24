@@ -48,7 +48,7 @@ class ShiftTakenNotification extends Notification
         $mail->line(EmailText::line('shift_taken.when_area', ['when' => $this->when, 'area' => $this->area]));
 
         if (! $this->tookBack && $this->releaserFirstName !== null && $this->note !== null && $this->note !== '') {
-            $mail->line(PlainText::line(EmailText::line('shift_taken.note', ['releaser' => $this->releaserFirstName, 'note' => $this->note])));
+            $mail->line(EmailText::plainTextLine('shift_taken.note', ['releaser' => $this->releaserFirstName, 'note' => $this->note]));
         }
 
         if ($this->shadowFirstNames !== []) {

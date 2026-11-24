@@ -14,8 +14,12 @@ final class PlainText
     /** A whole mail line, already escaped, so Blade doesn't escape it a second time. */
     public static function line(string $text): HtmlString
     {
-        $text = trim(preg_replace('/\s+/u', ' ', $text));
+        return new HtmlString(self::escape(trim(preg_replace('/\s+/u', ' ', $text))));
+    }
 
-        return new HtmlString(strtr(htmlspecialchars($text, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8'), self::MARKDOWN));
+    /** The same escaping without touching whitespace, for a piece of a line (EmailText escapes an edited line's own text this way, around the values it fills in). */
+    public static function escape(string $text): string
+    {
+        return strtr(htmlspecialchars($text, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8'), self::MARKDOWN);
     }
 }
