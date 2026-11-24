@@ -3,11 +3,13 @@
 namespace Tests\Browser;
 
 use App\Http\Controllers\Volunteer\HomeController;
+use App\Models\ChangeNotice;
 use App\Models\CoverRequest;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use Database\Seeders\ExampleOrganizationSeeder;
+use Illuminate\Support\Str;
 use Laravel\Dusk\Browser;
 use Tests\Browser\Concerns\ChecksAccessibility;
 use Tests\DuskTestCase;
@@ -93,6 +95,57 @@ class VolunteerScreensAccessibilityTest extends DuskTestCase
             $this->assertAccessible($browser);
 
             $browser->visit(route('calendar.shift', $own))->assertSee('Can\'t make it');
+            $this->assertAccessible($browser);
+        });
+    }
+
+    /** A change notice for the volunteer on their shift: its time moved an hour later than it was. Setup only, so a screen can be checked in each state. */
+    private function noticeFor(User $volunteer, Shift $shift, ?string $batch = null): ChangeNotice
+    {
+        return ChangeNotice::create([
+            'batch' => $batch ?? (string) Str::ulid(),
+            'user_id' => $volunteer->id,
+            'shift_id' => $shift->id,
+            'changed_by' => null,
+            'was_starts_at' => $shift->starts_at->addHour(),
+            'was_ends_at' => $shift->ends_at,
+        ]);
+    }
+
+    public function test_the_change_notice_page_open_confirmed_and_changed_again(): void
+    {
+        $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
+        $shift = $this->volunteersShift($volunteer);
+        $first = $this->noticeFor($volunteer, $shift);
+
+        $this->browse(function (Browser $browser) use ($volunteer, $shift, $first) {
+            $browser->loginAs($volunteer)->visit(route('changes.show', $first->batch))->assertSee('Does the new time still work for you?');
+            $this->assertAccessible($browser);
+
+            $browser->press('Still works for me')->waitForText('Thanks. You\'re still on at the new time.');
+            $this->assertAccessible($browser);
+
+            $browser->visit(route('changes.show', $first->batch))->assertSee('You already said the new time works.');
+            $this->assertAccessible($browser);
+
+            // A newer time change on the same shift replaces the old one, so the old email's page says so.
+            $this->noticeFor($volunteer, $shift);
+            $browser->visit(route('changes.show', $first->batch))->assertSee('This shift has changed again since that email.');
+            $this->assertAccessible($browser);
+        });
+    }
+
+    public function test_home_and_the_shift_panel_ask_about_a_new_time(): void
+    {
+        $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
+        $shift = $this->volunteersShift($volunteer);
+        $this->noticeFor($volunteer, $shift);
+
+        $this->browse(function (Browser $browser) use ($volunteer, $shift) {
+            $browser->resize(1280, 900)->loginAs($volunteer)->visit('/')->assertSee('Still works for me');
+            $this->assertAccessible($browser);
+
+            $browser->visit(route('calendar.shift', $shift))->assertSee('Still works for me');
             $this->assertAccessible($browser);
         });
     }
