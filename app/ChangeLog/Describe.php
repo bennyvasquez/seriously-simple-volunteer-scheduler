@@ -74,6 +74,7 @@ final class Describe
             'shift.updated' => 'Changed '.self::shiftWords($entry->subject, true),
             'shift.cancelled' => 'Cancelled '.self::shiftWords($entry->subject, true),
             'shift.restored' => 'Brought back '.self::shiftWords($entry->subject, true),
+            'shift.reminded' => 'Sent '.($count = (int) ($details['count'] ?? 1)).' reminder '.($count === 1 ? 'email' : 'emails').' for '.self::shiftWords($entry->subject, true),
             'assignment.added' => match ($details['via'] ?? null) {
                 'take' => 'Took ',
                 'shadow_signup' => 'Signed up to shadow ',

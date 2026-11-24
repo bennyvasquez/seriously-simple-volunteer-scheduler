@@ -16,3 +16,6 @@ Schedule::command('ssvs:cover-requests')->everyTenMinutes()->withoutOverlapping(
 
 // Once per shift, 48 hours before it starts, tell its leads who hasn't answered a time change. Safe to run often: each shift is told once.
 Schedule::command('ssvs:change-heads-ups')->everyTenMinutes()->withoutOverlapping();
+
+// Remind people of their shifts, the number of hours before each that the organization chose in Settings (Off sends nothing). Safe to run often: each place on a shift is handled once.
+Schedule::command('ssvs:shift-reminders')->everyTenMinutes()->withoutOverlapping();
