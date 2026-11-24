@@ -106,6 +106,12 @@ class UpdateShift
                     $timeNotices = $this->notices->recordLocked($actor, [['shift' => $fresh->load('area'), 'was_starts_at' => $wasStartsAt, 'was_ends_at' => $wasEndsAt, 'was_title' => $wasTitle]]);
                 }
 
+                // Time undone with a title change: no time email, but the title change is still told.
+                if ($timeChanged && $this->notices->titleOnly !== []) {
+                    $emailed = collect($this->notices->titleOnly)->pluck('person')->values();
+                    $changes = collect(collect($this->notices->titleOnly)->first()['changes']);
+                }
+
                 if ($notify && ! $timeChanged) {
                     $emailed = $fresh->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->canSignIn())->values();
                     $changes = collect([['shift' => $fresh->load('area'), 'was' => $wasRange, 'wasTitle' => $wasTitle]]);

@@ -191,6 +191,12 @@ class UpdateWeeklySlot
             // After the shift and assignment locks above. A person with a time change gets the one time email, which also carries the title-only changes to their other shifts, not a plain email as well.
             $timeNotices = $this->notices->recordLocked($actor, $timeChanges);
 
+            // People whose time was undone along with a title change get the plain title email, joined with their other title-only shifts.
+            foreach ($this->notices->titleOnly as $userId => $titleOnly) {
+                $emails[$userId] ??= ['person' => $titleOnly['person'], 'changes' => []];
+                $emails[$userId]['changes'] = [...$emails[$userId]['changes'], ...$titleOnly['changes']];
+            }
+
             foreach ($timeNotices as $sent) {
                 $sent['notification']->withTitleChanges(collect($emails[$sent['user']->id]['changes'] ?? []));
                 unset($emails[$sent['user']->id]);
