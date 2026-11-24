@@ -72,8 +72,8 @@ class ShiftController extends Controller
         $canEditSlot = $canEdit && $shift->weeklySlot !== null && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         $edit = $canEdit ? (string) $request->query('edit', '') : '';
 
-        if ($edit === 'slot' && $canEditSlot) {
-            return redirect()->route('calendar.slots.edit', [$shift->weeklySlot] + $this->areaQuery($request));
+        if ($edit === 'following' && $canEditSlot) {
+            return redirect()->route('calendar.slots.edit', [$shift->weeklySlot, 'from' => $shift->local_date->toDateString()] + $this->areaQuery($request));
         }
 
         // Edit on a repeating shift first asks which shifts to change; a one-time shift goes straight to its form.

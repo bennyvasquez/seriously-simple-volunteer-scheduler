@@ -182,7 +182,7 @@ class EditStaffedShiftTest extends TestCase
         $this->actingAs($this->coordinator)->get(route('calendar.shift', [$shift, 'edit' => 1]))
             ->assertOk()
             ->assertSee("Only Thursday, October 15. Later changes to the weekly slot won't overwrite it. The 2 people on it are emailed if the time or what it's for changes.", false)
-            ->assertSee('The weekly slot (future shifts nobody changed on their own)');
+            ->assertSee('This shift and the ones after it');
 
         $this->actingAs($this->coordinator)->get(route('calendar.shift', [$shift, 'edit' => 'shift']))->assertOk()->assertSee('Save this shift');
     }

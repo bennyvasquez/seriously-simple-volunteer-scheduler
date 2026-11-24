@@ -113,8 +113,9 @@
 <fieldset class="choices">
 <legend>Edit which shifts?</legend>
 <label class="check"><input type="radio" name="edit" value="shift" checked><span>This shift<br><span class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.@if ($emailCount > 0) {{ $emailCount === 1 ? 'The 1 person on it is' : 'The '.$emailCount.' people on it are' }} emailed if the time or what it's for changes.@endif</span></span></label>
-<label class="check"><input type="radio" name="edit" value="slot"><span>The weekly slot (future shifts nobody changed on their own)<br><span class="muted">{{ $shift->weeklySlot->describe() }}. Shifts with people on them change too, unless that would double-book someone or leave too few shadow spots. The people on them are emailed if the time or what it's for changes.</span></span></label>
+<label class="check"><input type="radio" name="edit" value="following"><span>This shift and the ones after it<br><span class="muted">The weekly slot changes from {{ $shift->local_date->format('F j') }} on, except shifts someone changed on their own. Earlier dates keep their details, and the regulars stay on.</span></span></label>
 </fieldset>
+<p class="muted">If the time changes, everyone on the changed shifts is asked whether the new time works.</p>
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Continue</button>
 <a href="{{ $panelUrl() }}" class="btn">Back</a>

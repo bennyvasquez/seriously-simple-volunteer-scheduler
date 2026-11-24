@@ -771,7 +771,7 @@ class EditScheduleTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_the_shift_panel_offers_edit_for_this_shift_or_the_weekly_slot(): void
+    public function test_the_panel_offers_this_shift_and_the_ones_after_it(): void
     {
         $slot = $this->thursdaySlot('18:30', '21:30');
         $shift = $slot->shifts()->orderBy('local_date')->first();
@@ -785,14 +785,38 @@ class EditScheduleTest extends TestCase
             ->assertSee('Edit which shifts?')
             ->assertSee('This shift')
             ->assertSee("Only Thursday, October 15. Later changes to the weekly slot won't overwrite it.", false)
-            ->assertSee('The weekly slot (future shifts nobody changed on their own)')
-            ->assertSee("Shifts with people on them change too, unless that would double-book someone or leave too few shadow spots. The people on them are emailed if the time or what it's for changes.", false)
-            ->assertDontSee('keep their old details')
-            ->assertDontSee('This and following shifts')
+            ->assertSee('This shift and the ones after it')
+            ->assertSee('The weekly slot changes from October 15 on, except shifts someone changed on their own. Earlier dates keep their details, and the regulars stay on.', false)
+            ->assertSee('If the time changes, everyone on the changed shifts is asked whether the new time works.')
+            ->assertDontSee('The weekly slot (future shifts nobody changed on their own)')
             ->assertDontSee('After pressing Edit');
 
-        $this->actingAs($user)->get(route('calendar.shift', [$shift, 'edit' => 'slot']))->assertRedirect(route('calendar.slots.edit', $slot));
         $this->actingAs($user)->get(route('calendar.shift', [$shift, 'edit' => 'shift']))->assertOk()->assertSee('Save this shift');
+    }
+
+    public function test_following_opens_the_slot_form_from_that_date(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $shift = $slot->shifts()->orderBy('local_date')->skip(2)->first();
+        $user = $this->coordinator();
+
+        $this->actingAs($user)->get(route('calendar.shift', [$shift, 'edit' => 'following']))
+            ->assertRedirect(route('calendar.slots.edit', [$slot, 'from' => '2026-10-29']));
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-10-29']))
+            ->assertOk()
+            ->assertSee('Changes apply from Thursday, October 29 on. Earlier dates keep their details.')
+            ->assertSee('name="from" value="2026-10-29"', false);
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => 'nonsense']))
+            ->assertOk()
+            ->assertDontSee('Changes apply from');
+
+        $this->actingAs($user)->post(route('calendar.slots.update', $slot), ['from' => '2026-10-29', 'weekday' => 4, 'start_time' => '17:00', 'end_time' => '20:00', 'people_needed' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => '', 'refresh' => ''])
+            ->assertRedirect();
+
+        $this->assertSame('18:30', $this->localStart($slot->shifts()->orderBy('local_date')->first()));
+        $this->assertSame('17:00', $this->localStart($shift->fresh()));
     }
 
     public function test_the_shift_edit_form_saves_one_shift(): void
