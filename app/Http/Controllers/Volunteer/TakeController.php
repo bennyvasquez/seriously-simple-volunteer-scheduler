@@ -71,13 +71,13 @@ class TakeController extends Controller
             'shift' => $shift,
             'card' => $card,
             'cover' => $cover,
-            'releaser' => $cover === null ? null : ($cover->releasedBy === null || $cover->releasedBy->is_removed_person ? null : $cover->releasedBy->firstName()),
+            'releaser' => $cover === null ? null : ($cover->releasedBy === null || $cover->releasedBy->is_removed_person ? null : $cover->releasedBy->shortName()),
             'tookBack' => $cover !== null && $cover->released_by === $user->id,
             'choices' => $choices,
             'weekday' => $slot?->weekdayName(),
             'slotEveryOtherWeek' => $slot !== null && $slot->frequency === SlotFrequency::EveryOtherWeek,
             'openPlaces' => $shift->openPlaces(),
-            'shadows' => $shift->assignments->where('type', AssignmentType::Shadow)->sortBy('id')->map(fn ($assignment) => $assignment->user->firstName())->values()->all(),
+            'shadows' => $shift->assignments->where('type', AssignmentType::Shadow)->sortBy('id')->map(fn ($assignment) => $assignment->user->shortName())->values()->all(),
             'how' => (string) $request->old('how', ''),
         ]);
     }
@@ -131,7 +131,7 @@ class TakeController extends Controller
         $releaser = $filled?->releasedBy;
 
         if ($releaser !== null && $releaser->id !== $user->id && $releaser->canSignIn()) {
-            $told[] = $releaser->firstName();
+            $told[] = $releaser->shortName();
         }
 
         $leads = User::query()->people()->whereNull('deactivated_at')->whereKeyNot($user->id)
@@ -140,7 +140,7 @@ class TakeController extends Controller
 
         foreach ($leads as $lead) {
             if ($releaser?->id !== $lead->id) {
-                $told[] = $lead->firstName().' ('.$shift->area->leadTitle().')';
+                $told[] = $lead->shortName().' ('.$shift->area->leadTitle().')';
             }
         }
 
@@ -154,7 +154,7 @@ class TakeController extends Controller
         return view('volunteer.taken', [
             'user' => $user,
             'card' => ReleaseController::card($shift),
-            'shadows' => collect(CoverFill::shadows($shift))->map(fn (User $shadow) => $shadow->firstName())->all(),
+            'shadows' => collect(CoverFill::shadows($shift))->map(fn (User $shadow) => $shadow->shortName())->all(),
             'told' => $told,
             'regularLine' => $regularLine,
         ]);

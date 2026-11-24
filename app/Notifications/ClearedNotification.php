@@ -16,7 +16,7 @@ class ClearedNotification extends Notification
 
     public function __construct(User $coordinator, Organization $organization)
     {
-        $this->coordinatorFirstName = $coordinator->firstName();
+        $this->coordinatorFirstName = $coordinator->shortName();
         $this->organization = $organization->name;
     }
 

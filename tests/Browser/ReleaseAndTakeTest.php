@@ -33,11 +33,11 @@ class ReleaseAndTakeTest extends DuskTestCase
 
             $browser->logout()->loginAs($sebnem)->visit(route('shifts.take', $shift))
                 ->assertSee('Can you cover this one?')
-                ->assertSee('Jamie can\'t make it. You\'d take this date only.')
+                ->assertSee('Jamie L. can\'t make it. You\'d take this date only.')
                 ->assertSee('The register key is in the top drawer.')
                 ->press('Take this shift')
                 ->waitForText('It\'s yours. Thanks, Şebnem!')
-                ->assertSee('told Jamie');
+                ->assertSee('told Jamie L.');
         });
 
         $this->assertTrue($shift->assignments()->where('user_id', $sebnem->id)->exists());

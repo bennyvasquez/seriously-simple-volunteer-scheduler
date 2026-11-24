@@ -281,9 +281,9 @@ class NotInvitedTest extends TestCase
         $invited = User::factory()->create(['name' => 'Sam Example']);
 
         $this->actingAs($this->coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $notInvited->id, 'type' => 'regular'])
-            ->assertSessionHas('status', 'Robin is on this shift.');
+            ->assertSessionHas('status', 'Robin E. is on this shift.');
         $this->actingAs($this->coordinator)->post(route('calendar.shift.assign', $shift), ['person' => $invited->id, 'type' => 'regular'])
-            ->assertSessionHas('status', 'Sam is on this shift. They were emailed.');
+            ->assertSessionHas('status', 'Sam E. is on this shift. They were emailed.');
 
         $other = app(CreateOneTimeShift::class)->handle($this->coordinator, $area, '2026-11-27', '15:30', '18:30', 2, 0, null);
         app(PutOnShift::class)->handle($this->coordinator, $other, $notInvited, AssignmentType::Regular);

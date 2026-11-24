@@ -30,7 +30,7 @@ class ClearanceController extends Controller
             return back()->withInput($request->only('note'))->withErrors(['clear' => $e->getMessage()]);
         }
 
-        return redirect()->route('people.show', $person)->with('status', $person->firstName().' is cleared for regular shifts.');
+        return redirect()->route('people.show', $person)->with('status', $person->shortName().' is cleared for regular shifts.');
     }
 
     /** Screen 10. Someone who can't be moved back (they hold a role, or aren't cleared) goes back to their page with the reason. The keep or release choice is shown only when they have upcoming regular shifts or a regular slot. */
@@ -43,7 +43,7 @@ class ClearanceController extends Controller
         }
 
         $preview = $moveBack->preview($person);
-        $first = $person->firstName();
+        $first = $person->shortName();
         $shifts = $preview['shifts'];
         $count = $shifts->count();
         $slots = Arr::join(MoveBackToShadowing::slotWords($preview['regulars']), '; ', ' and ');
@@ -81,7 +81,7 @@ class ClearanceController extends Controller
         }
 
         $count = $released->count();
-        $status = $person->firstName().' is back to shadowing.'.($count === 0 ? '' : ' Their '.$count.' upcoming regular '.($count === 1 ? 'shift was' : 'shifts were').' released.');
+        $status = $person->shortName().' is back to shadowing.'.($count === 0 ? '' : ' Their '.$count.' upcoming regular '.($count === 1 ? 'shift was' : 'shifts were').' released.');
 
         return redirect()->route('people.show', $person)->with('status', $status);
     }

@@ -133,7 +133,7 @@ class VolunteerScreensTest extends TestCase
         $beyond = $this->shift('2026-11-30', '09:00', '10:00');
 
         $response = $this->sees($this->sam);
-        $response->assertSeeInOrder(['Open shifts you can take', 'Thursday, October 22', 'Needs cover', 'Robin can\'t make it', 'Friday, October 16', 'Saturday, October 17', 'Sunday, October 18', 'Sunday, October 25', 'No regular']);
+        $response->assertSeeInOrder(['Open shifts you can take', 'Thursday, October 22', 'Needs cover', 'Robin E. can\'t make it', 'Friday, October 16', 'Saturday, October 17', 'Sunday, October 18', 'Sunday, October 25', 'No regular']);
         $response->assertSee('href="'.url('/shifts/'.$coverShift->id.'/take').'"', false);
         $response->assertSee('Take this shift');
 
@@ -365,7 +365,7 @@ class VolunteerScreensTest extends TestCase
         $this->assertSame('The register key is in the top drawer.', CoverRequest::query()->sole()->note);
 
         $response = $this->page($this->sam, route('shifts.released'));
-        $response->assertSeeInOrder(['role="status"', '<h1>You\'re off Thursday, October 22</h1>', 'We\'ve asked other volunteers to cover your Front desk shift. We\'ll email you when someone takes it.', 'Robin was going to shadow you. We\'ve told them their shadow spot is on hold until someone covers.', 'You stay the Thursday regular.', 'Changed your mind?', 'Your next shifts', 'Thursday, October 15', 'Back to home'], false);
+        $response->assertSeeInOrder(['role="status"', '<h1>You\'re off Thursday, October 22</h1>', 'We\'ve asked other volunteers to cover your Front desk shift. We\'ll email you when someone takes it.', 'Robin E. was going to shadow you. We\'ve told them their shadow spot is on hold until someone covers.', 'You stay the Thursday regular.', 'Changed your mind?', 'Your next shifts', 'Thursday, October 15', 'Back to home'], false);
     }
 
     public function test_releasing_from_a_shift_that_still_has_its_people_says_nobody_was_asked(): void
@@ -483,7 +483,7 @@ class VolunteerScreensTest extends TestCase
         app(ReleaseShifts::class)->one($this->robin, $shift, 'The register key is in the top drawer.');
 
         $response = $this->page($this->sam, route('shifts.take', $shift));
-        $response->assertSeeInOrder(['<h1>Can you cover this one?</h1>', 'Thursday, October 22', 'Front desk, 6:30 to 9:30pm', 'Robin can\'t make it. You\'d take this date only.', 'Shadowing: Jo', 'Note from Robin', 'The register key is in the top drawer.', 'Take this shift', 'Not this time'], false);
+        $response->assertSeeInOrder(['<h1>Can you cover this one?</h1>', 'Thursday, October 22', 'Front desk, 6:30 to 9:30pm', 'Robin E. can\'t make it. You\'d take this date only.', 'Shadowing: Jo', 'Note from Robin E.', 'The register key is in the top drawer.', 'Take this shift', 'Not this time'], false);
         $response->assertDontSee('type="radio"', false)->assertSee('name="how" value="date"', false)->assertDontSee('Trainee');
     }
 
@@ -528,7 +528,7 @@ class VolunteerScreensTest extends TestCase
         $this->assertTrue($shift->assignments()->where('user_id', $this->sam->id)->exists());
 
         $response = $this->page($this->sam, route('shifts.taken', $shift));
-        $response->assertSeeInOrder(['role="status"', '<h1>It\'s yours. Thanks, Sam!</h1>', 'Thursday, October 22', 'Front desk, 6:30 to 9:30pm', 'We\'ve emailed you the details, and told Robin and Alex (Shift lead).', 'Can\'t make it after all? It\'s under "Your next shifts" on your home page.', 'Back to home'], false);
+        $response->assertSeeInOrder(['role="status"', '<h1>It\'s yours. Thanks, Sam!</h1>', 'Thursday, October 22', 'Front desk, 6:30 to 9:30pm', 'We\'ve emailed you the details, and told Robin E. and Alex L. (Shift lead).', 'Can\'t make it after all? It\'s under "Your next shifts" on your home page.', 'Back to home'], false);
     }
 
     public function test_the_taken_page_needs_you_on_the_shift(): void
@@ -625,7 +625,7 @@ class VolunteerScreensTest extends TestCase
         $shift = $this->thursday($slot, '2026-10-22');
 
         $response = $this->page($this->robin, route('shifts.take', $shift));
-        $response->assertSeeInOrder(['Thursday, October 22', 'Sam can\'t make it.', 'This weekly slot has no regular right now.', 'Note from Sam', 'Moving away, thanks all.', 'How long do you want it?', 'Just Thursday, October 22', 'Every Thursday', 'Every other Thursday'], false);
+        $response->assertSeeInOrder(['Thursday, October 22', 'Sam E. can\'t make it.', 'This weekly slot has no regular right now.', 'Note from Sam E.', 'Moving away, thanks all.', 'How long do you want it?', 'Just Thursday, October 22', 'Every Thursday', 'Every other Thursday'], false);
         $response->assertDontSee('You\'d take this date only.', false)->assertDontSee('checked', false);
     }
 

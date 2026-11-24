@@ -39,7 +39,7 @@ class ShadowSignedUpNotification extends Notification
             ->line('You\'re signed up to shadow '.$this->area.' on '.$this->when.'.');
 
         if ($this->regularFirstNames !== []) {
-            $mail->line('You\'ll shadow '.ReleaseController::names($this->regularFirstNames).'.');
+            $mail->line(ReleaseController::endSentence('You\'ll shadow '.ReleaseController::names($this->regularFirstNames)));
         }
 
         return $mail->line('If you can\'t make it, press Can\'t make it on Home so a coordinator knows.');

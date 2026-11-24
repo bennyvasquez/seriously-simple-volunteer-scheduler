@@ -58,7 +58,7 @@ class ShadowingTest extends DuskTestCase
                 ->assertSee('Shadow shifts done: 0 of 2')
                 ->type('note', 'Knows the front desk well already.')
                 ->press('Clear for regular shifts')
-                ->waitForText('Rosa is cleared for regular shifts.')
+                ->waitForText('Rosa D. is cleared for regular shifts.')
                 ->assertSee('Cleared for regular shifts since')
                 ->assertDontSee('Shadow shifts done')
                 ->assertSee('Move back to shadowing');

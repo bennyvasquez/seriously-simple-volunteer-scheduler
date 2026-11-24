@@ -101,7 +101,7 @@ class ReleaseFutureScheduleTest extends TestCase
 
         $this->actingAs($this->coordinator)->post(route('people.turn-off', $this->robin))
             ->assertRedirect(route('people.show', $this->robin))
-            ->assertSessionHas('status', 'Robin\'s account is turned off. They were removed from 4 future shifts.');
+            ->assertSessionHas('status', 'Robin E.\'s account is turned off. They were removed from 4 future shifts.');
 
         $this->assertFalse($this->robin->fresh()->isActive());
         $this->assertSame(['2026-10-07'], $this->datesFor($this->robin));
@@ -162,7 +162,7 @@ class ReleaseFutureScheduleTest extends TestCase
         $this->on($future, $this->robin);
 
         $this->actingAs($this->coordinator)->post(route('people.turn-off', $this->robin))
-            ->assertSessionHas('status', 'Robin\'s account is turned off. They were removed from 1 future shift.');
+            ->assertSessionHas('status', 'Robin E.\'s account is turned off. They were removed from 1 future shift.');
 
         $this->assertSame([], $this->datesFor($this->robin));
         $this->assertSame(0, ChangeLogEntry::query()->about($this->robin)->ofAction('user.deactivated')->count());
@@ -197,7 +197,7 @@ class ReleaseFutureScheduleTest extends TestCase
             app(PutOnShift::class)->handle($this->coordinator, $shift, $stale, AssignmentType::Regular);
             $this->fail('A turned-off person should be refused.');
         } catch (DomainException $e) {
-            $this->assertSame('Robin has been turned off and can\'t be put on a shift.', $e->getMessage());
+            $this->assertSame('Robin E. has been turned off and can\'t be put on a shift.', $e->getMessage());
         }
 
         $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id]);
@@ -206,7 +206,7 @@ class ReleaseFutureScheduleTest extends TestCase
             app(AddRegular::class)->handle($this->coordinator, $slot, $stale, '2026-10-15');
             $this->fail('A turned-off person should be refused.');
         } catch (DomainException $e) {
-            $this->assertSame('Robin has been turned off and can\'t be made a regular.', $e->getMessage());
+            $this->assertSame('Robin E. has been turned off and can\'t be made a regular.', $e->getMessage());
         }
 
         $this->assertSame(0, Assignment::query()->where('user_id', $this->robin->id)->count());

@@ -76,7 +76,7 @@ final class NeedsAttention
             ->orderBy('name')
             ->get()
             ->map(fn (User $person) => [
-                'label' => 'Ready for review: '.$person->firstName(),
+                'label' => 'Ready for review: '.$person->shortName(),
                 'detail' => 'Shadow shifts done',
                 'url' => route('people.show', $person),
                 'urgent' => false,

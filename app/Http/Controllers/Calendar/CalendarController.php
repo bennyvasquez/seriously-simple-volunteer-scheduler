@@ -104,15 +104,19 @@ class CalendarController extends Controller
         ];
     }
 
-    /** The person's next uncancelled shift that hasn't started, in any area, as a regular or a shadow, with who else is on it. */
+    /** The person's next uncancelled shift that hasn't started, in any area, as a regular or a shadow. Its `others` attribute is who else is on it, by first name and last initial. */
     private function nextShift(User $user): ?Shift
     {
-        return Shift::query()->active()
+        $shift = Shift::query()->active()
             ->whereHas('assignments', fn ($assignments) => $assignments->where('user_id', $user->id))
             ->where('starts_at', '>', now())
             ->with(['area', 'assignments.user'])
             ->orderBy('starts_at')->orderBy('id')
             ->first();
+
+        $shift?->setAttribute('others', $shift->assignments->where('user_id', '!=', $user->id)->map(fn ($assignment) => $assignment->user->shortName())->values());
+
+        return $shift;
     }
 
     /**

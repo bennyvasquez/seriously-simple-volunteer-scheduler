@@ -15,6 +15,7 @@ use App\Cover\CoverEligibility;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\Organization;
@@ -132,7 +133,7 @@ class ShiftController extends Controller
         $upcoming = $shift->cancelled_at === null && $shift->starts_at->greaterThan(now());
 
         $people = $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $user) {
-            $name = $assignment->user_id === $user->id ? 'You' : PersonSearch::displayName($user, $assignment->user);
+            $name = $assignment->user_id === $user->id ? 'You' : $assignment->user->shortName();
 
             if ($assignment->type === AssignmentType::Shadow) {
                 return ['name' => $name, 'role' => 'Shadowing', 'remove' => null, 'end' => null];
@@ -222,7 +223,7 @@ class ShiftController extends Controller
         };
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
-            ->with('status', $person->firstName().$placed.($person->canSignIn() ? ' They were emailed.' : ''));
+            ->with('status', $person->shortName().$placed.($person->canSignIn() ? ' They were emailed.' : ''));
     }
 
     /** The confirmation page for removing one person from this shift, or from their shifts across a range of dates (neither choice picked to start with). "Check which shifts" comes back here with ?check=1 and the dates, so it works without JavaScript. */
@@ -313,7 +314,7 @@ class ShiftController extends Controller
         $emailed = $person->canSignIn() && $removed->contains(fn (Shift $removedShift) => $removedShift->cancelled_at === null);
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
-            ->with('status', $person->firstName().' was removed from '.$count.($count === 1 ? ' shift.' : ' shifts.').($emailed ? ' They were emailed.' : ''));
+            ->with('status', $person->shortName().' was removed from '.$count.($count === 1 ? ' shift.' : ' shifts.').($emailed ? ' They were emailed.' : ''));
     }
 
     /** Saves the edit form for one shift. Errors go back to the form with what was typed. */
@@ -367,7 +368,7 @@ class ShiftController extends Controller
         $name = PersonSearch::displayName($request->user(), $assignment->user);
 
         return redirect()->route('calendar.shift', [$shift] + $this->areaQuery($request))
-            ->with('status', $data['no_show'] ? 'Marked '.$name.' as a no-show.' : 'Undid the no-show for '.$name.'.');
+            ->with('status', $data['no_show'] ? 'Marked '.$name.' as a no-show.' : 'Undid the no-show for '.ReleaseController::endSentence($name));
     }
 
     public function cancel(Request $request, CancelShift $cancelShift, Shift $shift): RedirectResponse

@@ -30,7 +30,7 @@ class MovedBackNotification extends Notification
      */
     public function __construct(User $coordinator, Organization $organization, public int $required, Collection $shifts, public array $noLongerRegularOn, array $nobodyAskedIds = [])
     {
-        $this->coordinatorFirstName = $coordinator->firstName();
+        $this->coordinatorFirstName = $coordinator->shortName();
         $this->organization = $organization->name;
         [$nobodyAsked, $asked] = $shifts->partition(fn (Shift $shift) => in_array($shift->id, $nobodyAskedIds, true));
         $words = fn (Shift $shift) => $shift->area->name.', '.$shift->whenText();

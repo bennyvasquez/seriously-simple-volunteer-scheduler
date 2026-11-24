@@ -169,11 +169,29 @@ class VolunteerShiftPanelTest extends TestCase
         $this->panel($this->sam, $started)->assertOk()->assertDontSee("Can't make it");
     }
 
+    public function test_a_volunteer_shadowing_the_shift_sees_cant_make_it(): void
+    {
+        $notCleared = User::factory()->create(['name' => 'Taylor Brooks', 'cleared_at' => null]);
+        $shift = $this->shiftOn('2026-10-22', shadowSpots: 1);
+        $this->place($shift, $this->jordan());
+        $this->place($shift, $notCleared, AssignmentType::Shadow);
+
+        $html = $this->panel($notCleared, $shift)->assertOk()
+            ->assertSee("Can't make it")
+            ->assertSee(route('shifts.release', $shift), false)
+            ->assertDontSee('Take this shift')
+            ->assertDontSee('Shadow this shift')
+            ->getContent();
+
+        $this->assertStringContainsString('<span>You</span><span class="muted">Shadowing</span>', $html);
+        $this->assertStringNotContainsString('Taylor Brooks', $html);
+    }
+
     public function test_panel_query_strings_dont_open_editing_for_a_volunteer(): void
     {
-        $jordan = $this->jordan();
-        $shift = $this->shiftOn('2026-10-22', needed: 2);
+        $shift = $this->shiftOn('2026-10-22', needed: 3);
         $this->place($shift, $this->sam);
+        $this->place($shift, $this->jordan());
         $other = User::factory()->cleared()->create(['name' => 'Riley Quinn', 'email' => 'riley@example.org']);
 
         foreach ([['pick' => 1, 'q' => 'example.org'], ['edit' => 'shift'], ['edit' => 1], ['cancel' => 1], ['restore' => 1], ['confirm' => 1, 'type' => 'regular', 'person' => $other->id]] as $query) {
@@ -183,8 +201,6 @@ class VolunteerShiftPanelTest extends TestCase
                 $this->assertStringNotContainsString($text, $html, json_encode($query).' '.$text);
             }
         }
-
-        $this->assertNotNull($jordan);
     }
 
     public function test_a_coordinators_panel_is_unchanged(): void

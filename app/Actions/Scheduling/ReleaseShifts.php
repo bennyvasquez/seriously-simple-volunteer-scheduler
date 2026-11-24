@@ -269,13 +269,13 @@ class ReleaseShifts
                 // Every request that counts was already escalated (people needed was lowered after an escalated release, say), so the leads and coordinators already know and aren't emailed again. This release took off the last regular, so the shadows' spot goes on hold now and they haven't heard "still nobody" for it yet: they get that, not "on hold" as well.
                 $audience = CoverLadder::urgentAudience($lockedShift->area);
                 unset($audience[$leftOut->id]);
-                $released['sends'] = array_values(CoverLadder::stillUncoveredSends($lockedShift, $audience, $person->firstName()));
+                $released['sends'] = array_values(CoverLadder::stillUncoveredSends($lockedShift, $audience, $person->shortName()));
             }
         } else {
-            $released['sends'] = $shadows->map(fn (User $shadow) => [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::OnHold, $person->firstName())])->all();
+            $released['sends'] = $shadows->map(fn (User $shadow) => [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::OnHold, $person->shortName())])->all();
         }
 
-        $released['shadowsTold'] = $shadows->filter(fn (User $shadow) => $shadow->canSignIn())->map(fn (User $shadow) => $shadow->firstName())->values()->all();
+        $released['shadowsTold'] = $shadows->filter(fn (User $shadow) => $shadow->canSignIn())->map(fn (User $shadow) => $shadow->shortName())->values()->all();
 
         return $released;
     }
@@ -292,7 +292,7 @@ class ReleaseShifts
      */
     public function sendAfterCommit(User $person, array $released, ?string $note, ?array $gaveUpSlot = null, bool $tellReleaser = true): void
     {
-        $releaser = $person->firstName();
+        $releaser = $person->shortName();
         $regularPlaces = array_values(array_filter($released, fn (array $place) => $place['request'] !== null || $place['nobodyAsked']));
         $shadowShifts = collect($released)->filter(fn (array $place) => $place['request'] === null && ! $place['nobodyAsked'])->pluck('shift')->values();
         $nobodyAsked = collect($regularPlaces)->filter(fn (array $place) => $place['nobodyAsked'])->map(fn (array $place) => $place['shift']->id)->values()->all();

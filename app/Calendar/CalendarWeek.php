@@ -319,10 +319,10 @@ final class CalendarWeek
         $assignments = $shift->assignments->where('type', $type);
 
         if ($tools) {
-            return $assignments->map(fn ($assignment) => $assignment->user->firstName());
+            return $assignments->map(fn ($assignment) => $assignment->user->shortName());
         }
 
-        $others = $assignments->where('user_id', '!=', $viewer->id)->map(fn ($assignment) => $assignment->user->firstName());
+        $others = $assignments->where('user_id', '!=', $viewer->id)->map(fn ($assignment) => $assignment->user->shortName());
 
         return $assignments->contains('user_id', $viewer->id) ? $others->prepend('You') : $others;
     }

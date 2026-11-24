@@ -100,7 +100,7 @@ class VolunteerScheduleTest extends TestCase
         $this->place($shift, $this->jordan());
         $this->place($shift, $this->sam);
 
-        $html = $this->week($this->sam)->assertOk()->assertSee('<span>You, Jordan</span>', false)->getContent();
+        $html = $this->week($this->sam)->assertOk()->assertSee('<span>You, Jordan P.</span>', false)->getContent();
         // The grid block and the phone list entry.
         $this->assertCount(2, array_filter($this->classesOf($html), fn ($classes) => str_contains($classes, ' mine')));
 
@@ -114,7 +114,7 @@ class VolunteerScheduleTest extends TestCase
         $shift = $this->shiftOn('2026-10-22', needed: 2);
         $this->place($shift, $this->jordan());
 
-        $html = $this->week($this->sam)->assertOk()->assertSee('<span>Jordan</span>', false)->assertSee('<span>Needs 1</span>', false)->assertDontSee('1 open')->getContent();
+        $html = $this->week($this->sam)->assertOk()->assertSee('<span>Jordan P.</span>', false)->assertSee('<span>Needs 1</span>', false)->assertDontSee('1 open')->getContent();
         $this->assertStringContainsString(' open', implode('|', $this->classesOf($html)));
     }
 
@@ -164,7 +164,7 @@ class VolunteerScheduleTest extends TestCase
         $this->place($later, $this->sam);
 
         $this->week($this->sam)->assertOk()
-            ->assertSeeInOrder(['Your next shift', 'Thu Oct 22, 6:30 to 9:30pm', 'Front desk, with Jordan'])
+            ->assertSeeInOrder(['Your next shift', 'Thu Oct 22, 6:30 to 9:30pm', 'Front desk, with Jordan P.'])
             ->assertSee(route('calendar.shift', $soon), false);
     }
 
@@ -202,6 +202,19 @@ class VolunteerScheduleTest extends TestCase
         $this->assertStringNotContainsString('+ Add', $html);
         $this->assertStringNotContainsString(route('calendar.add'), $html);
         $this->assertStringNotContainsString(route('calendar.closures.create'), $html);
+    }
+
+    public function test_short_names_handle_one_word_and_removed_people(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', needed: 4);
+        $this->place($shift, User::factory()->cleared()->create(['name' => 'Cher']));
+        $this->place($shift, User::factory()->cleared()->removedPerson()->create());
+
+        $html = $this->week($this->sam)->assertOk()->assertSee('<span>Cher, Removed person</span>', false)->getContent();
+        $this->assertStringNotContainsString('Cher.', $html);
+        $this->assertStringNotContainsString('Removed person.', $html);
+
+        $this->actingAs($this->sam)->get(route('calendar.shift', $shift))->assertOk()->assertSee('Cher')->assertSee('Removed person')->assertDontSee('Cher.', false);
     }
 
     public function test_a_coordinator_still_sees_every_control(): void

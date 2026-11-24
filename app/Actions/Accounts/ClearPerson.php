@@ -30,11 +30,11 @@ class ClearPerson
             $locked = User::query()->whereKey($person->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->isCleared()) {
-                throw new DomainException($locked->firstName().' is already cleared.');
+                throw new DomainException($locked->shortName().' is already cleared.');
             }
 
             if (! $locked->isActive()) {
-                throw new DomainException($locked->firstName().' has been turned off. Turn them back on first.');
+                throw new DomainException($locked->shortName().' has been turned off. Turn them back on first.');
             }
 
             $this->clear($actor, $locked, 'person_page', $note, $person);

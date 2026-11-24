@@ -3,7 +3,7 @@
 
 @php
     $dateParam = $date->toDateString();
-    $first = $person->firstName();
+    $first = $person->shortName();
     $shiftId = $slot->shifts()->where('local_date', $dateParam)->value('id');
     $closeUrl = $shiftId ? route('calendar.shift', [$shiftId] + $areaQuery) : route('calendar.week', ['date' => $dateParam] + $areaQuery);
     $formUrl = route('calendar.slots.regulars.end.store', [$slot, $regular]);

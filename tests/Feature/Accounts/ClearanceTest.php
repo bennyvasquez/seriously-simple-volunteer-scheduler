@@ -243,7 +243,7 @@ class ClearanceTest extends TestCase
             $mail = $notification->toMail($jamie);
 
             return $mail->subject === 'You\'re cleared for regular shifts'
-                && in_array('Chris cleared you to take regular shifts at Example Makerspace. You\'ll now get cover requests when someone can\'t make a shift you could take, and you can take open shifts from Home.', $mail->introLines, true);
+                && in_array('Chris C. cleared you to take regular shifts at Example Makerspace. You\'ll now get cover requests when someone can\'t make a shift you could take, and you can take open shifts from Home.', $mail->introLines, true);
         });
         Notification::assertCount(1);
     }
@@ -280,7 +280,7 @@ class ClearanceTest extends TestCase
             app(ClearPerson::class)->handle($other, $secondCopy, null);
             $this->fail('The second clearing should be refused.');
         } catch (DomainException $e) {
-            $this->assertSame('Jamie is already cleared.', $e->getMessage());
+            $this->assertSame('Jamie E. is already cleared.', $e->getMessage());
         }
 
         $this->assertSame(1, ChangeLogEntry::query()->where('action', 'user.cleared')->about($jamie)->count());
@@ -293,7 +293,7 @@ class ClearanceTest extends TestCase
         $coordinator = $this->coordinatorForClearing();
         $jamie = User::factory()->deactivated()->create(['name' => 'Jamie Example']);
 
-        $this->expectExceptionObject(new DomainException('Jamie has been turned off. Turn them back on first.'));
+        $this->expectExceptionObject(new DomainException('Jamie E. has been turned off. Turn them back on first.'));
 
         try {
             app(ClearPerson::class)->handle($coordinator, $jamie, null);

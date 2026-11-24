@@ -128,8 +128,8 @@ class ReleaseShiftsTest extends TestCase
                 $mail = $notification->toMail($person);
 
                 return $mail->subject === 'Can you cover Front desk on Thursday, October 22?'
-                    && str_contains($this->text($mail), 'Robin can\'t make their Front desk shift. Can you take it?')
-                    && str_contains($this->text($mail), 'Note from Robin: The key is in the drawer.');
+                    && str_contains($this->text($mail), 'Robin E. can\'t make their Front desk shift. Can you take it?')
+                    && str_contains($this->text($mail), 'Note from Robin E.: The key is in the drawer.');
             });
         }
         Notification::assertNotSentTo($this->robin, CoverRequestNotification::class);
@@ -329,11 +329,11 @@ class ReleaseShiftsTest extends TestCase
 
                 return $notification->gaveUpSlot
                     && $mail->subject === 'Can you cover Front desk on some Thursdays?'
-                    && str_contains($text, 'Sam is giving up their weekly Thursday Front desk slot. These dates need someone:')
+                    && str_contains($text, 'Sam E. is giving up their weekly Thursday Front desk slot. These dates need someone:')
                     && str_contains($text, 'Front desk, Thursday, October 29, 6:30 to 9:30pm')
                     && str_contains($text, 'Front desk, Thursday, December 3, 6:30 to 9:30pm')
                     && ! str_contains($text, 'October 22')
-                    && str_contains($text, 'Note from Sam: Moving away.');
+                    && str_contains($text, 'Note from Sam E.: Moving away.');
             });
         }
 
@@ -368,7 +368,7 @@ class ReleaseShiftsTest extends TestCase
                 && ! str_contains($text, 'You stay');
         });
         Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => $notification->toMail($this->morgan)->subject === 'Can you cover Front desk on Thursday, December 3?'
-            && str_contains($this->text($notification->toMail($this->morgan)), 'Sam is giving up their weekly Thursday Front desk slot. These dates need someone:'));
+            && str_contains($this->text($notification->toMail($this->morgan)), 'Sam E. is giving up their weekly Thursday Front desk slot. These dates need someone:'));
     }
 
     public function test_the_slot_preview_lists_the_future_shifts_and_changes_nothing(): void
@@ -546,9 +546,9 @@ class ReleaseShiftsTest extends TestCase
         Notification::assertSentToTimes($casey, ShadowSpotNotification::class, 1);
         Notification::assertSentTo($casey, ShadowSpotNotification::class, fn (ShadowSpotNotification $notification) => $notification->notice === ShadowSpotNotice::OnHold
             && $notification->toMail($casey)->subject === 'Your shadow shift on Thursday, October 22 is on hold'
-            && str_contains($this->text($notification->toMail($casey)), 'Morgan can\'t make their Front desk shift on Thursday, October 22'));
+            && str_contains($this->text($notification->toMail($casey)), 'Morgan E. can\'t make their Front desk shift on Thursday, October 22'));
         Notification::assertNotSentTo($casey, CoverRequestNotification::class);
-        Notification::assertSentTo($this->morgan, ShiftsReleasedNotification::class, fn (ShiftsReleasedNotification $notification) => str_contains($this->text($notification->toMail($this->morgan)), 'Casey was going to shadow you, so we\'ve told them too.'));
+        Notification::assertSentTo($this->morgan, ShiftsReleasedNotification::class, fn (ShiftsReleasedNotification $notification) => str_contains($this->text($notification->toMail($this->morgan)), 'Casey E. was going to shadow you, so we\'ve told them too.'));
     }
 
     public function test_a_shadow_on_several_released_dates_gets_one_email(): void
@@ -568,11 +568,11 @@ class ReleaseShiftsTest extends TestCase
             $text = $this->text($mail);
 
             return $mail->subject === 'Your shadow shifts on 2 dates are on hold'
-                && str_contains($text, 'Robin can\'t make these shifts, so right now there\'s nobody for you to shadow on them:')
+                && str_contains($text, 'Robin E. can\'t make these shifts, so right now there\'s nobody for you to shadow on them:')
                 && str_contains($text, 'Front desk, Thursday, October 22, 6:30 to 9:30pm')
                 && str_contains($text, 'Front desk, Thursday, October 29, 6:30 to 9:30pm');
         });
-        Notification::assertSentTo($this->robin, ShiftsReleasedNotification::class, fn (ShiftsReleasedNotification $notification) => str_contains($this->text($notification->toMail($this->robin)), 'Casey was going to shadow you on these dates, so we\'ve told them too.'));
+        Notification::assertSentTo($this->robin, ShiftsReleasedNotification::class, fn (ShiftsReleasedNotification $notification) => str_contains($this->text($notification->toMail($this->robin)), 'Casey E. was going to shadow you on these dates, so we\'ve told them too.'));
     }
 
     public function test_releasing_inside_24_hours_escalates_at_once_and_only_once(): void
@@ -687,7 +687,7 @@ class ReleaseShiftsTest extends TestCase
             return $notification->notice === ShadowSpotNotice::StillUncovered
                 && $mail->subject === 'Your shadow shifts tomorrow still have nobody to shadow'
                 && count($notification->shifts) === 2
-                && str_contains($this->text($mail), 'Alex (Shift lead) knows.');
+                && str_contains($this->text($mail), 'Alex L. (Shift lead) knows.');
         });
         Notification::assertSentToTimes($this->morgan, CoverRequestNotification::class, 1);
         Notification::assertSentTo($this->morgan, CoverRequestNotification::class, fn (CoverRequestNotification $notification) => count($notification->shifts) === 2);
@@ -790,7 +790,7 @@ class ReleaseShiftsTest extends TestCase
 
         // The releaser gets one email listing every date; the leads aren't told, since a coordinator did it. The new regular gets the usual email.
         Notification::assertSentToTimes($this->sam, ShiftCoveredNotification::class, 1);
-        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => count($notification->dates) === 6 && $notification->takerFirstName === 'Morgan');
+        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => count($notification->dates) === 6 && $notification->takerFirstName === 'Morgan E.');
         Notification::assertNotSentTo($lead, ShiftTakenLeadNotification::class);
         Notification::assertSentToTimes($this->morgan, MadeRegularNotification::class, 1);
 
@@ -850,7 +850,7 @@ class ReleaseShiftsTest extends TestCase
         $this->assertSame($this->robin->id, $request->fresh()->filled_by);
         $entry = ChangeLogEntry::query()->ofAction('cover_request.filled')->where('subject_id', $shift->id)->sole();
         $this->assertSame($this->robin->id, $entry->affected_user_id);
-        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->dates === ['Thursday, October 22'] && $notification->takerFirstName === 'Robin');
+        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->dates === ['Thursday, October 22'] && $notification->takerFirstName === 'Robin E.');
     }
 
     public function test_one_failed_email_doesnt_stop_the_others_after_a_release(): void
@@ -915,7 +915,7 @@ class ReleaseShiftsTest extends TestCase
         // Morgan was the last regular, so the shadow hears now that there's nobody to shadow, once, and not "on hold" as well.
         Notification::assertSentToTimes($casey, ShadowSpotNotification::class, 1);
         Notification::assertSentTo($casey, ShadowSpotNotification::class, fn (ShadowSpotNotification $notification) => $notification->notice === ShadowSpotNotice::StillUncovered
-            && str_contains($this->text($notification->toMail($casey)), 'Alex (Shift lead) knows.'));
+            && str_contains($this->text($notification->toMail($casey)), 'Alex L. (Shift lead) knows.'));
         Notification::assertSentToTimes($this->morgan, ShiftsReleasedNotification::class, 1);
     }
 
@@ -964,8 +964,8 @@ class ReleaseShiftsTest extends TestCase
                 $mail = $notification->toMail($person);
                 $text = $this->text($mail);
 
-                return $mail->subject === 'Robin can\'t make their shadow shift'
-                    && str_contains(html_entity_decode($text), 'Note from Robin: Sorry, [car](https://example.org) trouble!')
+                return $mail->subject === 'Robin E. can\'t make their shadow shift'
+                    && str_contains(html_entity_decode($text), 'Note from Robin E.: Sorry, [car](https://example.org) trouble!')
                     && ! str_contains((string) $mail->render(), 'href="https://example.org"')
                     && str_contains($text, 'Front desk')
                     && str_contains($text, 'Thursday, October 22, 6:30 to 9:30pm')

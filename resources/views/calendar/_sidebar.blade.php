@@ -44,8 +44,7 @@
 <section class="cal-side-section attention">
 <h2>Your next shift</h2>
 @if ($nextShift)
-@php($others = $nextShift->assignments->where('user_id', '!=', $viewer->id)->map(fn ($assignment) => $assignment->user->firstName())->values())
-<a href="{{ route('calendar.shift', [$nextShift] + $areaQuery) }}" class="muted attention-item"><strong>{{ $nextShift->local_date->format('D M j') }}, {{ \App\Calendar\TimeFormat::range($nextShift->starts_at->setTimezone($organization->timezone), $nextShift->ends_at->setTimezone($organization->timezone)) }}</strong><br>{{ $nextShift->area->name }}@if ($others->isNotEmpty()), with {{ $others->join(', ', ' and ') }}@endif</a>
+<a href="{{ route('calendar.shift', [$nextShift] + $areaQuery) }}" class="muted attention-item"><strong>{{ $nextShift->local_date->format('D M j') }}, {{ \App\Calendar\TimeFormat::range($nextShift->starts_at->setTimezone($organization->timezone), $nextShift->ends_at->setTimezone($organization->timezone)) }}</strong><br>{{ $nextShift->area->name }}@if ($nextShift->others->isNotEmpty()), with {{ $nextShift->others->join(', ', ' and ') }}@endif</a>
 @else
 <p class="muted">You're not on any shifts yet.</p>
 @endif

@@ -30,7 +30,7 @@ class ShadowController extends Controller
             'shift' => $shift,
             'card' => ReleaseController::card($shift),
             'refusal' => $refusal,
-            'shadowingWith' => ReleaseController::names($shift->assignments->where('type', AssignmentType::Regular)->map(fn ($assignment) => $assignment->user->firstName())->values()->all()),
+            'shadowingWith' => ReleaseController::names($shift->assignments->where('type', AssignmentType::Regular)->map(fn ($assignment) => $assignment->user->shortName())->values()->all()),
             'spots' => $refusal !== null && ! $user->isCleared()
                 ? $home->openShadowSpots($user)->reject(fn (Shift $other) => $other->id === $shift->id)->values()
                 : null,

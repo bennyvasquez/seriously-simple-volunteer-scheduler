@@ -65,7 +65,7 @@ class AddRegular
             throw new DomainException($selfClaim ? 'You can take this date only.' : 'A rotation has no regulars. Volunteers sign up for it one date at a time.');
         }
 
-        $turnedOff = $selfClaim ? 'Your account has been turned off, so you can\'t take shifts.' : $user->firstName().' has been turned off and can\'t be made a regular.';
+        $turnedOff = $selfClaim ? 'Your account has been turned off, so you can\'t take shifts.' : $user->shortName().' has been turned off and can\'t be made a regular.';
 
         if (! $user->isActive()) {
             throw new DomainException($turnedOff);

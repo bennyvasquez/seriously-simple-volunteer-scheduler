@@ -108,7 +108,7 @@ final class CoverFill
     public static function notices(?User $actor, Shift $lockedShift, User $person, bool $nobodyButShadowsBefore, ?User $releaser, ?string $regularHow = null, bool $tellLeads = true): array
     {
         $lockedShift->loadMissing('area');
-        $taker = $person->firstName();
+        $taker = $person->shortName();
         $sends = [];
 
         if ($releaser !== null && $releaser->id !== $person->id) {
@@ -117,7 +117,7 @@ final class CoverFill
 
         if ($nobodyButShadowsBefore && $releaser !== null) {
             foreach (self::shadows($lockedShift) as $shadow) {
-                $sends[$shadow->id] ??= [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::BackOn, $releaser?->firstName() ?? '', takerFirstName: $taker)];
+                $sends[$shadow->id] ??= [$shadow, new ShadowSpotNotification($lockedShift, ShadowSpotNotice::BackOn, $releaser?->shortName() ?? '', takerFirstName: $taker)];
             }
         }
 
@@ -127,7 +127,7 @@ final class CoverFill
                 ->orderBy('id')->get();
 
             foreach ($leads as $lead) {
-                $sends[$lead->id] ??= [$lead, new ShiftTakenLeadNotification($lockedShift, $taker, $releaser?->firstName(), $releaser?->id === $person->id, $regularHow)];
+                $sends[$lead->id] ??= [$lead, new ShiftTakenLeadNotification($lockedShift, $taker, $releaser?->shortName(), $releaser?->id === $person->id, $regularHow)];
             }
         }
 

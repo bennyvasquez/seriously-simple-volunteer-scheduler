@@ -156,7 +156,7 @@ class RemoveFromShiftTest extends TestCase
             app(RemoveFromShift::class)->range($this->coordinator(), $this->robin, '2026-10-20', '2026-10-31');
             $this->fail('A range with no shifts was accepted.');
         } catch (DomainException $e) {
-            $this->assertSame('Robin isn\'t on any shifts you manage on those dates.', $e->getMessage());
+            $this->assertSame('Robin E. isn\'t on any shifts you manage on those dates.', $e->getMessage());
         }
     }
 
@@ -183,7 +183,7 @@ class RemoveFromShiftTest extends TestCase
         $this->assertSame(1, Assignment::query()->count());
 
         // A range that reaches today leaves the started shift alone too.
-        $this->expectExceptionMessage('Robin isn\'t on any shifts you manage on those dates.');
+        $this->expectExceptionMessage('Robin E. isn\'t on any shifts you manage on those dates.');
         app(RemoveFromShift::class)->range($this->coordinator(), $this->robin, '2026-10-14', '2026-10-14');
     }
 
@@ -193,7 +193,7 @@ class RemoveFromShiftTest extends TestCase
         $assignment = $this->assignmentOn($shift);
         app(RemoveFromShift::class)->one($this->coordinator(), $shift, $assignment);
 
-        $this->expectExceptionMessage('Robin isn\'t on this shift any more.');
+        $this->expectExceptionMessage('Robin E. isn\'t on this shift any more.');
         app(RemoveFromShift::class)->one($this->coordinator(), $shift, $assignment);
     }
 
@@ -254,7 +254,7 @@ class RemoveFromShiftTest extends TestCase
 
         $this->actingAs($this->coordinator())->post(route('calendar.shift.remove-person.store', $shift), ['assignment' => $assignment->id, 'which' => 'this'])
             ->assertRedirect(route('calendar.shift', $shift))
-            ->assertSessionHas('status', 'Robin was removed from 1 shift. They were emailed.');
+            ->assertSessionHas('status', 'Robin E. was removed from 1 shift. They were emailed.');
         $this->assertDatabaseMissing('assignments', ['id' => $assignment->id]);
     }
 
@@ -275,7 +275,7 @@ class RemoveFromShiftTest extends TestCase
         $this->assertSame(3, Assignment::query()->count());
 
         $this->actingAs($lead)->get(route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id, 'which' => 'range', 'from' => '2026-10-22', 'to' => '2026-10-31', 'check' => 1]))
-            ->assertOk()->assertSee('Remove Robin from 2 shifts')->assertSee('1 shift in areas you don\'t manage isn\'t included.', false);
+            ->assertOk()->assertSee('Remove Robin E. from 2 shifts')->assertSee('1 shift in areas you don\'t manage isn\'t included.', false);
 
         // Different dates than the ones that were checked go back to the list.
         $this->actingAs($lead)->post(route('calendar.shift.remove-person.store', $shift), $body + ['confirmed' => 1, 'checked_from' => '2026-10-22', 'checked_to' => '2026-10-23'])
@@ -284,7 +284,7 @@ class RemoveFromShiftTest extends TestCase
 
         $this->actingAs($lead)->post(route('calendar.shift.remove-person.store', $shift), $body + ['confirmed' => 1, 'checked_from' => '2026-10-22', 'checked_to' => '2026-10-31'])
             ->assertRedirect(route('calendar.shift', $shift))
-            ->assertSessionHas('status', 'Robin was removed from 2 shifts. They were emailed.');
+            ->assertSessionHas('status', 'Robin E. was removed from 2 shifts. They were emailed.');
         $this->assertSame(1, Assignment::query()->count());
     }
 
@@ -328,7 +328,7 @@ class RemoveFromShiftTest extends TestCase
         $shift = $this->robinOn('2026-10-22');
         $assignment = $this->assignmentOn($shift);
         $coordinator = $this->coordinator();
-        $note = 'Shifts after Tuesday, December 8 aren\'t on the calendar yet, so they aren\'t included. To stop Robin working those, end their time as a regular.';
+        $note = 'Shifts after Tuesday, December 8 aren\'t on the calendar yet, so they aren\'t included. To stop Robin E. working those, end their time as a regular.';
 
         // Shifts are on the calendar 8 weeks ahead, through Tuesday, December 8.
         $preview = app(RemoveFromShift::class)->rangePreview($coordinator, $this->robin, '2026-10-22', '2026-12-31');
