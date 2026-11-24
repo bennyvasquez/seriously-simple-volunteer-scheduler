@@ -91,14 +91,36 @@ class EmailCatalogTest extends TestCase
 
     public function test_every_version_names_real_lines(): void
     {
+        $all = $this->catalogLineKeys();
+        $inside = [];
+        foreach (EmailCatalog::all() as $email) {
+            foreach ($email->lines as $line) {
+                if ($line['inside']) {
+                    $inside[] = $line['key'];
+                }
+            }
+        }
+
         foreach (EmailCatalog::all() as $email) {
             $this->assertNotEmpty($email->versions, "{$email->title} needs at least one version.");
 
             foreach ($email->versions as $name => $version) {
                 $this->assertNotEmpty($version['lines'], "{$email->title}, version {$name}, shows no lines.");
-                $this->assertSame([], array_diff($version['lines'], $email->lineKeys()), "{$email->title}, version {$name}, names a line that isn't in the email.");
+                // A version may name another email's line when that email's lines are added to this one (the back on lines of a cancelled email).
+                $this->assertSame([], array_diff($version['lines'], $all), "{$email->title}, version {$name}, names a line that isn't in the catalog.");
+                $this->assertSame([], array_intersect($version['lines'], $inside), "{$email->title}, version {$name}, shows a line that's only used inside other lines.");
                 $this->assertSame(array_values(array_unique($version['lines'])), $version['lines'], "{$email->title}, version {$name}, repeats a line.");
                 $this->assertSame([], array_diff(array_keys($version['examples']), array_keys($email->examples)), "{$email->title}, version {$name}, overrides a variable the email doesn't have.");
+
+                foreach ($version['lines'] as $key) {
+                    if ($this->isEveryEmail($key)) {
+                        continue;
+                    }
+
+                    foreach (EmailText::allowedVariables($key) as $variable) {
+                        $this->assertArrayHasKey($variable, $email->examples, "{{$variable}} in [{$key}] needs an example in the {$email->title} email.");
+                    }
+                }
             }
         }
     }
@@ -148,6 +170,9 @@ class EmailCatalogTest extends TestCase
     {
         Organization::factory()->create(['reminder_hours' => 12]);
         $this->assertStringContainsString('12 hours', EmailCatalog::find('shift_reminder')->when);
+
+        Organization::query()->update(['reminder_hours' => 1]);
+        $this->assertStringContainsString('1 hour before', EmailCatalog::find('shift_reminder')->when);
 
         Organization::query()->update(['reminder_hours' => null]);
         $when = EmailCatalog::find('shift_reminder')->when;

@@ -26,7 +26,7 @@ final class EmailCatalog
 
     private const SHIFT_LINK = 'Front desk, Thursday, October 22, 6:30 to 9:30pm';
 
-    /** Example values shared by every email. An email's own examples win over these, and only the variables its lines use are kept. */
+    /** Example values shared by every email. An email's own examples win over these, and only the variables its lines use are kept. The code fills in any name said to someone else with User::shortName(), so those examples are short names (Sam E., Jordan P., Casey M., Chris C.); only the greeting's {first_name} is a first name. Chris C. is the example coordinator or admin on purpose. */
     private const EXAMPLES = [
         'organization' => 'Example Makers',
         'first_name' => 'Sam',
@@ -43,9 +43,9 @@ final class EmailCatalog
         'admin' => 'Chris C.',
         'coordinator' => 'Chris C.',
         'changed_by' => 'Chris C.',
-        'shadow' => 'Casey S.',
+        'shadow' => 'Casey M.',
         'taker' => 'Jordan P.',
-        'releaser' => 'Sam',
+        'releaser' => 'Sam E.',
         'names' => 'Sam E. and Jordan P.',
         'note' => 'Sorry, I have a family thing.',
         'leads' => 'Alex (Shift lead)',
@@ -115,30 +115,46 @@ final class EmailCatalog
         $hours = $organization === null ? 24 : $organization->reminder_hours;
 
         if ($hours === null) {
-            return 'Reminders are off right now, so this email isn\'t sent. An admin can turn them on under Settings. When they\'re on, it goes before each shift, once, to everyone on the shift who can log in and hasn\'t turned reminders off.';
+            return 'Reminders are off right now, so this email isn\'t sent. An admin can turn them on under Settings. When they\'re on, it goes before each shift to everyone on the shift who can log in and hasn\'t turned reminders off, once per person per shift.';
         }
 
-        return "{$hours} hours before each shift starts (an admin can change the timing under Settings). It goes to everyone on the shift who can log in and hasn't turned reminders off, once per shift.";
+        $unit = $hours === 1 ? 'hour' : 'hours';
+
+        return "{$hours} {$unit} before each shift starts (an admin can change the timing under Settings). It goes to everyone on the shift who can log in and hasn't turned reminders off, once per person per shift. Someone put on the shift after that time isn't reminded, because they just signed up.";
     }
 
     /**
-     * One email. `$lines` maps a line's key inside the email to [label, when it shows or null]. `$versions` maps a name to the line keys it shows (inside the email) or to [[those keys], example overrides]; with none given, a "Main" version shows every line.
+     * One email. `$lines` maps a line's key inside the email to [label, when it shows or null] and, for a line that's only used inside other lines (a phrase such as "Front desk shift on Thursday, October 22, 6:30 to 9:30pm"), a third element, true. `$versions` maps a name to the line keys it shows (inside the email, or a full key for a line that another email's lines add, such as the back on lines in a cancelled email), or to a list holding those keys and then the example overrides; with none given, a "Main" version shows every line. Lines used only inside other lines are left out of every version.
      *
-     * @param  array<string, array{0: string, 1: ?string}>  $lines
+     * @param  array<string, array{0: string, 1: ?string, 2?: bool}>  $lines
      * @param  array<string, string>  $examples
      * @param  array<string, list<string>|array{0: list<string>, 1?: array<string, string>}>  $versions
      */
     private static function email(string $key, string $title, string $group, string $when, array $lines, array $examples = [], array $versions = []): CatalogEmail
     {
         $catalogLines = [];
-        foreach ($lines as $suffix => [$label, $shows]) {
-            $catalogLines[] = ['key' => "{$key}.{$suffix}", 'label' => $label, 'when' => $shows];
+        $inside = [];
+        foreach ($lines as $suffix => $line) {
+            $catalogLines[] = ['key' => "{$key}.{$suffix}", 'label' => $line[0], 'when' => $line[1], 'inside' => $line[2] ?? false];
+            if ($line[2] ?? false) {
+                $inside[] = $suffix;
+            }
         }
 
+        $versions = $versions ?: ['Main' => array_keys($lines)];
+        $built = [];
+        foreach ($versions as $name => $version) {
+            [$suffixes, $overrides] = is_array($version[0] ?? null) ? [$version[0], $version[1] ?? []] : [$version, []];
+            $suffixes = array_values(array_diff($suffixes, $inside));
+            $built[$name] = ['lines' => array_map(fn (string $suffix) => str_contains($suffix, '.') && EmailText::isLine($suffix) ? $suffix : "{$key}.{$suffix}", $suffixes), 'examples' => $overrides];
+        }
+
+        // The variables of the email's own lines and of any other email's lines a version adds.
         $used = [];
-        foreach ($catalogLines as $line) {
-            if ($key !== 'every_email') {
-                array_push($used, ...EmailText::allowedVariables($line['key']));
+        if ($key !== 'every_email') {
+            $keys = array_merge(array_column($catalogLines, 'key'), ...array_column($built, 'lines'));
+            foreach (array_unique($keys) as $lineKey) {
+                array_push($used, ...EmailText::allowedVariables($lineKey));
             }
         }
 
@@ -146,13 +162,6 @@ final class EmailCatalog
         $kept = [];
         foreach (array_unique($used) as $variable) {
             $kept[$variable] = $merged[$variable] ?? '';
-        }
-
-        $versions = $versions ?: ['Main' => array_keys($lines)];
-        $built = [];
-        foreach ($versions as $name => $version) {
-            [$suffixes, $overrides] = is_array($version[0] ?? null) ? [$version[0], $version[1] ?? []] : [$version, []];
-            $built[$name] = ['lines' => array_map(fn (string $suffix) => "{$key}.{$suffix}", $suffixes), 'examples' => $overrides];
         }
 
         return new CatalogEmail($key, $title, $group, $when, $catalogLines, $kept, $built);
@@ -178,8 +187,8 @@ final class EmailCatalog
                 'intro.shadow.tomorrow' => ['Opening for a shadow', 'Shows for someone shadowing when the shift is tomorrow'],
                 'intro.shadow.date' => ['Opening for a shadow', 'Shows for someone shadowing when the shift is on a later day'],
                 'nobody_to_shadow' => ['Nobody to shadow', 'Shows for a shadow when only shadows are on the shift'],
-                'nobody_else' => ['Nobody else on the shift', 'Shows when nobody else is on the shift'],
-                'also_on' => ['Who else is on the shift', 'Shows when other people are on the shift'],
+                'nobody_else' => ['No other regulars on the shift', 'Shows when no other regular is on the shift, even if shadows are (they\'re listed separately)'],
+                'also_on' => ['Who else is on the shift', 'Shows when other regulars are on the shift'],
                 'shadowing' => ['Who is shadowing', 'Shows when shadows are on the shift'],
                 'time_changed' => ['Unanswered time change', 'Shows when the person hasn\'t answered a time change for this shift'],
                 'still_works' => ['First button of the time change', 'Shows when the person hasn\'t answered a time change for this shift'],
@@ -187,11 +196,11 @@ final class EmailCatalog
                 'login' => ['Line under the time change buttons', 'Shows when the person hasn\'t answered a time change for this shift'],
                 'release' => ['Button to come off the shift', 'Shows unless the person has an unanswered time change, and it\'s left out for a shadow with nobody to shadow'],
                 'turn_off' => ['Last line, about turning reminders off', null],
-                'emails_page_label' => ['Words that link to the Emails page', null],
+                'emails_page_label' => ['Words that link to the Emails page', null, true],
             ], ['names' => 'Jordan P.', 'time' => '6:30 to 9:30pm', 'date' => 'Wednesday, October 21', 'weekday' => 'Wednesday'], [
                 'Someone on the shift' => [['subject.date', 'greeting', 'intro.regular.date', 'also_on', 'shadowing', 'release', 'turn_off', 'emails_page_label']],
                 'Someone on the shift, the shift is tomorrow' => [['subject.tomorrow', 'greeting', 'intro.regular.tomorrow', 'also_on', 'release', 'turn_off', 'emails_page_label']],
-                'Someone on the shift, the shift is today' => [['subject.today', 'greeting', 'intro.regular.today', 'nobody_else', 'release', 'turn_off', 'emails_page_label']],
+                'Someone on the shift, the shift is today' => [['subject.today', 'greeting', 'intro.regular.today', 'nobody_else', 'shadowing', 'release', 'turn_off', 'emails_page_label']],
                 'A shadow' => [['subject.date', 'greeting', 'intro.shadow.date', 'also_on', 'release', 'turn_off', 'emails_page_label']],
                 'A shadow with nobody to shadow' => [['subject.date', 'greeting', 'intro.shadow.date', 'nobody_to_shadow', 'turn_off', 'emails_page_label']],
                 'Someone with an unanswered time change' => [['subject.date', 'greeting', 'intro.regular.date', 'also_on', 'time_changed', 'still_works', 'cant', 'login', 'turn_off', 'emails_page_label']],
@@ -201,28 +210,27 @@ final class EmailCatalog
                 'subject.other' => ['Subject', 'Shows when it was several shifts'],
                 'intro.one' => ['Opening', 'Shows when it was one shift'],
                 'intro.other' => ['Opening', 'Shows when it was several shifts, above the list'],
-                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift'],
+                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift', true],
                 'shift_item' => ['Each shift in the list', 'Shows once for each shift when it was several shifts'],
                 'outro' => ['Last line', null],
             ], [], [
                 'One shift' => [['subject.one', 'intro.one', 'shift_phrase', 'outro']],
                 'Several shifts' => [['subject.other', 'intro.other', 'shift_phrase', 'shift_item', 'outro']],
             ]),
-            self::email('shift_changed', 'Shift changed', self::OWN, 'When a shift someone is on gets a new title or a different time in a change that doesn\'t ask them about the time. It goes to everyone on the shift who can log in, once, listing what changed.', [
+            self::email('shift_changed', 'Shift changed', self::OWN, 'When a title is added to a shift someone is on, changed or taken away, including alongside a time change that was undone. It goes to everyone on the shift who can log in, once, listing what changed. A time change goes in the Shift time changed email instead.', [
                 'subject.one' => ['Subject', 'Shows when one shift changed'],
                 'subject.other' => ['Subject', 'Shows when several shifts changed'],
                 'changed' => ['Start of each shift\'s line', null],
-                'time' => ['New time', 'Shows when the shift\'s time changed'],
-                'title_now' => ['New title', 'Shows when the shift got a title'],
+                'time' => ['New time', 'Not used right now: time changes go in the Shift time changed email.'],
+                'title_now' => ['New title', 'Shows when the shift got a title or its title changed'],
                 'title_removed' => ['Title taken away', 'Shows when the shift\'s title was taken away'],
                 'outro' => ['Last line', null],
             ], [], [
-                'The time changed' => [['subject.one', 'changed', 'time', 'outro']],
                 'It got a title' => [['subject.one', 'changed', 'title_now', 'outro']],
                 'The title was taken away' => [['subject.one', 'changed', 'title_removed', 'outro'], ['was_title' => 'Open house']],
-                'Several shifts' => [['subject.other', 'changed', 'time', 'title_now', 'outro']],
+                'Several shifts' => [['subject.other', 'changed', 'title_now', 'outro']],
             ]),
-            self::email('shift_time_changed', 'Shift time changed', self::OWN, 'When the time of a shift someone is on changes. It goes to everyone on the shift who can log in, with one email for all the shifts that edit moved, and asks whether the new time still works.', [
+            self::email('shift_time_changed', 'Shift time changed', self::OWN, 'When the time of a shift someone is on changes. It goes to everyone on the shift who can log in, with one email for all the shifts that edit moved, and asks whether the new time still works. After the buttons it can add lines about the person\'s other shifts in the same edit: a changed title, a cancelled shift or a shift that\'s back on.', [
                 'greeting' => ['Greeting', null],
                 'subject.moved' => ['Subject', 'Shows when every shift moved to the same time in one area'],
                 'subject.back_on' => ['Subject', 'Shows when every shift is back on at the same new time in one area'],
@@ -236,7 +244,7 @@ final class EmailCatalog
                 'line' => ['Each shift\'s line', 'Shows once for each shift'],
                 'line_with_title' => ['Each shift\'s line when its title changed too', 'Shows for a shift whose title changed as well'],
                 'range' => ['One line for a run of weekly dates', 'Shows for several dates of one weekly slot, from the first to the last'],
-                'shift_phrase' => ['How a shift is written', 'Used for cancelled and back on shifts that a closure change adds to this email'],
+                'shift_phrase' => ['How a shift is written', 'Used for cancelled and back on shifts that a closure change adds to this email', true],
                 'question' => ['Question above the buttons', null],
                 'still_works' => ['First button', null],
                 'cant' => ['Second button', null],
@@ -249,28 +257,30 @@ final class EmailCatalog
                 'Time and title changed' => [['greeting', 'subject.moved', 'intro.changed_one', 'line_with_title', 'question', 'still_works', 'cant', 'login', 'lead_checks']],
                 'A shift is back on' => [['greeting', 'subject.back_on', 'intro.back_on_one', 'line', 'question', 'still_works', 'cant', 'login', 'lead_checks']],
                 'Several shifts are back on' => [['greeting', 'subject.back_on_several', 'intro.back_on_several', 'line', 'question', 'still_works', 'cant', 'login']],
-                'Shifts changed in different ways' => [['greeting', 'subject.changed', 'intro.changed_several', 'line', 'shift_phrase', 'question', 'still_works', 'cant', 'login', 'lead_checks']],
+                'Shifts changed in different ways' => [['greeting', 'subject.changed', 'intro.changed_several', 'line', 'question', 'still_works', 'cant', 'login', 'lead_checks']],
+                'With more lines after the buttons' => [['greeting', 'subject.moved', 'intro.changed_one', 'line', 'question', 'still_works', 'cant', 'login', 'lead_checks', 'shift_changed.changed', 'shift_changed.title_now', 'shift_cancelled.body.one', 'shift_restored.body.one']],
             ]),
-            self::email('shift_cancelled', 'Shift cancelled', self::OWN, 'When a shift someone is on is cancelled, by hand or because of a closure. It goes to everyone on the shift who can log in.', [
+            self::email('shift_cancelled', 'Shift cancelled', self::OWN, 'When a shift someone is on is cancelled, by hand or by adding or changing a closure. It goes to everyone on the shift who can log in. When a closure change also brings other shifts back, the email says so too.', [
                 'subject.one' => ['Subject', 'Shows when one shift was cancelled'],
                 'subject.other' => ['Subject', 'Shows when several shifts were cancelled'],
                 'subject_changes' => ['Subject when some shifts are also back on', 'Shows when the same email also says some shifts are back on'],
                 'body.one' => ['Message', 'Shows when one shift was cancelled'],
                 'body.other' => ['Opening', 'Shows when several shifts were cancelled, above the list'],
-                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift'],
+                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift', true],
                 'shift_item' => ['Each shift in the list', 'Shows once for each shift when several were cancelled'],
                 'outro' => ['Last line', 'Shows when several shifts were cancelled'],
             ], ['reason' => 'Building closed.'], [
                 'One shift' => [['subject.one', 'body.one', 'shift_phrase']],
                 'Several shifts' => [['subject.other', 'body.other', 'shift_phrase', 'shift_item', 'outro']],
-                'Some cancelled and some back on' => [['subject_changes', 'body.one', 'shift_phrase']],
+                'Some cancelled and some back on' => [['subject_changes', 'body.one', 'shift_restored.body.one']],
+                'Several cancelled and several back on' => [['subject_changes', 'body.other', 'shift_item', 'outro', 'shift_restored.body.other', 'shift_restored.shift_item', 'shift_restored.outro']],
             ]),
-            self::email('shift_restored', 'Shift back on', self::OWN, 'When a cancelled shift is brought back, or a closure that cancelled it changes. It goes to everyone on the shift who can log in.', [
+            self::email('shift_restored', 'Shift back on', self::OWN, 'When a cancelled shift is brought back by hand, or a closure change brings it back without cancelling anything else. It goes to everyone on the shift who can log in.', [
                 'subject.one' => ['Subject', 'Shows when one shift is back on'],
                 'subject.other' => ['Subject', 'Shows when several shifts are back on'],
                 'body.one' => ['Message', 'Shows when one shift is back on'],
                 'body.other' => ['Opening', 'Shows when several shifts are back on, above the list'],
-                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift'],
+                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift', true],
                 'shift_item' => ['Each shift in the list', 'Shows once for each shift when several are back on'],
                 'outro' => ['Last line', 'Shows when several shifts are back on'],
             ], [], [
@@ -280,8 +290,8 @@ final class EmailCatalog
             self::email('made_regular', 'Made a regular', self::OWN, 'When a coordinator makes someone the regular on a weekly slot. It goes to that person.', [
                 'subject' => ['Subject', null],
                 'intro' => ['Opening', null],
-                'how.every_week' => ['Words for a weekly slot', 'Fills in the opening when the slot is weekly'],
-                'how.every_other_week' => ['Words for an every other week slot', 'Fills in the opening when the slot is every other week'],
+                'how.every_week' => ['Words for a weekly slot', 'Fills in the opening when the slot is weekly', true],
+                'how.every_other_week' => ['Words for an every other week slot', 'Fills in the opening when the slot is every other week', true],
                 'shifts.one' => ['Shifts already on the schedule', 'Shows when one shift is already on the schedule for them'],
                 'shifts.other' => ['Shifts already on the schedule', 'Shows when several shifts are already on the schedule for them'],
             ], ['how' => 'every week'], [
@@ -294,14 +304,14 @@ final class EmailCatalog
                 'ended' => ['Opening when it has ended', 'Shows when the last date has already passed'],
                 'ending' => ['Opening when it\'s ending', 'Shows when the last date is still ahead'],
                 'shifts_intro' => ['Above the list of shifts', 'Shows when they were taken off upcoming shifts'],
-                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift'],
+                'shift_phrase' => ['How a shift is written', 'Used wherever the email names a shift', true],
                 'shift_item' => ['Each shift in the list', 'Shows once for each shift they were taken off'],
                 'outro' => ['Last line', null],
             ], [], [
                 'Ending on a date, with shifts' => [['subject', 'ending', 'shifts_intro', 'shift_phrase', 'shift_item', 'outro']],
                 'Already ended' => [['subject', 'ended', 'outro']],
             ]),
-            self::email('shifts_released', 'You\'re off a shift', self::COVER, 'When a volunteer says they can\'t make a shift, or gives up their weekly slot. It goes to that volunteer, with one email for everything they released at once.', [
+            self::email('shifts_released', 'You\'re off a shift', self::COVER, 'When a volunteer says they can\'t make a shift, or gives up their weekly slot. It goes to that volunteer, with one email for everything they released at once. Leaving only a shadow spot sends no email, and a volunteer a coordinator moves back to shadowing gets the Moved back to shadowing email instead.', [
                 'greeting' => ['Greeting', null],
                 'subject_no_longer_regular' => ['Subject when they gave up their weekly slot', 'Shows when they only gave up their weekly slot and none of its dates are on the calendar yet'],
                 'no_longer_regular' => ['No longer the regular', 'Shows when they gave up their weekly slot'],
@@ -329,13 +339,13 @@ final class EmailCatalog
                 'shadows_told_every_date.other' => ['Several shadows were told, on every date', 'Shows when several shadows were going to shadow every shift in the list'],
                 'stay_regular_weekday' => ['They stay the regular on one weekday', 'Shows when it was several shifts and they stay the regular for one weekday'],
                 'stay_regular_weekly' => ['They stay the regular on different weekdays', 'Shows when it was several shifts and they stay the regular on weekly slots on different days'],
-            ], ['names' => 'Casey', 'dates' => 'Thursday, October 22 and Thursday, October 29'], [
+            ], ['names' => 'Casey M.', 'dates' => 'Thursday, October 22 and Thursday, October 29'], [
                 'One shift, others asked to cover' => [['greeting', 'subject.one', 'off_shift', 'asked_one', 'take_back.one', 'action']],
                 'One shift, a shadow told and they stay the regular' => [['greeting', 'subject.one', 'off_shift', 'asked_one', 'shadows_told.one', 'stay_regular', 'take_back.one', 'action']],
                 'One shift, nobody else asked' => [['greeting', 'subject.one', 'off_shift', 'nobody_asked', 'action']],
                 'Several shifts' => [['greeting', 'subject.other', 'list_intro', 'shift_item', 'shadow_spot_item', 'nobody_asked_on_date', 'asked_rest', 'shadows_told_on_dates.one', 'stay_regular_weekday', 'take_back.other', 'action']],
-                'Several shifts, others asked to cover all' => [['greeting', 'subject.other', 'list_intro', 'shift_item', 'asked_all', 'shadows_told_every_date.other', 'stay_regular_weekly', 'take_back.other', 'action'], ['names' => 'Casey and Jo']],
-                'Gave up the weekly slot' => [['greeting', 'subject.other', 'no_longer_regular', 'list_intro', 'shift_item', 'asked_all', 'action']],
+                'Several shifts, others asked to cover all' => [['greeting', 'subject.other', 'list_intro', 'shift_item', 'asked_all', 'shadows_told_every_date.other', 'stay_regular_weekly', 'take_back.other', 'action'], ['names' => 'Casey M. and Jo K.']],
+                'Gave up the weekly slot' => [['greeting', 'subject.other', 'list_intro', 'shift_item', 'asked_all', 'shadows_told_every_date.other', 'no_longer_regular', 'take_back.other', 'action'], ['names' => 'Casey M. and Jo K.']],
                 'Gave up the weekly slot, no dates on the calendar' => [['greeting', 'subject_no_longer_regular', 'no_longer_regular', 'none_on_calendar', 'action']],
             ]),
             self::email('cover_request', 'Cover request', self::COVER, 'When a volunteer says they can\'t make a shift, and again 72 hours before it if nobody has taken it. It goes to cleared volunteers who could take the shift and haven\'t turned cover request emails off.', [
@@ -349,25 +359,26 @@ final class EmailCatalog
                 'subject.other' => ['Subject', 'Shows when several shifts need covering'],
                 'cant_make.one' => ['Opening', 'Shows when it was one shift'],
                 'cant_make.other' => ['Opening', 'Shows when it was several shifts'],
-                'shift_item' => ['The shift', 'Shows when it was one shift'],
-                'shift_link' => ['Each shift in the list', 'Shows once for each shift when it was several shifts'],
+                'shift_item' => ['The shift', 'Shows when it was one shift (not in the Still open email)'],
+                'shift_link' => ['Each shift in the list', 'Shows once for each shift when it was several shifts (not in the Still open email)'],
                 'note' => ['Their note', 'Shows when the person who released the shift left a note'],
                 'action' => ['Button', 'Shows when it was one shift'],
                 'first_person_one' => ['Line under the button', 'Shows when it was one shift'],
                 'first_person_several' => ['Line after the list', 'Shows when it was several shifts'],
                 'reason' => ['Why they got this email', null],
                 'stop' => ['Last line, about turning these emails off', null],
-                'stop_label' => ['Words that link to the Emails page', null],
+                'stop_label' => ['Words that link to the Emails page', null, true],
             ], ['when' => 'Thursday, October 22, 6:30 to 9:30pm', 'weekdays' => 'Thursdays'], [
                 'One shift' => [['greeting', 'subject.one', 'cant_make.one', 'shift_item', 'action', 'first_person_one', 'reason', 'stop', 'stop_label']],
                 'One shift with a note' => [['greeting', 'subject.one', 'cant_make.one', 'shift_item', 'note', 'action', 'first_person_one', 'reason', 'stop', 'stop_label']],
                 'Several shifts' => [['greeting', 'subject.other', 'cant_make.other', 'shift_link', 'note', 'first_person_several', 'reason', 'stop', 'stop_label']],
-                'Still open' => [['greeting', 'subject_still_open', 'still_open', 'shift_item', 'action', 'first_person_one', 'reason', 'stop', 'stop_label']],
+                'Still open' => [['greeting', 'subject_still_open', 'still_open', 'action', 'first_person_one', 'reason', 'stop', 'stop_label']],
+                'Still open, with a note' => [['greeting', 'subject_still_open', 'still_open', 'note', 'action', 'first_person_one', 'reason', 'stop', 'stop_label']],
                 'A weekly slot was given up' => [['greeting', 'subject_gave_up.other', 'gave_up', 'shift_link', 'first_person_several', 'reason', 'stop', 'stop_label']],
             ]),
             self::email('shift_taken', 'You took a shift', self::COVER, 'When a volunteer takes an open shift, covers a shift someone released, or takes back one they released. It goes to that volunteer.', [
                 'subject' => ['Subject', null],
-                'greeting_thanks' => ['Greeting when they covered a shift', 'Shows when they took a shift someone else released'],
+                'greeting_thanks' => ['Greeting', 'Shows unless they took their own shift back'],
                 'greeting_back_on' => ['Greeting when they took their own shift back', 'Shows when they took back a shift they released themselves'],
                 'regular' => ['Now the regular', 'Shows when they became the regular'],
                 'when_area' => ['Time and place', null],
@@ -376,7 +387,7 @@ final class EmailCatalog
                 'shadowing.other' => ['Several shadows', 'Shows when several shadows are on the shift'],
                 'not_on_other_shift' => ['Dates left out for another shift', 'Shows when they became the regular and some dates were left out because they\'re on another shift then'],
                 'not_on_full' => ['Dates left out because they\'re full', 'Shows when some dates were left out because those shifts already have the people they need'],
-            ], ['names' => 'Casey', 'dates' => 'Thursday, October 29 or Thursday, November 5', 'how' => 'every other Thursday', 'date' => 'Thursday, October 22'], [
+            ], ['names' => 'Casey M.', 'dates' => 'Thursday, October 29 or Thursday, November 5', 'how' => 'every other Thursday', 'date' => 'Thursday, October 22'], [
                 'Covering a shift' => [['subject', 'greeting_thanks', 'when_area', 'note']],
                 'Covering a shift, with a shadow' => [['subject', 'greeting_thanks', 'when_area', 'note', 'shadowing.one']],
                 'Taking their own shift back' => [['subject', 'greeting_back_on', 'when_area']],
@@ -389,7 +400,7 @@ final class EmailCatalog
                 'greeting' => ['Greeting', null],
                 'body.one' => ['Message', 'Shows when it was one shift'],
                 'body.other' => ['Message above the list of dates', 'Shows when it was several shifts'],
-            ], ['taker' => 'Jordan'], [
+            ], ['taker' => 'Jordan P.'], [
                 'One shift' => [['subject.one', 'greeting', 'body.one']],
                 'Several shifts' => [['subject.other', 'greeting', 'body.other']],
             ]),
@@ -459,7 +470,7 @@ final class EmailCatalog
                 'One regular on the shift' => [['subject', 'intro', 'regulars.one', 'action'], ['names' => 'Sam E.']],
                 'Nobody else on the shift' => [['subject', 'intro', 'action']],
             ]),
-            self::email('shadow_left', 'A shadow can\'t make it', self::LEADS, 'When a shadow takes themselves off a shadow shift. It goes to everyone with the coordinator role, with one email when they leave several shifts at once.', [
+            self::email('shadow_left', 'A shadow can\'t make it', self::LEADS, 'When a shadow takes themselves off a shadow shift. It goes to everyone with the coordinator role who can log in, with one email when they leave several shifts at once.', [
                 'subject.one' => ['Subject', 'Shows when it was one shift'],
                 'subject.other' => ['Subject', 'Shows when it was several shifts'],
                 'intro.one' => ['Opening', 'Shows when it was one shift'],
@@ -473,7 +484,7 @@ final class EmailCatalog
                 'One shift with a note' => [['subject.one', 'intro.one', 'note', 'action', 'outro']],
                 'Several shifts with a note' => [['subject.other', 'intro.other', 'shift_link', 'note', 'outro']],
             ]),
-            self::email('cover_urgent', 'Urgent: a shift needs someone', self::LEADS, 'When a released shift starts in less than 24 hours and nobody has taken it. It goes to the area\'s shift leads and everyone with the coordinator role, with one email when several shifts need someone.', [
+            self::email('cover_urgent', 'Urgent: a shift needs someone', self::LEADS, 'When a released shift starts in less than 24 hours and nobody has taken it. It goes to the area\'s shift leads and everyone with the coordinator role who can log in, with one email when several shifts need someone.', [
                 'subject.one' => ['Subject', 'Shows when one shift needs someone'],
                 'subject.other' => ['Subject', 'Shows when several shifts need someone'],
                 'unclaimed.one' => ['Opening', 'Shows when it was one shift'],
@@ -492,14 +503,17 @@ final class EmailCatalog
                 'marked_urgent.other' => ['Marked urgent', 'Shows when it was several shifts'],
                 'reason' => ['Why they got this email', null],
             ], ['count' => '2', 'needs' => 'Needs 2 more people.'], [
-                'One shift' => [['subject.one', 'unclaimed.one', 'shift_line', 'needs.other', 'action', 'marked_urgent.one', 'reason']],
-                'Several shifts' => [['subject.other', 'unclaimed.other', 'shift_link_line', 'needs.other', 'released', 'emailed.other', 'emailed_again.other', 'marked_urgent.other', 'reason']],
+                'One shift' => [['subject.one', 'unclaimed.one', 'shift_line', 'needs.other', 'released', 'emailed.other', 'action', 'marked_urgent.one', 'reason']],
+                'One shift, one more person needed' => [['subject.one', 'unclaimed.one', 'shift_line', 'needs.one', 'released', 'emailed.one', 'action', 'marked_urgent.one', 'reason'], ['count' => '1', 'needs' => 'Needs 1 more person.']],
+                'One shift, emailed again 72 hours before' => [['subject.one', 'unclaimed.one', 'shift_line', 'needs.other', 'released', 'emailed_again.other', 'action', 'marked_urgent.one', 'reason']],
+                'Several shifts' => [['subject.other', 'unclaimed.other', 'shift_link_line', 'needs.one', 'needs.other', 'released', 'emailed.one', 'emailed.other', 'marked_urgent.other', 'reason']],
+                'Several shifts, emailed again 72 hours before' => [['subject.other', 'unclaimed.other', 'shift_link_line', 'needs.one', 'needs.other', 'released', 'emailed_again.one', 'emailed_again.other', 'marked_urgent.other', 'reason']],
             ]),
-            self::email('shift_taken_lead', 'Someone took a shift in your area', self::LEADS, 'When a volunteer takes a shift in an area: covering a released shift, taking back their own, or taking an open place. It goes to the area\'s shift leads who can log in.', [
+            self::email('shift_taken_lead', 'Someone took a shift in your area', self::LEADS, 'When a volunteer takes a place themselves in an area: covering a released shift, taking back their own, or taking an open place. It isn\'t sent when a coordinator or lead puts someone on a shift. It goes to the area\'s shift leads who can log in.', [
                 'subject_covered' => ['Subject when someone covered a shift', 'Shows when someone filled a cover request'],
                 'took_back' => ['Opening when they took their own shift back', 'Shows when the person who released the shift took it back'],
                 'covering' => ['Opening when someone is covering', 'Shows when someone covered a released shift'],
-                'regular' => ['Now the regular', 'Shows when they became the regular'],
+                'regular' => ['Now the regular', 'Shows when they became the regular. After an open place that wasn\'t a cover request, it takes the place of the opening line.'],
                 'subject_took' => ['Subject when someone took an open place', 'Shows when someone took an open place that wasn\'t a cover request'],
                 'took_open' => ['Opening when someone took an open place', 'Shows when someone took an open place that wasn\'t a cover request and didn\'t become the regular'],
                 'action' => ['Button', null],
@@ -508,13 +522,14 @@ final class EmailCatalog
                 'They took their own shift back' => [['subject_covered', 'took_back', 'action']],
                 'Someone became the regular' => [['subject_covered', 'covering', 'regular', 'action']],
                 'Someone took an open place' => [['subject_took', 'took_open', 'action']],
+                'Someone took an open place and became the regular' => [['subject_took', 'regular', 'action']],
             ]),
             self::email('no_answer_lead', 'No answer yet to a time change', self::LEADS, '48 hours before a shift whose time changed, if someone on it still hasn\'t said whether the new time works. It goes once, to the area\'s shift leads who can log in, or to the coordinators when the area has no lead.', [
                 'greeting' => ['Greeting', null],
                 'subject' => ['Subject', null],
                 'intro' => ['Opening', null],
                 'shift' => ['The shift and who hasn\'t answered', null],
-                'shift_line' => ['The area and the times', 'Fills in the shift line'],
+                'shift_line' => ['The area and the times', 'Fills in the shift line', true],
                 'outro' => ['Line after the shift', null],
                 'action' => ['Button', null],
                 'only_reminder' => ['Line after the button', null],

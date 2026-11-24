@@ -7,6 +7,7 @@ use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\PutOnShift;
+use App\Emails\EmailCatalog;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Enums\ShadowSpotNotice;
@@ -56,6 +57,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
+use Illuminate\Translation\Translator;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -302,6 +305,50 @@ class EmailTextTest extends TestCase
                 $this->assertNotSame('', $text, "{$label}: the {$part} is empty.");
                 $this->assertDoesNotMatchRegularExpression('/\{[a-z][a-z0-9_]*\}/', $text, "{$label}: the {$part} has a variable left unfilled.");
                 $this->assertDoesNotMatchRegularExpression('/\bemails\.[a-z][a-z0-9_]*\./', $text, "{$label}: the {$part} shows a wording key instead of wording.");
+            }
+        }
+    }
+
+    /**
+     * The editor's catalog (App\Emails\EmailCatalog) has to list every line an email really renders, so a new or renamed line can't be missing from the editor. Each example's mail is built (toMail), and every wording line read while it's built has to be one of the catalog lines of that email (its own, or another email's lines its versions add, such as the back on lines in a cancelled email). Lines read in a notification's constructor, such as most subjects, aren't recorded here: the whole wording file is checked against the catalog in EmailCatalogTest.
+     */
+    public function test_every_line_an_email_renders_is_in_the_catalog(): void
+    {
+        app('translator')->setLoaded([]);
+        $examples = $this->emailExamples();
+
+        $recorder = new class(app('translator')->getLoader(), 'en') extends Translator
+        {
+            /** @var list<string> */
+            public array $read = [];
+
+            public function get($key, array $replace = [], $locale = null, $fallback = true)
+            {
+                $line = parent::get($key, $replace, $locale, $fallback);
+
+                if (is_string($key) && str_starts_with($key, 'emails.') && is_string($line) && $line !== $key) {
+                    $this->read[] = substr($key, strlen('emails.'));
+                }
+
+                return $line;
+            }
+        };
+        $recorder->setFallback('en');
+        $this->app->instance('translator', $recorder);
+        Lang::clearResolvedInstance('translator');
+
+        foreach ($examples as $label => [$notification, $user]) {
+            $recorder->read = [];
+            $notification->toMail($user);
+            $read = array_unique($recorder->read);
+            $this->assertNotEmpty($read, "{$label}: no wording lines were recorded, so this check isn't looking at anything.");
+
+            $email = EmailCatalog::find(Str::snake(Str::beforeLast(class_basename($notification), 'Notification')));
+            $this->assertNotNull($email, "{$label}: its email isn't in the catalog.");
+            $listed = [...$email->lineKeys(), ...array_merge(...array_column($email->versions, 'lines'))];
+
+            foreach ($read as $key) {
+                $this->assertContains($key, $listed, "{$label}: it renders [{$key}], which the catalog doesn't list for this email.");
             }
         }
     }
