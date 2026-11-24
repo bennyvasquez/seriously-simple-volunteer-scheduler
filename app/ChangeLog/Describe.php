@@ -88,7 +88,7 @@ final class Describe
             'cover_request.escalated' => ucfirst(self::shiftDay($entry->subject)).' marked urgent',
             'change_notice.sent' => 'Asked '.$person.' whether the new time works for '.self::noticeShifts($entry, $details),
             'change_notice.confirmed' => ($self ? 'Said' : 'Said for '.$person.' that').' the new time works for '.self::noticeShifts($entry, $details),
-            'change_notice.lead_told' => 'Told the leads that '.$person.' hasn\'t answered about the new time for '.self::noticeShifts($entry, $details),
+            'change_notice.lead_told' => 'Told the leads that '.($count = (int) ($details['count'] ?? 1)).' '.($count === 1 ? 'person hasn\'t' : 'people haven\'t').' answered about the new time for '.self::shiftWords($entry->subject, true),
             'closure.created' => self::closureWords($entry->subject),
             'closure.updated' => self::closureChanged($entry, $areas),
             'closure.removed' => self::closureRemoved($entry, $areas),

@@ -189,7 +189,7 @@ The full flow below is what the release flow plans build. Releasing and claiming
 **Still waiting for Plan B, the change notices** (not built yet; "Can't make it" and cover requests now exist, but single-use action links don't):
 
 1. The two buttons in the change email, "Still works for me" and "I can't make the new time". The second runs the release flow.
-2. The 48-hour heads-up: if the change moved the time and someone hasn't answered 48 hours before the shift, their lead gets a quiet heads-up.
+2. The 48-hour heads-up (built, `ssvs:change-heads-ups` every 10 minutes): when a shift starts in less than 48 hours and someone still on it hasn't answered its time change, the area's active leads who can sign in get one email per shift naming them (short names), or every active coordinator when the area has no such lead. It goes once (`lead_told_at`), only for changes made more than 48 hours before the shift, and is logged as `change_notice.lead_told` by the system. Nobody else is emailed.
 
 ### 8.5 Closures
 
