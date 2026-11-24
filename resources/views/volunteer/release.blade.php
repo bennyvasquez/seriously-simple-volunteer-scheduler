@@ -56,7 +56,7 @@
 </div>
 
 @unless ($shadow)
-<p class="muted">You're off the shift as soon as you confirm. Other volunteers are asked to cover any shift that still needs someone. For several dates or your weekly slot, the next step shows which.@if ($shadowNames !== []) If you're off just {{ $dayName }}, {{ App\Http\Controllers\Volunteer\ReleaseController::names($shadowNames) }} {{ count($shadowNames) === 1 ? 'was' : 'were' }} shadowing you, so we'll let them know too.@endif</p>
+<p class="muted">You're off the shift as soon as you confirm. Other volunteers are asked to cover any shift that still needs someone. {{ $regular ? 'For several dates or your weekly slot' : 'For several dates' }}, the next step shows which.@if ($shadowNames !== []) {{ App\Http\Controllers\Volunteer\ReleaseController::names($shadowNames) }} {{ count($shadowNames) === 1 ? 'is' : 'are' }} shadowing you on {{ $dayName }}. If you're off that date, we'll let them know too.@endif</p>
 @endunless
 
 <button type="submit" class="btn btn-primary">{{ $shadow ? 'Leave this shadow spot' : 'Release this shift' }}</button>

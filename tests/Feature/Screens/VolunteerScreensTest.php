@@ -360,6 +360,27 @@ class VolunteerScreensTest extends TestCase
             ->assertSee('Give up my weekly Thursday slot', false)->assertSee('If you\'re off just Thursday, October 29, Front desk still has the people it needs, so nobody else will be asked.', false);
     }
 
+    public function test_the_release_form_only_mentions_the_weekly_slot_when_it_offers_one(): void
+    {
+        $oneOff = $this->shift('2026-10-22', needed: 1);
+        $this->on($oneOff, $this->sam);
+        $this->page($this->sam, route('shifts.release', $oneOff))
+            ->assertSee('For several dates, the next step shows which.', false)->assertDontSee('weekly slot', false);
+
+        $regularShift = $this->thursday($this->samsThursdays(), '2026-10-29');
+        $this->page($this->sam, route('shifts.release', $regularShift))
+            ->assertSee('For several dates or your weekly slot, the next step shows which.', false);
+    }
+
+    public function test_the_release_form_tells_a_shadow_it_will_let_them_know_in_one_sentence_each(): void
+    {
+        $shift = $this->thursday($this->samsThursdays(), '2026-10-22');
+        $this->on($shift, User::factory()->cleared()->create(['name' => 'Alex Person']), AssignmentType::Shadow);
+        $this->page($this->sam, route('shifts.release', $shift))
+            ->assertSee('Alex P. is shadowing you on Thursday, October 22. If you\'re off that date, we\'ll let them know too.', false)
+            ->assertDontSee('was shadowing you', false);
+    }
+
     public function test_the_check_step_says_which_shifts_need_covering(): void
     {
         $crowded = $this->shift('2026-10-22');

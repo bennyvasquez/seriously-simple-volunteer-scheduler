@@ -92,6 +92,11 @@ class ExpiredFormTest extends TestCase
         $this->post('/logout')->assertSessionMissing('status');
     }
 
+    public function test_a_guest_posting_to_the_forgot_password_button_gets_no_expired_message(): void
+    {
+        $this->post('/account/forgot-password')->assertSessionMissing('status');
+    }
+
     public function test_the_callback_is_registered_for_a_real_token_mismatch(): void
     {
         // Laravel skips the token check when the environment is testing, so look like production for this one request.

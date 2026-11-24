@@ -25,9 +25,9 @@ return Application::configure(basePath: dirname(__DIR__))
             RecordLastSeen::class,
         ]);
 
-        // A form posted after the session ended reaches a guest in one of two ways (#80). Browsers that send Sec-Fetch-Site pass the token check, so the post arrives as a guest and the sign-in check redirects here: a post with no session, so say so (but not for log out, which is meant to end the session). Without that header the token check fails and the render callback below redirects to the page as a GET, which sends the guest here a second time: keep the message alive through that redirect.
+        // A form posted after the session ended reaches a guest in one of two ways (#80). Browsers that send Sec-Fetch-Site pass the token check, so the post arrives as a guest and the sign-in check redirects here: a post with no session, so say so (but not for log out, which is meant to end the session, or for the "Forgot your password?" button, which logs out too). Without that header the token check fails and the render callback below redirects to the page as a GET, which sends the guest here a second time: keep the message alive through that redirect.
         $middleware->redirectGuestsTo(function (Request $request) use ($expiredFormMessage) {
-            if ($request->isMethod('POST') && ! $request->is('logout')) {
+            if ($request->isMethod('POST') && ! $request->is('logout', 'account/forgot-password')) {
                 $request->session()->flash('status', $expiredFormMessage);
             } elseif ($request->session()->get('status') === $expiredFormMessage) {
                 $request->session()->reflash();
@@ -49,6 +49,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             $path = '/'.ltrim($request->path(), '/');
 
+            // The path is built with exactly one leading slash, so this can't trigger today. It's a guard in case the path building changes, since a path starting with two slashes would redirect off the site.
             if (str_starts_with($path, '//')) {
                 return null;
             }
