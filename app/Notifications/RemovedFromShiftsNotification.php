@@ -13,10 +13,14 @@ class RemovedFromShiftsNotification extends Notification
     /** @var list<string> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
     public array $shifts;
 
+    /** The first shift's area name, for the subject when there's one shift. */
+    public string $area;
+
     /** @param  Collection<int, Shift>  $shifts */
     public function __construct(Collection $shifts)
     {
-        $this->shifts = $shifts->map(fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText())->values()->all();
+        $this->area = $shifts->first()->area->name;
+        $this->shifts = $shifts->map(fn (Shift $shift) => EmailText::line('removed_from_shifts.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]))->values()->all();
     }
 
     public function via(object $notifiable): array
@@ -30,7 +34,7 @@ class RemovedFromShiftsNotification extends Notification
 
         if ($count === 1) {
             return (new MailMessage)
-                ->subject(EmailText::choice('removed_from_shifts.subject', 1, ['area' => explode(' shift on ', $this->shifts[0])[0]]))
+                ->subject(EmailText::choice('removed_from_shifts.subject', 1, ['area' => $this->area]))
                 ->line(EmailText::choice('removed_from_shifts.intro', 1, ['shift' => $this->shifts[0]]))
                 ->line(EmailText::line('removed_from_shifts.outro'));
         }

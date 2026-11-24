@@ -20,7 +20,7 @@ return [
     'two_factor_code' => [
         // The subject of the email with the emailed second-step code. No variables.
         'subject' => 'Your login code',
-        // The first line, giving the code. {code} is the six digit code. The 10 minutes is how long the code works.
+        // The first line, giving the code. {code} is the six digit code. The 10 minutes is fixed text, not a variable: it's how long the code works, so change it only if the code's lifetime changes too.
         'code' => 'Your code is {code}. It works for 10 minutes.',
         // The last line, for someone who didn't try to log in. No variables.
         'outro' => 'If you didn\'t just try to log in, change your password: someone may know it.',
@@ -113,6 +113,8 @@ return [
             // The first line when it was several shifts, above the list of them. No variables.
             'other' => 'You\'re no longer on these shifts:',
         ],
+        // The shift in words, used wherever the removed from shifts email lists a shift. {area} is the area's name. {when} is the day and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'shift_phrase' => '{area} shift on {when}',
         // One line per shift in the list, when it was several shifts. {shift} is the shift in words, such as Front desk shift on Thursday, October 22, 6:30 to 9:30pm.
         'shift_item' => 'The {shift}.',
         // The last line. No variables.
@@ -175,6 +177,8 @@ return [
         'ending' => 'Your last date as the regular for the {area} shift on {weekdays} is {last_date}.',
         // Shown above the list when they were taken off upcoming shifts. No variables.
         'shifts_intro' => 'You\'ve been removed from these shifts:',
+        // The shift in words, used wherever the regular ended email lists a shift. {area} is the area's name. {when} is the day and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'shift_phrase' => '{area} shift on {when}',
         // One line per shift in the list. {shift} is the shift in words, such as Front desk shift on Thursday, October 22, 6:30 to 9:30pm.
         'shift_item' => 'The {shift}.',
         // The last line. No variables.
@@ -257,6 +261,8 @@ return [
             // The first line when several were, above the list. {reason} is the reason a coordinator typed, ended with a full stop if it has none.
             'other' => 'These shifts are cancelled: {reason}',
         ],
+        // The shift in words, used wherever the shift cancelled email lists a shift. {area} is the area's name. {when} is the day and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'shift_phrase' => '{area} shift on {when}',
         // One line per shift in the list, when several were cancelled. {shift} is the shift in words.
         'shift_item' => 'The {shift}.',
         // The last line when several were cancelled. No variables.
@@ -276,6 +282,8 @@ return [
             // The first line when several are, above the list. No variables.
             'other' => 'These shifts are back on, and you\'re still on them:',
         ],
+        // The shift in words, used wherever the shift restored email lists a shift. {area} is the area's name. {when} is the day and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'shift_phrase' => '{area} shift on {when}',
         // One line per shift in the list, when several are back on. {shift} is the shift in words.
         'shift_item' => 'The {shift}.',
         // The last line when several are back on. No variables.
@@ -566,6 +574,8 @@ return [
     'shift_time_changed' => [
         // The greeting at the top. {first_name} is the first name of the person whose shifts moved.
         'greeting' => 'Hi {first_name},',
+        // The shift in words, used for the cancelled and back on shifts that a closure change adds to this email. {area} is the area's name. {when} is the day and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        'shift_phrase' => '{area} shift on {when}',
         'subject' => [
             // The subject when every shift moved to the same time in one area. {area} is the area's name. {time} is the new time, such as 6:30 to 9:30pm.
             'moved' => 'Your {area} shift moved to {time}',

@@ -34,7 +34,11 @@ final class EmailText
         }, $line);
     }
 
-    /** A line that reads differently for one or several: reads "$key.one" when the count is 1, "$key.other" otherwise. */
+    /**
+     * A line that reads differently for one or several: reads "$key.one" when the count is 1, "$key.other" otherwise.
+     *
+     * @param  array<string, scalar|\Stringable|null>  $vars  Keyed by variable name, without braces. A variable the line doesn't use is ignored.
+     */
     public static function choice(string $key, int $count, array $vars = []): string
     {
         return self::line($key.($count === 1 ? '.one' : '.other'), $vars);

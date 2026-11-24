@@ -20,7 +20,7 @@ class ShiftRestoredNotification extends Notification
     {
         $shifts = $shifts instanceof Shift ? collect([$shifts]) : $shifts->values();
         $this->area = $shifts->first()->area->name;
-        $this->shifts = $shifts->map(fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText())->all();
+        $this->shifts = $shifts->map(fn (Shift $shift) => EmailText::line('shift_restored.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]))->all();
     }
 
     public function via(object $notifiable): array

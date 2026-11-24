@@ -22,8 +22,8 @@ class ShiftCancelledNotification extends Notification
      */
     public function __construct(Collection $shifts, public string $reason, ?Collection $restored = null)
     {
-        $this->shifts = $shifts->map(fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText())->values()->all();
-        $this->restored = ($restored ?? collect())->map(fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText())->values()->all();
+        $this->shifts = $shifts->map(fn (Shift $shift) => EmailText::line('shift_cancelled.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]))->values()->all();
+        $this->restored = ($restored ?? collect())->map(fn (Shift $shift) => EmailText::line('shift_restored.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]))->values()->all();
     }
 
     public function via(object $notifiable): array

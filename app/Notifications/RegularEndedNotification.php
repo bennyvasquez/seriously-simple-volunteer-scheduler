@@ -32,7 +32,7 @@ class RegularEndedNotification extends Notification
         $day = CarbonImmutable::parse($lastDate, 'UTC');
         $this->lastDate = $day->format('l, F j');
         $this->datePassed = $beforeStart || $lastDate < Organization::current()->today()->toDateString();
-        $this->shifts = $futureShifts->map(fn (Shift $shift) => $this->area.' shift on '.$shift->whenText())->values()->all();
+        $this->shifts = $futureShifts->map(fn (Shift $shift) => EmailText::line('regular_ended.shift_phrase', ['area' => $this->area, 'when' => $shift->whenText()]))->values()->all();
     }
 
     public function via(object $notifiable): array
