@@ -290,7 +290,7 @@ Volunteers trust the organization with their contact details and their whereabou
 | Volunteer hours and credit requests | Their own | Hours in their areas | Yes | No |
 | Open shifts and "needs N more" counts | Yes | Yes | Yes | Only areas and events marked public, never names |
 
-Full names, email addresses and phone numbers stay with the roles that can see the person, so a volunteer never sees another person's full name, email address, phone number or person page link on the schedule. New volunteers who aren't cleared yet can see the full schedule. That includes when someone is working alone, so each deployment should decide whether that's acceptable; for LMN it is, and the invite-only model is the main protection.
+Full names, email addresses and phone numbers stay with the roles that can see the person, so a volunteer never sees another person's full name, email address, phone number or person page link on the schedule. New volunteers who aren't cleared yet can see the full schedule. That includes when someone is working alone, so each deployment should decide whether that's acceptable.
 
 ### Data we keep, and for how long
 
@@ -529,7 +529,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-11-23 | The schedule is at `/calendar` for every role and the menu calls it "Schedule". There's no second set of routes or views. Editing routes still need a role, so a volunteer who posts to one is refused with a 403, not just shown a page without the controls. |
 | 2026-11-23 | Every signed-in page has one menu for everyone: Home, Schedule and Me. It sits at the bottom of the screen on a phone and in the top bar on a computer. Coordinators keep their People and Change log buttons in the calendar bar, and Home's "Calendar" button is gone because the menu replaces it. Someone who hasn't finished two-factor setup sees no menu. |
 | 2026-11-23 | Greetings keep the first name alone ("Hi Sam" on Home and at the top of each email), because they're addressed to that person. Everywhere else one person is named to another, it's first name and last initial. |
-| 2026-11-23 | The thick border for a shift starting within 24 hours with no one on it shows only to people who manage that area. For everyone else the dark border means "your shift", and the key under the area list says whichever applies. |
+| 2026-11-23 | The thick border for a shift starting within 24 hours with an open place shows only to people who manage that area. For everyone else the dark border means "your shift", and the key under the area list says whichever applies. |
 | 2026-11-23 | Volunteers see "Your next shift" in the calendar's sidebar where coordinators see Needs attention. Volunteers who aren't cleared also see "1 shadow spot open" on blocks; cleared volunteers don't, because they can't take shadow spots. |
 | 2026-11-23 | The person you remove is confirmed by typing their short name ("Robin E."), with or without the final period and in any capitalization. |
 
