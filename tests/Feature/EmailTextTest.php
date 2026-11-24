@@ -390,6 +390,18 @@ class EmailTextTest extends TestCase
         $this->assertSame('Press [Front desk, Thursday](https://example.org/shifts/1?a=1) &lt;b&gt;now&lt;/b&gt;, [Front desk](https://example.org).', $line->toHtml());
     }
 
+    public function test_a_link_the_code_builds_escapes_the_text_a_person_typed(): void
+    {
+        $link = EmailText::link('A]b*c<d&e, Thursday', 'https://example.org/shifts/1');
+
+        $this->assertSame('[A&#93;b&#42;c&lt;d&amp;e, Thursday](https://example.org/shifts/1)', $link->toHtml());
+        $this->assertSame('[Emails page](https://example.org/emails)', EmailText::link(new HtmlString('Emails page'), 'https://example.org/emails')->toHtml());
+        // The default line and an edit both put it in as it is, so it isn't escaped twice.
+        $this->assertSame('Take [A&#93;](https://example.org/1) at Front desk.', EmailText::line('test_email.with_link', ['shift_link' => EmailText::link('A]', 'https://example.org/1'), 'area' => 'Front desk'])->toHtml());
+        $this->edit(['test_email.with_link' => '{area}: {shift_link}']);
+        $this->assertSame('Front desk: [A&#93;](https://example.org/1)', EmailText::line('test_email.with_link', ['shift_link' => EmailText::link('A]', 'https://example.org/1'), 'area' => 'Front desk'])->toHtml());
+    }
+
     public function test_an_edited_subject_is_plain_text_on_one_line(): void
     {
         $this->edit(['test_email.subject' => "Your <b>{area}</b>\n& *shift*"]);

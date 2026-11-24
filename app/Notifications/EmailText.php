@@ -74,6 +74,14 @@ final class EmailText
         return new HtmlString(implode('', array_map(fn ($part) => $part instanceof Htmlable ? $part->toHtml() : e($part), $parts)));
     }
 
+    /**
+     * A Markdown link the code builds, for a variable whose name ends in `_link`: `[text](url)`. The text is a plain string (escaped here for HTML and Markdown, so a name with `]`, `*` or `<` in it reads as typed and can't break out of the link) or an HtmlString that's already escaped (an edited line). The address is the code's own and goes in as it is. It's an HtmlString so the line it's filled into isn't escaped a second time, in the default or in an edit.
+     */
+    public static function link(string|HtmlString $text, string $url): HtmlString
+    {
+        return new HtmlString('['.($text instanceof Htmlable ? $text->toHtml() : PlainText::escape($text)).']('.$url.')');
+    }
+
     /** The default wording of one line, from lang/en/emails.php. Throws when there's no such line. */
     public static function defaultText(string $key): string
     {

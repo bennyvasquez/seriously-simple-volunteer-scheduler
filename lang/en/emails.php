@@ -198,8 +198,8 @@ return [
             // The first line when it was several shifts, above the list. {shadow} is the shadow's first name and last initial.
             'other' => '{shadow} can\'t make these shadow shifts. We\'ve taken them off, so they won\'t be there and the shadow spots are open again:',
         ],
-        // One link per shift in the list, when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the shift.
-        'shift_link' => '[{area}, {when}]({url})',
+        // One line per shift in the list, when it was several shifts. {shift_link} is a link to the shift, with the area's name and the date and time as its text, such as "Front desk, Thursday, October 22, 6:30 to 9:30pm". The link is built in code, so it can move but can't be left out.
+        'shift_link' => '{shift_link}',
         // Shown when the shadow left a note. {shadow} is the shadow's first name and last initial. {note} is what they typed.
         'note' => 'Note from {shadow}: {note}',
         // The label on the button that opens the shift, when it was one shift. No variables.
@@ -386,8 +386,8 @@ return [
         ],
         // The line for the shift when it was one shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
         'shift_item' => '{area}, {when}',
-        // One link per shift when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the page to take the shift.
-        'shift_link' => '[{area}, {when}]({url})',
+        // One line per shift when it was several shifts. {shift_link} is a link to the page to take the shift, with the area's name and the date and time as its text, such as "Front desk, Thursday, October 22, 6:30 to 9:30pm". The link is built in code, so it can move but can't be left out.
+        'shift_link' => '{shift_link}',
         // Shown when the person who released the shift left a note. {releaser} is their first name. {note} is what they typed.
         'note' => 'Note from {releaser}: {note}',
         // The label on the button that opens the page to take the shift, when it was one shift. No variables.
@@ -398,8 +398,10 @@ return [
         'first_person_several' => 'Pick a date to take it. The first person to take each date gets it. You\'ll log in first if you aren\'t already.',
         // Why they got the email. {organization} is the name of the organization.
         'reason' => 'You\'re getting this because you volunteer with {organization} and cover request emails are on for you.',
-        // The last line, a link to turn these emails off. {url} is the address of the Emails page.
-        'stop' => '[Stop getting cover requests]({url})',
+        // The last line. {stop_link} is a link to the Emails page where these emails are turned off, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
+        'stop' => '{stop_link}',
+        // The text of that link. No variables.
+        'stop_label' => 'Stop getting cover requests',
     ],
 
     'cover_urgent' => [
@@ -417,8 +419,8 @@ return [
         ],
         // The second line when it was one shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm. {needs} is how many more people it needs, from the needs lines below.
         'shift_line' => '{area}, {when}. {needs}',
-        // One line per shift when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the shift. {needs} is how many more people it needs, from the needs lines below. {released} is who released it and who was emailed, from the released lines below.
-        'shift_link_line' => '[{area}, {when}]({url}). {needs} {released}',
+        // One line per shift when it was several shifts. {shift_link} is a link to the shift, with the area's name and the date and time as its text, built in code so it can move but can't be left out. {needs} is how many more people it needs, from the needs lines below. {released} is who released it and who was emailed, from the released lines below.
+        'shift_link_line' => '{shift_link}. {needs} {released}',
         'needs' => [
             // How many more people a shift needs, when it's one. {count} is 1.
             'one' => 'Needs {count} more person.',
@@ -623,8 +625,8 @@ return [
         'subject' => 'No answer yet: {area}, {date}',
         // The first line. No variables.
         'intro' => 'The time of this shift changed, and these people haven\'t said whether the new time works:',
-        // The shift's line, with the day in bold above it and the names below it (each line ends in two spaces so they stay on separate lines). {date} is the day, such as Thursday, October 22. {shift_line} is the area, the new time and the old time, built from the shift_line wording. {names} is the first names and last initials of the people who haven't answered, joined in code with commas.
-        'shift' => "**{date}**  \n{shift_line}  \n{names}",
+        // The shift's line. {date_bold} is the day in bold, such as Thursday, October 22, made in code. {shift_line} is the area, the new time and the old time, built from the shift_line wording. {names} is the first names and last initials of the people who haven't answered, joined in code with commas.
+        'shift' => '{date_bold} {shift_line} {names}',
         // The area, the new time and the old time, used inside the shift lines above. {area} is the area's name. {now} is the new time, such as 6:30 to 9:30pm. {was} is the old time.
         'shift_line' => '{area}, {now} (was {was})',
         // The line after the shift. No variables. The 48 hours is fixed.
@@ -684,8 +686,10 @@ return [
         'login' => 'You\'ll log in first if you aren\'t already.',
         // The label on the button that lets the person off the shift. No variables.
         'release' => 'Can\'t make it',
-        // The last line. {emails_url} is the link to the Emails page. The words in the square brackets are the link's text.
-        'turn_off' => 'You can turn these reminders off on the [Emails page]({emails_url}).',
+        // The last line. {emails_page_link} is a link to the Emails page, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
+        'turn_off' => 'You can turn these reminders off on the {emails_page_link}.',
+        // The text of that link. No variables.
+        'emails_page_label' => 'Emails page',
     ],
 
 ];

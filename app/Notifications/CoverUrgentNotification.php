@@ -73,7 +73,7 @@ class CoverUrgentNotification extends Notification
             ->line(EmailText::line('cover_urgent.unclaimed.other'));
 
         foreach ($this->shifts as $shift) {
-            $mail->line(EmailText::line('cover_urgent.shift_link_line', ['area' => $shift['area'], 'when' => $shift['when'], 'url' => $shift['url'], 'needs' => self::needs($shift), 'released' => self::released($shift)]));
+            $mail->line(EmailText::line('cover_urgent.shift_link_line', ['shift_link' => EmailText::link($shift['area'].', '.$shift['when'], $shift['url']), 'needs' => self::needs($shift), 'released' => self::released($shift)]));
         }
 
         return $mail

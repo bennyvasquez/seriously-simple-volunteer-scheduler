@@ -57,7 +57,7 @@ class CoverRequestNotification extends Notification
 
         if (! $this->stillOpen) {
             foreach ($this->shifts as $shift) {
-                $mail->line($several ? EmailText::line('cover_request.shift_link', ['area' => $shift['area'], 'when' => $shift['when'], 'url' => $shift['url']]) : EmailText::line('cover_request.shift_item', ['area' => $shift['area'], 'when' => $shift['when']]));
+                $mail->line($several ? EmailText::line('cover_request.shift_link', ['shift_link' => EmailText::link($shift['area'].', '.$shift['when'], $shift['url'])]) : EmailText::line('cover_request.shift_item', ['area' => $shift['area'], 'when' => $shift['when']]));
             }
         }
 
@@ -75,7 +75,7 @@ class CoverRequestNotification extends Notification
         return $mail
             ->line(EmailText::line('cover_request.reason', ['organization' => $this->organization]))
             // The Emails page comes in a later task; this is its address.
-            ->line(EmailText::line('cover_request.stop', ['url' => url('/account/emails')]));
+            ->line(EmailText::line('cover_request.stop', ['stop_link' => EmailText::link(EmailText::line('cover_request.stop_label'), url('/account/emails'))]));
     }
 
     private function weekday(): string

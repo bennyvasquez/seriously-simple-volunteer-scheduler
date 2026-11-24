@@ -99,7 +99,7 @@ class ShiftReminderNotification extends Notification
             'loginNote' => EmailText::line('shift_reminder.login'),
             'releaseLabel' => EmailText::line('shift_reminder.release'),
             'releaseUrl' => $this->showRelease ? $this->releaseUrl : null,
-            'turnOff' => EmailText::line('shift_reminder.turn_off', ['emails_url' => $this->emailsUrl]),
+            'turnOff' => EmailText::line('shift_reminder.turn_off', ['emails_page_link' => EmailText::link(EmailText::line('shift_reminder.emails_page_label'), $this->emailsUrl)]),
         ]);
     }
 }
