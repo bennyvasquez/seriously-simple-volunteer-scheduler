@@ -32,7 +32,7 @@ class ClearanceAccessibilityTest extends DuskTestCase
             $this->assertAccessible($browser);
 
             $browser->type('note', 'Ready early.')->press('Clear for regular shifts')
-                ->waitForText('Riley is cleared for regular shifts.')
+                ->waitForText('Riley B. is cleared for regular shifts.')
                 ->assertSee('Cleared for regular shifts since');
             $this->assertAccessible($browser);
         });
@@ -42,7 +42,7 @@ class ClearanceAccessibilityTest extends DuskTestCase
     {
         $coordinator = User::where('email', ExampleOrganizationSeeder::COORDINATOR)->firstOrFail();
         $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
-        $first = $volunteer->firstName();
+        $first = $volunteer->shortName();
 
         $this->browse(function (Browser $browser) use ($coordinator, $volunteer, $first) {
             $browser->loginAs($coordinator)->visit(route('people.show', $volunteer))

@@ -2,7 +2,7 @@
 @extends('calendar.week')
 
 @php
-    $first = $person->firstName();
+    $first = $person->shortName();
     $backUrl = route('calendar.shift', [$shift] + $areaQuery);
     $weekday = $shift->local_date->format('l, F j');
     $count = $which === 'this' ? 1 : ($preview ? $preview['shifts']->count() : null);

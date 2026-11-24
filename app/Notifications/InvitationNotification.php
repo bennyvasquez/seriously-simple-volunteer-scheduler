@@ -21,7 +21,7 @@ class InvitationNotification extends Notification
 
         return (new MailMessage)
             ->subject("You're invited to volunteer with {$organization}")
-            ->greeting("Hi {$notifiable->name},")
+            ->greeting('Hi '.$notifiable->firstName().',')
             ->line($this->invitedBy === null
                 ? "You've been added to {$organization}'s volunteer schedule."
                 : "{$this->invitedBy} added you to {$organization}'s volunteer schedule.")

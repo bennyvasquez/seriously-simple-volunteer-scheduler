@@ -73,7 +73,7 @@ class RemovePerson
             ->exists();
 
         if ($futureShifts || $stillRegular) {
-            return 'Something was added to '.$person->firstName().'\'s schedule while removing them. Try again.';
+            return 'Something was added to '.$person->shortName().'\'s schedule while removing them. Try again.';
         }
 
         return null;

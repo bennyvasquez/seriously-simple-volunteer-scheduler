@@ -187,7 +187,7 @@ class MoveBackTest extends TestCase
             Notification::assertSentTo($person, CoverRequestNotification::class, function (CoverRequestNotification $notification) use ($person) {
                 $text = $this->text($notification->toMail($person));
 
-                return count($notification->shifts) === 3 && str_contains($text, 'Morgan can\'t make their Front desk shifts.');
+                return count($notification->shifts) === 3 && str_contains($text, 'Morgan E. can\'t make their Front desk shifts.');
             });
         }
         Notification::assertNotSentTo($this->morgan, CoverRequestNotification::class);
@@ -305,7 +305,7 @@ class MoveBackTest extends TestCase
             app(MoveBackToShadowing::class)->handle($this->coordinator, $this->morgan, true, null);
             $this->fail('Someone with a role was moved back.');
         } catch (DomainException $e) {
-            $this->assertSame('Morgan has a role, so they stay cleared. Remove their role first.', $e->getMessage());
+            $this->assertSame('Morgan E. has a role, so they stay cleared. Remove their role first.', $e->getMessage());
         }
 
         $this->assertTrue($this->morgan->fresh()->isCleared());
@@ -316,9 +316,9 @@ class MoveBackTest extends TestCase
         $this->actingAs($this->coordinator)->get(route('people.show', $this->morgan))->assertOk()->assertDontSee('Move back to shadowing');
         $this->actingAs($this->coordinator)->get(route('people.move-back', $this->morgan))
             ->assertRedirect(route('people.show', $this->morgan))
-            ->assertSessionHasErrors(['clear' => 'Morgan has a role, so they stay cleared. Remove their role first.']);
+            ->assertSessionHasErrors(['clear' => 'Morgan E. has a role, so they stay cleared. Remove their role first.']);
         $this->actingAs($this->coordinator)->from(route('people.move-back', $this->morgan))->post(route('people.move-back.store', $this->morgan), ['existing' => 'release'])
-            ->assertSessionHasErrors(['move_back' => 'Morgan has a role, so they stay cleared. Remove their role first.']);
+            ->assertSessionHasErrors(['move_back' => 'Morgan E. has a role, so they stay cleared. Remove their role first.']);
         $this->assertTrue($this->morgan->fresh()->isCleared());
     }
 
@@ -330,7 +330,7 @@ class MoveBackTest extends TestCase
             app(MoveBackToShadowing::class)->handle($this->coordinator, $casey, false, null);
             $this->fail('Someone not cleared was moved back.');
         } catch (DomainException $e) {
-            $this->assertSame('Casey isn\'t cleared.', $e->getMessage());
+            $this->assertSame('Casey E. isn\'t cleared.', $e->getMessage());
         }
 
         $this->assertSame(0, ChangeLogEntry::query()->ofAction('user.moved_back')->count());
@@ -368,7 +368,7 @@ class MoveBackTest extends TestCase
 
             return $mail->subject === 'You\'ve been moved back to shadowing'
                 && str_contains($text, 'Hi Morgan,')
-                && str_contains($text, 'Chris moved you back to shadowing at Example Makerspace. You can sign up for shadow spots from Home, and a coordinator will review you again once you\'ve done 2 shadow shifts.')
+                && str_contains($text, 'Chris C. moved you back to shadowing at Example Makerspace. You can sign up for shadow spots from Home, and a coordinator will review you again once you\'ve done 2 shadow shifts.')
                 && str_contains($text, 'You\'re off these shifts, and other volunteers were asked to cover them:')
                 && ! str_contains($text, 'nobody was asked')
                 && str_contains($text, 'Front desk, Thursday, October 15, 6:30 to 9:30pm')
@@ -391,7 +391,7 @@ class MoveBackTest extends TestCase
         Notification::assertSentTo($this->morgan, MovedBackNotification::class, function (MovedBackNotification $notification) {
             $text = $this->text($notification->toMail($this->morgan));
 
-            return str_contains($text, 'Chris moved you back to shadowing at Example Makerspace.')
+            return str_contains($text, 'Chris C. moved you back to shadowing at Example Makerspace.')
                 && ! str_contains($text, 'These shifts')
                 && ! str_contains($text, 'no longer the regular');
         });
@@ -449,10 +449,10 @@ class MoveBackTest extends TestCase
 
         $this->actingAs($this->coordinator)->get(route('people.move-back', $this->morgan))
             ->assertOk()
-            ->assertSeeText('Move Morgan back to shadowing?')
-            ->assertSeeText('Morgan won\'t be able to take regular shifts until a coordinator clears them again. They can still sign up for shadow spots.')
-            ->assertSeeText('Morgan has 3 upcoming regular shifts')
-            ->assertSeeTextInOrder(['Keep them', 'Morgan stays on Thu Oct 15, Sat Oct 17 and Thu Oct 22.', 'Release them', 'They go out as cover requests right away, with the usual reminders.', 'Morgan stops being the regular on Thursdays, Front desk.'])
+            ->assertSeeText('Move Morgan E. back to shadowing?')
+            ->assertSeeText('Morgan E. won\'t be able to take regular shifts until a coordinator clears them again. They can still sign up for shadow spots.')
+            ->assertSeeText('Morgan E. has 3 upcoming regular shifts')
+            ->assertSeeTextInOrder(['Keep them', 'Morgan E. stays on Thu Oct 15, Sat Oct 17 and Thu Oct 22.', 'Release them', 'They go out as cover requests right away, with the usual reminders.', 'Morgan E. stops being the regular on Thursdays, Front desk.'])
             ->assertSee('name="existing" value="keep"', false)
             ->assertSee('name="existing" value="release"', false)
             ->assertSeeText('Note for the change log (optional)')
@@ -469,7 +469,7 @@ class MoveBackTest extends TestCase
         Notification::fake();
         $this->actingAs($this->coordinator)->post(route('people.move-back.store', $this->morgan), ['existing' => 'release', 'note' => 'Needs more practice.'])
             ->assertRedirect(route('people.show', $this->morgan))
-            ->assertSessionHas('status', 'Morgan is back to shadowing. Their 3 upcoming regular shifts were released.');
+            ->assertSessionHas('status', 'Morgan E. is back to shadowing. Their 3 upcoming regular shifts were released.');
         $this->assertFalse($this->morgan->fresh()->isCleared());
         $this->assertSame([], $this->datesFor($this->morgan));
         $this->assertSame('Needs more practice.', ChangeLogEntry::query()->ofAction('user.moved_back')->sole()->changes['note']['new']);
@@ -479,14 +479,14 @@ class MoveBackTest extends TestCase
     {
         $page = $this->actingAs($this->coordinator)->get(route('people.move-back', $this->sam))
             ->assertOk()
-            ->assertSeeText('Move Sam back to shadowing?')
+            ->assertSeeText('Move Sam E. back to shadowing?')
             ->assertDontSeeText('Keep them')
             ->assertDontSeeText('Release them');
         $page->assertDontSee('name="existing"', false);
 
         $this->actingAs($this->coordinator)->post(route('people.move-back.store', $this->sam))
             ->assertRedirect(route('people.show', $this->sam))
-            ->assertSessionHas('status', 'Sam is back to shadowing.');
+            ->assertSessionHas('status', 'Sam E. is back to shadowing.');
         $this->assertFalse($this->sam->fresh()->isCleared());
         $this->assertSame(['release' => false], ChangeLogEntry::query()->ofAction('user.moved_back')->sole()->details);
     }
@@ -498,8 +498,8 @@ class MoveBackTest extends TestCase
 
         $this->actingAs($this->coordinator)->get(route('people.move-back', $this->morgan))
             ->assertOk()
-            ->assertSeeText('Morgan is a regular, but none of their shifts are on the calendar yet')
-            ->assertSeeTextInOrder(['Keep them', 'Morgan stays the regular on Thursdays, Front desk.', 'Release them', 'Morgan stops being the regular on Thursdays, Front desk.'])
+            ->assertSeeText('Morgan E. is a regular, but none of their shifts are on the calendar yet')
+            ->assertSeeTextInOrder(['Keep them', 'Morgan E. stays the regular on Thursdays, Front desk.', 'Release them', 'Morgan E. stops being the regular on Thursdays, Front desk.'])
             ->assertDontSeeText('They go out as cover requests');
     }
 }

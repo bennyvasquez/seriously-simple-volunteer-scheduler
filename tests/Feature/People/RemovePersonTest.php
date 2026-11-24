@@ -122,9 +122,9 @@ class RemovePersonTest extends TestCase
 
         $this->travelTo(CarbonImmutable::parse('2026-10-25 09:00', 'America/Detroit'));
 
-        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => '  robin '])
+        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => '  robin e. '])
             ->assertRedirect(route('people.index'))
-            ->assertSessionHas('status', 'Robin was removed.');
+            ->assertSessionHas('status', 'Robin E. was removed.');
 
         $removed = User::removedPerson();
 
@@ -171,7 +171,7 @@ class RemovePersonTest extends TestCase
         $this->assertNull($entry->details);
         $this->assertNull($entry->changes);
 
-        $this->actingAs($this->coordinator)->get(route('people.index'))->assertOk()->assertSee('Robin was removed.');
+        $this->actingAs($this->coordinator)->get(route('people.index'))->assertOk()->assertSee('Robin E. was removed.');
         $this->actingAs($this->coordinator)->get(route('people.index', ['show' => 'all']))
             ->assertOk()
             ->assertDontSee(ChangeLogEntry::REMOVED_PERSON)
@@ -250,12 +250,12 @@ class RemovePersonTest extends TestCase
         $this->actingAs($this->coordinator)->get(route('people.remove', $robin))
             ->assertOk()
             ->assertSee('This removes them from their future shifts first.')
-            ->assertSee('Remove Robin for good')
+            ->assertSee('Remove Robin E. for good')
             ->assertSee('name="confirm"', false);
 
-        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => 'Robin'])
+        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => 'Robin E.'])
             ->assertRedirect(route('people.index'))
-            ->assertSessionHas('status', 'Robin was removed.');
+            ->assertSessionHas('status', 'Robin E. was removed.');
 
         $removed = User::removedPerson();
         $this->assertDatabaseMissing('users', ['id' => $robin->id]);
@@ -281,11 +281,11 @@ class RemovePersonTest extends TestCase
         $this->assertNull(RemovePerson::refusal($sam));
 
         Assignment::create(['shift_id' => $this->shift('2026-10-23')->id, 'user_id' => $sam->id, 'type' => AssignmentType::Regular]);
-        $this->assertSame('Something was added to Sam\'s schedule while removing them. Try again.', RemovePerson::refusal($sam));
+        $this->assertSame('Something was added to Sam E.\'s schedule while removing them. Try again.', RemovePerson::refusal($sam));
 
         $jordan = User::factory()->create(['name' => 'Jordan Example']);
         $this->regular($jordan, null);
-        $this->assertSame('Something was added to Jordan\'s schedule while removing them. Try again.', RemovePerson::refusal($jordan));
+        $this->assertSame('Something was added to Jordan E.\'s schedule while removing them. Try again.', RemovePerson::refusal($jordan));
 
         // A cancelled future shift, a regular slot that ended yesterday and one that ended before it started don't count.
         $casey = User::factory()->create(['name' => 'Casey Example']);
@@ -323,24 +323,41 @@ class RemovePersonTest extends TestCase
         $this->actingAs($this->admin)->post(route('people.two-factor.reset', $removed), ['identity_checked' => '1'])->assertNotFound();
     }
 
+    public function test_the_confirmation_accepts_the_short_name_with_or_without_its_period(): void
+    {
+        foreach (['Robin E', 'robin e.', ' ROBIN E. '] as $typed) {
+            $robin = User::factory()->create(['name' => 'Robin Example']);
+
+            $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => $typed])
+                ->assertRedirect(route('people.index'))
+                ->assertSessionHasNoErrors();
+
+            $this->assertModelMissing($robin);
+        }
+
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => 'Robin'])->assertSessionHasErrors(['confirm' => 'Type Robin E. to confirm.']);
+        $this->assertModelExists($robin);
+    }
+
     public function test_the_confirmation_needs_the_first_name(): void
     {
         $robin = User::factory()->create(['name' => 'Robin Example']);
 
         $this->actingAs($this->coordinator)->get(route('people.show', $robin))
             ->assertOk()
-            ->assertSee('Remove Robin')
+            ->assertSee('Remove Robin E.')
             ->assertSee('Removing someone deletes their name, email address and membership ID from SSVS. Shifts they worked stay counted, under Removed person, and so do their entries in the change log. This can\'t be undone.', false);
 
         $this->actingAs($this->coordinator)->get(route('people.remove', $robin))
             ->assertOk()
             ->assertSee('Removing someone deletes their name, email address and membership ID from SSVS.')
-            ->assertSee('Remove Robin for good');
+            ->assertSee('Remove Robin E. for good');
 
-        $this->actingAs($this->coordinator)->from(route('people.remove', $robin))->post(route('people.remove.store', $robin), ['confirm' => 'Robyn'])
+        $this->actingAs($this->coordinator)->from(route('people.remove', $robin))->post(route('people.remove.store', $robin), ['confirm' => 'Robyn E.'])
             ->assertRedirect(route('people.remove', $robin))
-            ->assertSessionHasErrors(['confirm' => 'Type Robin to confirm.']);
-        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), [])->assertSessionHasErrors(['confirm' => 'Type Robin to confirm.']);
+            ->assertSessionHasErrors(['confirm' => 'Type Robin E. to confirm.']);
+        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), [])->assertSessionHasErrors(['confirm' => 'Type Robin E. to confirm.']);
 
         $this->assertDatabaseHas('users', ['id' => $robin->id]);
         $this->assertSame(0, ChangeLogEntry::query()->ofAction('user.removed')->count());
@@ -360,7 +377,7 @@ class RemovePersonTest extends TestCase
         // A lead who can see Robin still can't remove them.
         $this->actingAs($this->lead)->get(route('people.show', $robin))->assertOk()->assertDontSee('Remove Robin');
         $this->actingAs($this->lead)->get(route('people.remove', $robin))->assertForbidden();
-        $this->actingAs($this->lead)->post(route('people.remove.store', $robin), ['confirm' => 'Robin'])->assertForbidden();
+        $this->actingAs($this->lead)->post(route('people.remove.store', $robin), ['confirm' => 'Robin E.'])->assertForbidden();
 
         // The removed person isn't anyone's to find.
         $removed = User::removedPerson();
@@ -380,7 +397,7 @@ class RemovePersonTest extends TestCase
 
         // An admin can remove another admin.
         $other = $this->withRole(Role::Admin, null, 'Riley Admin', 'riley@example.org');
-        $this->actingAs($this->admin)->post(route('people.remove.store', $other), ['confirm' => 'Riley'])->assertRedirect(route('people.index'));
+        $this->actingAs($this->admin)->post(route('people.remove.store', $other), ['confirm' => 'Riley A.'])->assertRedirect(route('people.index'));
         $this->assertDatabaseMissing('users', ['id' => $other->id]);
     }
 

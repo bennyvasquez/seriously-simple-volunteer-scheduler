@@ -83,7 +83,7 @@ class PersonPageTest extends TestCase
             ->assertSee('Logs in with')
             ->assertSee('Password')
             ->assertSee('Turn off this account')
-            ->assertSee("Robin is logged out everywhere and can't log in. Their history stays.", false)
+            ->assertSee("Robin E. is logged out everywhere and can't log in. Their history stays.", false)
             ->assertSee('This removes them from 1 future shift.')
             ->assertDontSee('Login and security');
 
@@ -182,7 +182,7 @@ class PersonPageTest extends TestCase
         $person = User::factory()->notInvited()->create(['name' => 'Jules Example', 'email' => 'jules@example.org']);
         $page = route('people.show', $person);
 
-        $this->actingAs($this->coordinator)->get($page)->assertSee('Not invited yet')->assertSee('Invite Jules');
+        $this->actingAs($this->coordinator)->get($page)->assertSee('Not invited yet')->assertSee('Invite Jules E.');
         $this->actingAs($this->coordinator)->post(route('people.invite.send', $person))->assertRedirect($page);
         $this->assertTrue($person->fresh()->isInvited());
 
@@ -225,7 +225,7 @@ class PersonPageTest extends TestCase
 
         $html = $this->actingAs($this->coordinator)->get(route('people.show', $this->frontDeskRegular))
             ->assertOk()
-            ->assertSee('Changes about Robin')
+            ->assertSee('Changes about Robin E.')
             ->assertSee('Made Robin Example a shift lead for Front desk')
             ->assertSee('Sent Robin Example a new invitation')
             ->assertSee('Added Robin Example')
@@ -295,7 +295,7 @@ class PersonPageTest extends TestCase
 
         $this->actingAs($this->coordinator)->get($page)
             ->assertOk()
-            ->assertSee("Robin is logged out everywhere and can't log in. Their history stays.", false)
+            ->assertSee("Robin E. is logged out everywhere and can't log in. Their history stays.", false)
             ->assertSee('This removes them from 2 future shifts and ends their time as a regular on 1 slot.')
             ->assertDontSee('Turning off doesn');
 
@@ -306,7 +306,7 @@ class PersonPageTest extends TestCase
 
         $this->actingAs($this->coordinator)->post(route('people.turn-off', $this->frontDeskRegular))
             ->assertRedirect($page)
-            ->assertSessionHas('status', 'Robin\'s account is turned off. They were removed from 2 future shifts.');
+            ->assertSessionHas('status', 'Robin E.\'s account is turned off. They were removed from 2 future shifts.');
         $this->assertSame(0, Assignment::query()->where('user_id', $this->frontDeskRegular->id)->count());
     }
 }

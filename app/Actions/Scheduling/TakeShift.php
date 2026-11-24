@@ -178,10 +178,10 @@ class TakeShift
      */
     private function sendAfterCommit(User $person, Shift $locked, ?CoverRequest $request, Closure $others, ?string $regularHow = null, array $skippedDates = [], array $fullDates = []): void
     {
-        $shadows = collect(CoverFill::shadows($locked))->map(fn (User $shadow) => $shadow->firstName())->all();
+        $shadows = collect(CoverFill::shadows($locked))->map(fn (User $shadow) => $shadow->shortName())->all();
         $notification = new ShiftTakenNotification(
             $locked,
-            $request?->releasedBy?->firstName(),
+            $request?->releasedBy?->shortName(),
             $request?->note,
             $shadows,
             $request !== null && $request->released_by === $person->id,

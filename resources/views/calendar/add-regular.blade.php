@@ -65,13 +65,13 @@
 <input type="hidden" name="{{ $name }}" value="{{ $value }}">
 @endforeach
 <input type="hidden" name="over_confirmed" value="1">
-<p role="alert"><b>Adding {{ $person->firstName() }} puts {{ count($overDates) === 1 ? 'this date' : 'these dates' }} over the people needed.</b></p>
+<p role="alert"><b>Adding {{ $person->shortName() }} puts {{ count($overDates) === 1 ? 'this date' : 'these dates' }} over the people needed.</b></p>
 @foreach (array_slice($overDates, 0, 5) as $over)
 <p>{{ \Carbon\CarbonImmutable::parse($over['date'], 'UTC')->format('l, F j') }} at {{ $over['people'] }} people. It needs {{ $over['needed'] }}.</p>
 @endforeach
 @if (count($overDates) > 5)<p class="muted">and {{ count($overDates) - 5 }} more {{ count($overDates) - 5 === 1 ? 'date' : 'dates' }}</p>@endif
 <div class="add-actions">
-<button type="submit" class="btn btn-primary">Add {{ $person->firstName() }} anyway</button>
+<button type="submit" class="btn btn-primary">Add {{ $person->shortName() }} anyway</button>
 <a href="{{ route('calendar.slots.regulars.create', $keep(['person' => $person->id])) }}" class="btn">Change the dates</a>
 </div>
 </form>
@@ -106,7 +106,7 @@
 <x-field name="ends_on" type="date" label="Last date (optional)" :value="$values['ends_on']" />
 </div>
 <div class="add-actions">
-<button type="submit" class="btn btn-primary">Add {{ $person ? $person->firstName() : 'regular' }}</button>
+<button type="submit" class="btn btn-primary">Add {{ $person ? $person->shortName() : 'regular' }}</button>
 <a href="{{ $backUrl }}" class="btn">Cancel</a>
 </div>
 </form>

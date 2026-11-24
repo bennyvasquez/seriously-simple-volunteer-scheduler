@@ -55,12 +55,12 @@ class RegularController extends Controller
         return view('calendar.add-regular', $calendar->week($request)->getData() + [
             'slot' => $slot->load('area'),
             'slotText' => $slot->describe(),
-            'needs' => $this->needs($slot, $current, $viewer),
+            'needs' => $this->needs($slot, $current),
             'person' => $person,
             'search' => $search,
             'byEmail' => $byEmail,
             'canChooseFrequency' => $slot->frequency === SlotFrequency::Weekly,
-            'weekOptions' => $slot->frequency === SlotFrequency::Weekly ? $this->weekOptions($current, $today, $viewer) : [],
+            'weekOptions' => $slot->frequency === SlotFrequency::Weekly ? $this->weekOptions($current, $today) : [],
             'values' => $values,
             'overDates' => $overDates,
         ]);
@@ -133,7 +133,7 @@ class RegularController extends Controller
         $added = $regular->added_to_shifts;
         $starts = $regular->firstWorkedDate() ?? CarbonImmutable::parse($data['starts_on'], 'UTC');
 
-        $first = $regularUser->firstName();
+        $first = $regularUser->shortName();
         $how = $frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek ? 'every other week' : 'every week';
 
         return redirect()->route('calendar.week', ['date' => $starts->toDateString()] + $areaQuery)
@@ -182,7 +182,7 @@ class RegularController extends Controller
             return $back()->withErrors(['last_date' => $e->getMessage()]);
         }
 
-        $first = $regular->user->firstName();
+        $first = $regular->user->shortName();
         $count = $ended->removed_from_shifts;
         $shift = $slot->shifts()->where('local_date', $date)->first();
         // A last date before the regular's start means they never worked a date, so the date isn't named. A sentence about shifts only when they were removed from some.
@@ -283,8 +283,8 @@ class RegularController extends Controller
             ->orderBy('id')->get();
     }
 
-    /** "Needs 2 people every week. Now: Jordan every week, and Carol every other week from Oct 9." */
-    private function needs(WeeklySlot $slot, Collection $current, User $viewer): string
+    /** "Needs 2 people every week. Now: Jordan P. every week, and Carol S. every other week from Oct 9." */
+    private function needs(WeeklySlot $slot, Collection $current): string
     {
         $needs = 'Needs '.$slot->people_needed.($slot->people_needed === 1 ? ' person' : ' people').($slot->frequency === SlotFrequency::EveryOtherWeek ? ' every other week.' : ' every week.');
 
@@ -292,8 +292,8 @@ class RegularController extends Controller
             return $needs.' No regulars yet.';
         }
 
-        $now = $current->map(function (SlotRegular $regular) use ($slot, $viewer) {
-            $name = $this->regularName($viewer, $regular->user);
+        $now = $current->map(function (SlotRegular $regular) use ($slot) {
+            $name = $regular->user->shortName();
 
             if ($regular->frequency === SlotFrequency::EveryOtherWeek) {
                 return $name.' every other week from '.$regular->anchor_date->format('M j');
@@ -307,18 +307,12 @@ class RegularController extends Controller
         return $needs.' Now: '.($now === [] ? $last : implode(', ', $now).', and '.$last).'.';
     }
 
-    /** A regular's first name for a viewer who may see them, and a first name and last initial otherwise (spec section 13). */
-    private function regularName(User $viewer, User $person): string
-    {
-        return $viewer->canSee($person) ? $person->firstName() : $person->shortName();
-    }
-
     /**
      * The choices under "Which weeks": the weeks the slot's alternating regulars are off and the weeks they work. The value is the earliest date in that pattern that is today or later, which becomes the anchor date. Regulars with the same pattern share one choice ("The weeks Carol and Dana are off").
      *
      * @return list<array{value: string, label: string, detail: string}>
      */
-    private function weekOptions(Collection $current, CarbonImmutable $today, User $viewer): array
+    private function weekOptions(Collection $current, CarbonImmutable $today): array
     {
         $todayDate = $today->toDateString();
         $groups = [];
@@ -335,7 +329,7 @@ class RegularController extends Controller
                     $first = $first->subDays(14);
                 }
 
-                $groups[$kind.'|'.$first->toDateString()][] = $this->regularName($viewer, $regular->user);
+                $groups[$kind.'|'.$first->toDateString()][] = $regular->user->shortName();
             }
         }
 

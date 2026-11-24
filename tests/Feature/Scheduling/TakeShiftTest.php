@@ -182,8 +182,8 @@ class TakeShiftTest extends TestCase
             return $mail->subject === 'You\'re on Front desk, Thursday, October 22'
                 && str_contains($text, 'Hi Jordan, thanks for covering!')
                 && str_contains($text, 'Thursday, October 22, 6:30 to 9:30pm, Front desk.')
-                && str_contains($text, 'Note from Robin: The key is in the drawer.')
-                && str_contains($text, 'Casey is shadowing.');
+                && str_contains($text, 'Note from Robin E.: The key is in the drawer.')
+                && str_contains($text, 'Casey E. is shadowing.');
         });
 
         Notification::assertSentToTimes($this->robin, ShiftCoveredNotification::class, 1);
@@ -191,9 +191,9 @@ class TakeShiftTest extends TestCase
             $mail = $notification->toMail($this->robin);
             $text = $this->text($mail);
 
-            return $mail->subject === 'Jordan is covering your Thursday, October 22 shift'
+            return $mail->subject === 'Jordan E. is covering your Thursday, October 22 shift'
                 && str_contains($text, 'Hi Robin,')
-                && str_contains($text, 'Jordan took your Front desk shift on Thursday, October 22. You don\'t need to do anything.');
+                && str_contains($text, 'Jordan E. took your Front desk shift on Thursday, October 22. You don\'t need to do anything.');
         });
 
         Notification::assertSentToTimes($this->lead, ShiftTakenLeadNotification::class, 1);
@@ -201,7 +201,7 @@ class TakeShiftTest extends TestCase
             $mail = $notification->toMail($this->lead);
 
             return $mail->subject === 'Covered: Front desk on Thursday, October 22'
-                && str_contains($this->text($mail), 'Jordan is covering Robin\'s Front desk shift on Thursday, October 22, 6:30 to 9:30pm.')
+                && str_contains($this->text($mail), 'Jordan E. is covering Robin E.\'s Front desk shift on Thursday, October 22, 6:30 to 9:30pm.')
                 && $mail->actionText === 'Open the shift'
                 && $mail->actionUrl === route('calendar.shift', $shift);
         });
@@ -209,7 +209,7 @@ class TakeShiftTest extends TestCase
         Notification::assertSentToTimes($casey, ShadowSpotNotification::class, 1);
         Notification::assertSentTo($casey, ShadowSpotNotification::class, fn (ShadowSpotNotification $notification) => $notification->notice === ShadowSpotNotice::BackOn
             && $notification->toMail($casey)->subject === 'Your shadow shift on Thursday, October 22 is back on'
-            && str_contains($this->text($notification->toMail($casey)), 'Jordan is covering, so you\'ll shadow Jordan.'));
+            && str_contains($this->text($notification->toMail($casey)), 'Jordan E. is covering, so you\'ll shadow Jordan E.'));
 
         Notification::assertNothingSentTo($this->coordinator);
         Notification::assertNothingSentTo($this->sam);
@@ -270,7 +270,7 @@ class TakeShiftTest extends TestCase
 
             return str_contains($text, 'Hi Robin, you\'re back on.') && ! str_contains($text, 'Note from');
         });
-        Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, fn (ShiftTakenLeadNotification $notification) => str_contains($this->text($notification->toMail($this->lead)), 'Robin took back their Front desk shift on Thursday, October 22, 6:30 to 9:30pm.'));
+        Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, fn (ShiftTakenLeadNotification $notification) => str_contains($this->text($notification->toMail($this->lead)), 'Robin E. took back their Front desk shift on Thursday, October 22, 6:30 to 9:30pm.'));
     }
 
     public function test_several_open_requests_are_filled_oldest_first(): void
@@ -295,7 +295,7 @@ class TakeShiftTest extends TestCase
         app(TakeShift::class)->handle($casey, $shift, TakeHow::JustThisDate);
 
         $this->assertSame($casey->id, $sams->fresh()->filled_by);
-        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->toMail($this->sam)->subject === 'Casey is covering your Thursday, October 22 shift');
+        Notification::assertSentTo($this->sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->toMail($this->sam)->subject === 'Casey E. is covering your Thursday, October 22 shift');
     }
 
     public function test_taking_an_open_place_with_no_cover_request(): void
@@ -313,8 +313,8 @@ class TakeShiftTest extends TestCase
         Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, function (ShiftTakenLeadNotification $notification) {
             $mail = $notification->toMail($this->lead);
 
-            return $mail->subject === 'Jordan took Front desk on Thursday, October 22'
-                && str_contains($this->text($mail), 'Jordan took the open Front desk shift on Thursday, October 22, 6:30 to 9:30pm.');
+            return $mail->subject === 'Jordan E. took Front desk on Thursday, October 22'
+                && str_contains($this->text($mail), 'Jordan E. took the open Front desk shift on Thursday, October 22, 6:30 to 9:30pm.');
         });
         Notification::assertNothingSentTo($this->coordinator);
     }
@@ -329,7 +329,7 @@ class TakeShiftTest extends TestCase
         app(TakeShift::class)->handle($this->jordan, $shift, TakeHow::JustThisDate);
 
         Notification::assertNothingSentTo($casey);
-        Notification::assertSentTo($this->jordan, ShiftTakenNotification::class, fn (ShiftTakenNotification $notification) => str_contains($this->text($notification->toMail($this->jordan)), 'Casey is shadowing.'));
+        Notification::assertSentTo($this->jordan, ShiftTakenNotification::class, fn (ShiftTakenNotification $notification) => str_contains($this->text($notification->toMail($this->jordan)), 'Casey E. is shadowing.'));
     }
 
     public function test_a_lead_taking_a_shift_gets_only_the_taker_email(): void
@@ -386,8 +386,8 @@ class TakeShiftTest extends TestCase
         Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, function (ShiftTakenLeadNotification $notification) {
             $mail = $notification->toMail($this->lead);
 
-            return $mail->subject === 'Jordan took Front desk on Thursday, October 22'
-                && str_contains($this->text($mail), 'Jordan is now the Thursday regular from Thursday, October 22.');
+            return $mail->subject === 'Jordan E. took Front desk on Thursday, October 22'
+                && str_contains($this->text($mail), 'Jordan E. is now the Thursday regular from Thursday, October 22.');
         });
     }
 
@@ -404,7 +404,7 @@ class TakeShiftTest extends TestCase
         $this->assertSame('2026-10-22', $regular->anchor_date->toDateString());
         $this->assertSame(['2026-10-22', '2026-11-05', '2026-11-19', '2026-12-03'], $this->datesFor($this->jordan));
         Notification::assertSentTo($this->jordan, ShiftTakenNotification::class, fn (ShiftTakenNotification $notification) => str_contains($this->text($notification->toMail($this->jordan)), 'You\'re now the every other Thursday regular for Front desk, starting Thursday, October 22.'));
-        Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, fn (ShiftTakenLeadNotification $notification) => str_contains($this->text($notification->toMail($this->lead)), 'Jordan is now the every other Thursday regular from Thursday, October 22.'));
+        Notification::assertSentTo($this->lead, ShiftTakenLeadNotification::class, fn (ShiftTakenLeadNotification $notification) => str_contains($this->text($notification->toMail($this->lead)), 'Jordan E. is now the every other Thursday regular from Thursday, October 22.'));
     }
 
     public function test_taking_every_week_on_a_given_up_slot_fills_every_dates_request(): void
@@ -436,9 +436,9 @@ class TakeShiftTest extends TestCase
             $mail = $notification->toMail($this->sam);
             $text = $this->text($mail);
 
-            return $mail->subject === 'Jordan is covering 6 of your shifts'
+            return $mail->subject === 'Jordan E. is covering 6 of your shifts'
                 && str_contains($text, 'Hi Sam,')
-                && str_contains($text, 'Jordan took your Front desk shifts on these dates. You don\'t need to do anything.')
+                && str_contains($text, 'Jordan E. took your Front desk shifts on these dates. You don\'t need to do anything.')
                 && str_contains($text, 'Thursday, October 29')
                 && str_contains($text, 'Thursday, December 3');
         });
@@ -449,7 +449,7 @@ class TakeShiftTest extends TestCase
 
             return $notification->notice === ShadowSpotNotice::BackOn
                 && $mail->subject === 'Your shadow shifts on 2 dates are back on'
-                && str_contains($text, 'Jordan is covering, so you\'ll shadow Jordan on these shifts:')
+                && str_contains($text, 'Jordan E. is covering, so you\'ll shadow Jordan E. on these shifts:')
                 && str_contains($text, 'Front desk, Thursday, October 29, 6:30 to 9:30pm')
                 && str_contains($text, 'Front desk, Thursday, November 5, 6:30 to 9:30pm');
         });
@@ -460,8 +460,8 @@ class TakeShiftTest extends TestCase
             $text = $this->text($mail);
 
             return $mail->subject === 'Covered: Front desk on Thursday, October 29'
-                && str_contains($text, 'Jordan is covering Sam\'s Front desk shift on Thursday, October 29, 6:30 to 9:30pm.')
-                && str_contains($text, 'Jordan is now the Thursday regular from Thursday, October 29.');
+                && str_contains($text, 'Jordan E. is covering Sam E.\'s Front desk shift on Thursday, October 29, 6:30 to 9:30pm.')
+                && str_contains($text, 'Jordan E. is now the Thursday regular from Thursday, October 29.');
         });
     }
 
@@ -603,7 +603,7 @@ class TakeShiftTest extends TestCase
 
         Notification::assertSentToTimes($this->sam, PutOnShiftNotification::class, 1);
         Notification::assertNotSentTo($this->sam, ShiftTakenNotification::class);
-        Notification::assertSentTo($this->robin, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->toMail($this->robin)->subject === 'Sam is covering your Thursday, October 22 shift');
+        Notification::assertSentTo($this->robin, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => $notification->toMail($this->robin)->subject === 'Sam E. is covering your Thursday, October 22 shift');
         Notification::assertSentTo($casey, ShadowSpotNotification::class, fn (ShadowSpotNotification $notification) => $notification->notice === ShadowSpotNotice::BackOn);
         Notification::assertNothingSentTo($this->lead);
         Notification::assertNothingSentTo($this->coordinator);

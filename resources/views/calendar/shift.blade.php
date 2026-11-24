@@ -66,7 +66,7 @@
 <input type="hidden" name="over_confirmed" value="1">
 <p role="alert"><b>This puts {{ $shift->local_date->format('l, F j') }} at {{ $filled + 1 }} people. It needs {{ $places }}.</b></p>
 <div class="add-actions">
-<button type="submit" class="btn btn-primary">Put {{ $over->firstName() }} on anyway</button>
+<button type="submit" class="btn btn-primary">Put {{ $over->shortName() }} on anyway</button>
 <a href="{{ $panelUrl() }}" class="btn">Keep it as it is</a>
 </div>
 </form>
@@ -172,6 +172,10 @@
 @elseif ($canRestore)
 <div class="add-actions">
 <a href="{{ $panelUrl(['restore' => 1]) }}" class="btn btn-primary">Bring this shift back</a>
+</div>
+@elseif ($volunteerAction ?? null)
+<div class="add-actions">
+<a href="{{ $volunteerAction['url'] }}" class="btn btn-primary">{{ $volunteerAction['label'] }}</a>
 </div>
 @elseif ($canEdit || $canPut || $canCancel || $canAddRegular)
 <div class="add-actions">

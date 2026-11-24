@@ -132,16 +132,16 @@ class TakeShadowSpotTest extends TestCase
 
             return $mail->subject === 'You\'re shadowing Front desk on Thursday, October 22'
                 && str_contains($this->text($mail), 'You\'re signed up to shadow Front desk on Thursday, October 22, 6:30 to 9:30pm.')
-                && str_contains($this->text($mail), 'You\'ll shadow Sam.')
+                && str_contains($this->text($mail), 'You\'ll shadow Sam E.')
                 && str_contains($this->text($mail), 'If you can\'t make it, press Can\'t make it on Home so a coordinator knows.');
         });
         Notification::assertSentToTimes($this->lead, ShadowSignedUpLeadNotification::class, 1);
         Notification::assertSentTo($this->lead, ShadowSignedUpLeadNotification::class, function (ShadowSignedUpLeadNotification $notification) {
             $mail = $notification->toMail($this->lead);
 
-            return $mail->subject === 'Avery is shadowing Front desk, Thursday, October 22'
-                && str_contains($this->text($mail), 'Avery signed up to shadow Front desk on Thursday, October 22, 6:30 to 9:30pm.')
-                && str_contains($this->text($mail), 'Sam is on that shift.');
+            return $mail->subject === 'Avery T. is shadowing Front desk, Thursday, October 22'
+                && str_contains($this->text($mail), 'Avery T. signed up to shadow Front desk on Thursday, October 22, 6:30 to 9:30pm.')
+                && str_contains($this->text($mail), 'Sam E. is on that shift.');
         });
         Notification::assertNothingSentTo($otherLead);
         Notification::assertNothingSentTo($this->sam);
@@ -287,6 +287,6 @@ class TakeShadowSpotTest extends TestCase
         $open = app(HomeController::class)->openShadowSpots($this->avery);
 
         $this->assertSame([$twoOnIt->id, $later->id], $open->pluck('id')->all());
-        $this->assertSame(['Sam and Jordan', 'Sam'], $open->pluck('shadowing_with')->all());
+        $this->assertSame(['Sam E. and Jordan E.', 'Sam E.'], $open->pluck('shadowing_with')->all());
     }
 }

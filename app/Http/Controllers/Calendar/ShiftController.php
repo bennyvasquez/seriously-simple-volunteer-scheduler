@@ -8,11 +8,15 @@ use App\Actions\Scheduling\NeedsOverConfirmation;
 use App\Actions\Scheduling\PutOnShift;
 use App\Actions\Scheduling\RemoveFromShift;
 use App\Actions\Scheduling\RestoreShift;
+use App\Actions\Scheduling\TakeShadowSpot;
 use App\Actions\Scheduling\UpdateShift;
 use App\Calendar\PersonSearch;
+use App\Cover\CoverEligibility;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Volunteer\ReleaseController;
+use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\Organization;
 use App\Models\Shift;
@@ -40,6 +44,11 @@ class ShiftController extends Controller
         $user = $request->user();
         $date = $shift->local_date->toDateString();
         $request->query->set('date', $date);
+
+        // Someone with no role sees who's on the shift and one button, and nothing else. The edit, pick, q, confirm, person and type query values are never read for them.
+        if (! Gate::forUser($user)->allows('viewAny', Area::class)) {
+            return $this->volunteerPanel($request, $calendar, $shift, $user);
+        }
 
         $open = $shift->cancelled_at === null && $shift->starts_at->greaterThan(now());
         $canAssign = $open && Gate::forUser($user)->allows('assign', $shift);
@@ -116,6 +125,75 @@ class ShiftController extends Controller
         ]);
     }
 
+    /** The panel for someone with no role (screen 55): the people, the places filled, and the one thing they can do here. Nothing about editing is computed. */
+    private function volunteerPanel(Request $request, CalendarController $calendar, Shift $shift, User $user): View
+    {
+        $slot = $shift->weeklySlot;
+        $date = $shift->local_date->toDateString();
+        $upcoming = $shift->cancelled_at === null && $shift->starts_at->greaterThan(now());
+
+        $people = $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $user) {
+            $name = $assignment->user_id === $user->id ? 'You' : $assignment->user->shortName();
+
+            if ($assignment->type === AssignmentType::Shadow) {
+                return ['name' => $name, 'role' => 'Shadowing', 'remove' => null, 'end' => null];
+            }
+
+            $regular = $slot?->regulars->first(fn (SlotRegular $regular) => $regular->user_id === $assignment->user_id && $regular->activeOn($date));
+            $everyOther = $regular !== null && ($regular->frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek);
+
+            return ['name' => $name, 'role' => $regular === null ? 'On this shift' : ($everyOther ? 'Regular, every other week' : 'Regular, every week'), 'remove' => null, 'end' => null];
+        })->values();
+
+        return view('calendar.shift', $calendar->week($request)->getData() + [
+            'shift' => $shift,
+            'when' => $shift->whenText(),
+            'repeats' => $this->repeats($shift),
+            'people' => $people,
+            'shadowsTaken' => $shift->assignments->where('type', AssignmentType::Shadow)->count(),
+            'volunteerAction' => $upcoming ? $this->volunteerAction($user, $shift) : null,
+            'canAssign' => false,
+            'canCancel' => false,
+            'canPut' => false,
+            'over' => null,
+            'canAddRegular' => false,
+            'picking' => false,
+            'cancelledBy' => null,
+            'closure' => null,
+            'canChangeClosure' => false,
+            'canRestore' => false,
+            'restoreBlocked' => null,
+            'restoreCounts' => null,
+            'restoring' => false,
+            'cancelling' => false,
+            'canEdit' => false,
+            'canEditSlot' => false,
+            'editing' => null,
+            'editValues' => [],
+            'search' => ['query' => '', 'tooShort' => false, 'matches' => collect()],
+            'byEmail' => false,
+            'emailCount' => 0,
+        ]);
+    }
+
+    /** @return array{label: string, url: string}|null The first of Can't make it, Take this shift and Shadow this shift that the take and shadow pages would allow. */
+    private function volunteerAction(User $user, Shift $shift): ?array
+    {
+        if ($shift->assignments->contains('user_id', $user->id)) {
+            return ['label' => 'Can\'t make it', 'url' => route('shifts.release', $shift)];
+        }
+
+        if ($user->isCleared()) {
+            return $shift->openPlaces() > 0 && CoverEligibility::refusal($user, $shift) === null
+                ? ['label' => 'Take this shift', 'url' => route('shifts.take', $shift)]
+                : null;
+        }
+
+        return TakeShadowSpot::refusal($user, $shift) === null
+            ? ['label' => 'Shadow this shift', 'url' => route('shifts.shadow', $shift)]
+            : null;
+    }
+
     public function assign(Request $request, PutOnShift $putOnShift, Shift $shift): RedirectResponse
     {
         Gate::forUser($request->user())->authorize('assign', $shift);
@@ -145,7 +223,7 @@ class ShiftController extends Controller
         };
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
-            ->with('status', $person->firstName().$placed.($person->canSignIn() ? ' They were emailed.' : ''));
+            ->with('status', $person->shortName().$placed.($person->canSignIn() ? ' They were emailed.' : ''));
     }
 
     /** The confirmation page for removing one person from this shift, or from their shifts across a range of dates (neither choice picked to start with). "Check which shifts" comes back here with ?check=1 and the dates, so it works without JavaScript. */
@@ -236,7 +314,7 @@ class ShiftController extends Controller
         $emailed = $person->canSignIn() && $removed->contains(fn (Shift $removedShift) => $removedShift->cancelled_at === null);
 
         return redirect()->route('calendar.shift', [$shift] + $areaQuery)
-            ->with('status', $person->firstName().' was removed from '.$count.($count === 1 ? ' shift.' : ' shifts.').($emailed ? ' They were emailed.' : ''));
+            ->with('status', $person->shortName().' was removed from '.$count.($count === 1 ? ' shift.' : ' shifts.').($emailed ? ' They were emailed.' : ''));
     }
 
     /** Saves the edit form for one shift. Errors go back to the form with what was typed. */
@@ -290,7 +368,7 @@ class ShiftController extends Controller
         $name = PersonSearch::displayName($request->user(), $assignment->user);
 
         return redirect()->route('calendar.shift', [$shift] + $this->areaQuery($request))
-            ->with('status', $data['no_show'] ? 'Marked '.$name.' as a no-show.' : 'Undid the no-show for '.$name.'.');
+            ->with('status', $data['no_show'] ? 'Marked '.$name.' as a no-show.' : 'Undid the no-show for '.ReleaseController::endSentence($name));
     }
 
     public function cancel(Request $request, CancelShift $cancelShift, Shift $shift): RedirectResponse

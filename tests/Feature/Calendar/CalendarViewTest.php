@@ -170,13 +170,6 @@ class CalendarViewTest extends TestCase
             ->assertSee('href="'.route('calendar.week', ['date' => '2026-11-05']).'" class="num"', false);
     }
 
-    public function test_volunteers_get_a_403(): void
-    {
-        $this->actingAs(User::factory()->create())->get(route('calendar.week'))->assertForbidden();
-        $this->actingAs(User::factory()->create())->get(route('calendar.day'))->assertForbidden();
-        $this->actingAs(User::factory()->create())->get(route('calendar.month'))->assertForbidden();
-    }
-
     public function test_an_area_lead_sees_every_area(): void
     {
         $this->shiftOn('2026-10-22', '10:00', '13:00', area: $this->hostedEvents);
@@ -297,10 +290,10 @@ class CalendarViewTest extends TestCase
             ->assertDontSee('Tuesdays 9 to 11am');
     }
 
-    public function test_home_links_to_the_calendar_for_people_with_a_role(): void
+    public function test_home_reaches_the_calendar_through_the_menu_for_everyone(): void
     {
-        $this->actingAs($this->coordinator())->get('/')->assertSee(route('calendar.week'));
-        $this->actingAs(User::factory()->create())->get('/')->assertDontSee(route('calendar.week'));
+        $this->actingAs($this->coordinator())->get('/')->assertSee(route('calendar.week'))->assertDontSee('>Calendar<', false);
+        $this->actingAs(User::factory()->create())->get('/')->assertSee(route('calendar.week'))->assertDontSee('>Calendar<', false);
     }
 
     public function test_a_week_across_the_november_time_change_keeps_local_times(): void

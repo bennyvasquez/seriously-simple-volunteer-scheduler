@@ -60,11 +60,11 @@ class MoveBackToShadowing
     public function refusal(User $person): ?string
     {
         if (RoleAssignment::query()->where('user_id', $person->id)->exists()) {
-            return $person->firstName().' has a role, so they stay cleared. Remove their role first.';
+            return $person->shortName().' has a role, so they stay cleared. Remove their role first.';
         }
 
         if (! $person->isCleared()) {
-            return $person->firstName().' isn\'t cleared.';
+            return $person->shortName().' isn\'t cleared.';
         }
 
         return null;

@@ -8,7 +8,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Tells an area's active leads that someone signed up to shadow one of its shifts: "{First name} is shadowing {Area}, {date}", with who's on that shift.
+ * Tells an area's active leads that someone signed up to shadow one of its shifts: "{First name and last initial} is shadowing {Area}, {date}", with who's on that shift.
  */
 class ShadowSignedUpLeadNotification extends Notification
 {

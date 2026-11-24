@@ -31,7 +31,7 @@ class HomeController extends Controller
         if (! $user->isCleared()) {
             $nextShadow = $next->first(fn (Shift $shift) => $shift->card_tag === 'Shadowing');
             $nextShadow?->setAttribute('shadowing_with', ReleaseController::names(
-                $nextShadow->assignments()->with('user')->where('type', AssignmentType::Regular)->orderBy('id')->get()->map(fn ($assignment) => $assignment->user->firstName())->all()
+                $nextShadow->assignments()->with('user')->where('type', AssignmentType::Regular)->orderBy('id')->get()->map(fn ($assignment) => $assignment->user->shortName())->all()
             ));
 
             return view('volunteer.home', [
@@ -75,7 +75,7 @@ class HomeController extends Controller
                 && $shift->assignments->where('type', AssignmentType::Shadow)->count() < $shift->shadow_spots
                 && CoverEligibility::overlapRefusal($user, $shift, $mine) === null)
             ->each(fn (Shift $shift) => $shift->setAttribute('shadowing_with', ReleaseController::names(
-                $shift->assignments->where('type', AssignmentType::Regular)->map(fn ($assignment) => $assignment->user->firstName())->values()->all()
+                $shift->assignments->where('type', AssignmentType::Regular)->map(fn ($assignment) => $assignment->user->shortName())->values()->all()
             )))
             ->values();
     }

@@ -218,7 +218,7 @@ class AddRegularTest extends TestCase
         $added = ChangeLogEntry::query()->about($avery)->ofAction('regular.added')->sole();
         $this->assertCount(3, $added->details['added_to_shift_ids']);
         Notification::assertSentToTimes($sam, ShiftCoveredNotification::class, 1);
-        Notification::assertSentTo($sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => count($notification->dates) === 2 && $notification->takerFirstName === 'Avery');
+        Notification::assertSentTo($sam, ShiftCoveredNotification::class, fn (ShiftCoveredNotification $notification) => count($notification->dates) === 2 && $notification->takerFirstName === 'Avery E.');
         Notification::assertNotSentTo($jordan, ShiftCoveredNotification::class);
     }
 
