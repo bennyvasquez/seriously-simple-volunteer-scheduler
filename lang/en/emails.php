@@ -482,7 +482,7 @@ return [
             'intro' => [
                 // The only line when it was one shift. {taker} is the short name of the person covering, such as Jordan P. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
                 'one' => '{taker} is covering, so you\'ll shadow {taker} on {area}, {when}.',
-                // The first line when it was several shifts, above the list. {taker} is the first name of the person covering.
+                // The first line when it was several shifts, above the list. {taker} is the short name of the person covering, such as Jordan P.
                 'other' => '{taker} is covering, so you\'ll shadow {taker} on these shifts:',
             ],
         ],
