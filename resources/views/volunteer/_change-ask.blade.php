@@ -2,8 +2,9 @@
 <section class="card card-strong shift-section" aria-label="{{ $notice['heading'] }}">
 <h2>{{ $notice['heading'] }}</h2>
 @if ($notice['count'] === 1 || $notice['same'])
-<p>Now {{ $notice['now'] }}, was {{ $notice['was'] }}.@if ($notice['count'] > 1) Starting {{ $notice['date'] }}.@endif</p>
+<p>Now {{ $notice['now'] }}, was {{ $notice['was'] }}.@if ($notice['count'] > 1) {{ $notice['count'] }} shifts, starting {{ $notice['date'] }}.@endif</p>
 @else
+<p>{{ $notice['count'] }} shifts changed:</p>
 @foreach ($notice['lines'] as $line)
 <p>{{ $line['date'] }}: now {{ $line['now'] }}, was {{ $line['was'] }}.</p>
 @endforeach

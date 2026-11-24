@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Notifications\NoAnswerLeadNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Tests\Concerns\InteractsWithTwoFactor;
@@ -141,6 +142,25 @@ class ChangeHeadsUpTest extends TestCase
 
         Notification::assertNothingSent();
         $this->assertNull(ChangeNotice::query()->first()->lead_told_at);
+    }
+
+    public function test_a_shift_whose_only_notices_were_made_inside_the_window_is_not_locked_on_each_run(): void
+    {
+        $this->withRole('Alex Lead', Role::AreaLead, $this->frontDesk);
+        $this->travelTo($this->shift->starts_at->subHours(40));
+        $this->notice($this->sam, hoursAgo: 0);
+        $locks = 0;
+        DB::listen(function ($query) use (&$locks) {
+            $locks += str_contains($query->sql, 'for update') ? 1 : 0;
+        });
+
+        $this->assertSame(0, $this->run48());
+        $this->assertSame(0, $locks);
+
+        // A notice made before the cutoff makes the shift a candidate, which locks it.
+        $this->notice($this->jordan, hoursAgo: 24);
+        $this->assertSame(1, $this->run48());
+        $this->assertGreaterThan(0, $locks);
     }
 
     public function test_people_who_left_the_shift_arent_named(): void

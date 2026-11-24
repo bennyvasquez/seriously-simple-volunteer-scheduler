@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Saves changes to a weekly slot and brings its future shifts up to date, as far as that is safe without change notices.
  *
- * Future shifts that nobody edited on their own get the slot's new times, people needed, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), a shift nobody is on is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A shift people are on gets the slot's details only when StaffedShiftChecks finds no problem (too few shadow spots for the shadows on it, or a time that double-books someone on it); otherwise it keeps its old details. After the response, each person on a changed shift who can sign in gets one email: when a time changed, a change notice is recorded for each shift (SendChangeNotices) and they get ShiftTimeChangedNotification asking whether the new time works, otherwise one ShiftChangedNotification listing every shift of theirs whose title changed; a change to people needed or shadow spots alone emails nobody. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars, who fill any cover request still open on it (the releaser hears who is covering). The generator then adds any new dates. Shifts edited on their own, shifts people are on whose date the slot no longer runs on, and shifts that failed a check keep their old details and are returned as kept with the reason, when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
+ * Future shifts that nobody edited on their own get the slot's new times, people needed, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), a shift nobody is on is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A shift people are on gets the slot's details only when StaffedShiftChecks finds no problem (too few shadow spots for the shadows on it, or a time that double-books someone on it); otherwise it keeps its old details. After the response, each person on a changed shift who can sign in gets one email: when a time changed, a change notice is recorded for each shift (SendChangeNotices) and they get ShiftTimeChangedNotification asking whether the new time works, otherwise one ShiftChangedNotification listing every shift of theirs whose title changed; a change to people needed or shadow spots alone emails nobody. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars, who fill any cover request still open on it (the releaser hears who is covering). The generator then adds any new dates. A shift whose new start for its date has already passed (today's shift, moved earlier) keeps its own times, takes the slot's other details and is returned as kept with the reason "The new time has already passed", so nobody is asked about a time that never applied. Shifts edited on their own, shifts people are on whose date the slot no longer runs on, and shifts that failed a check keep their old details and are returned as kept with the reason, when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
  *
  * With a start date (`$from`, a date today or later; an earlier one counts as today), only shifts on or after it are changed, cancelled, brought back or given a change notice, and the weekly slot itself changes for good: this is "This shift and the ones after it", and no slot is ever split. Shifts before it that nobody edited and that now differ from the slot (or that it no longer runs on) get `edited_at` and a `shift.updated` entry with `via` `slot.updated_from` and no field changes, so a later edit of the whole slot leaves them alone. A cancelled shift between today and the start date that is brought back by hand later gets the slot's new details.
  *
@@ -42,6 +42,8 @@ class UpdateWeeklySlot
     public const KEPT_EDITED = 'Changed on its own';
 
     public const KEPT_OFF_SCHEDULE = 'The slot doesn\'t run on this date any more';
+
+    public const KEPT_TIME_PASSED = 'The new time has already passed';
 
     public function __construct(private GenerateShifts $generator, private SendChangeNotices $notices) {}
 
@@ -132,7 +134,19 @@ class UpdateWeeklySlot
                 $wasEndsAt = $shift->ends_at;
                 $this->applySlot($shift, $locked, $date, $timezone);
 
+                // Today's shift can't move to a start that has already passed: it keeps its own times (the same as RestoreShift and UpdateShift) and is listed as kept. Its other details still change.
+                $timePassed = $shift->starts_at->lessThanOrEqualTo(now());
+
+                if ($timePassed) {
+                    $shift->fill(['starts_at' => $wasStartsAt, 'ends_at' => $wasEndsAt]);
+                }
+
                 if (! $shift->isDirty()) {
+                    if ($timePassed) {
+                        $kept->push($shift);
+                        $keptReasons[$shift->id] = self::KEPT_TIME_PASSED;
+                    }
+
                     continue;
                 }
 
@@ -153,6 +167,11 @@ class UpdateWeeklySlot
                 $timeChanged = $people->isNotEmpty() && $shift->isDirty(['starts_at', 'ends_at']);
                 $this->saveAndLog($actor, $shift, 'shift.updated', $via);
                 $updated[] = $shift->id;
+
+                if ($timePassed) {
+                    $kept->push($shift);
+                    $keptReasons[$shift->id] = self::KEPT_TIME_PASSED;
+                }
 
                 if ($notify) {
                     $shift->setRelation('area', $slot->area);

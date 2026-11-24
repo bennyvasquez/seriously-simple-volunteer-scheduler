@@ -135,6 +135,23 @@ class VolunteerScreensAccessibilityTest extends DuskTestCase
         });
     }
 
+    public function test_the_change_notice_page_for_a_cancelled_shift_and_one_put_back_on(): void
+    {
+        $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();
+        $shift = $this->volunteersShift($volunteer);
+        $ended = $this->noticeFor($volunteer, $shift);
+        $ended->forceFill(['ended_at' => now()])->save();
+
+        $this->browse(function (Browser $browser) use ($volunteer, $shift, $ended) {
+            $browser->loginAs($volunteer)->visit(route('changes.show', $ended->batch))->assertSee('You\'re on this shift at its current time.');
+            $this->assertAccessible($browser);
+
+            $shift->forceFill(['cancelled_at' => now(), 'cancel_reason' => 'Power outage'])->save();
+            $browser->visit(route('changes.show', $ended->batch))->assertSee('This shift was cancelled.');
+            $this->assertAccessible($browser);
+        });
+    }
+
     public function test_home_and_the_shift_panel_ask_about_a_new_time(): void
     {
         $volunteer = User::where('email', ExampleOrganizationSeeder::VOLUNTEER)->firstOrFail();

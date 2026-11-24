@@ -13,6 +13,7 @@ use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -228,6 +229,100 @@ class ChangeNoticePageTest extends TestCase
         $response->assertDontSee('href="'.route('shifts.release', $later).'"', false);
     }
 
+    public function test_a_cancelled_shift_says_it_was_cancelled_not_that_it_started(): void
+    {
+        $shift = $this->shift('2026-10-22', $this->sam);
+        $notice = $this->notice($shift, $this->sam);
+        $shift->forceFill(['cancelled_at' => now(), 'cancel_reason' => 'Power outage'])->save();
+
+        $this->actingAs($this->sam)->get($this->answer($notice))->assertOk()
+            ->assertSee('This shift was cancelled.')
+            ->assertDontSee('This shift has already started.')
+            ->assertSee('Back to home');
+        $this->actingAs($this->sam)->post($this->answer($notice));
+        $this->assertNull($notice->fresh()->confirmed_at);
+    }
+
+    public function test_a_started_shift_still_says_it_started_and_a_mix_with_a_cancelled_one_says_cancelled(): void
+    {
+        $started = $this->shift('2026-10-22', $this->sam);
+        $notice = $this->notice($started, $this->sam);
+        $this->travelTo(CarbonImmutable::parse('2026-10-22 18:00', self::TIMEZONE));
+
+        $this->actingAs($this->sam)->get($this->answer($notice))->assertOk()
+            ->assertSee('This shift has already started.')
+            ->assertDontSee('This shift was cancelled.');
+
+        $cancelled = $this->shift('2026-10-29', $this->sam);
+        $this->notice($cancelled, $this->sam);
+        $cancelled->forceFill(['cancelled_at' => now(), 'cancel_reason' => 'Power outage'])->save();
+
+        $this->actingAs($this->sam)->get($this->answer($notice))->assertOk()
+            ->assertSee('This shift was cancelled.')
+            ->assertDontSee('This shift has already started.');
+    }
+
+    public function test_the_changed_page_has_its_own_copy_and_the_replaced_page_keeps_check_the_newest_email(): void
+    {
+        $shift = $this->shift('2026-10-22', $this->sam);
+        $ended = $this->notice($shift, $this->sam, null, ['ended_at' => now()]);
+
+        $this->actingAs($this->sam)->get($this->answer($ended))->assertOk()
+            ->assertSee('You\'re on this shift at its current time. This email\'s question doesn\'t apply any more.', false)
+            ->assertDontSee('Check the newest email')
+            ->assertSee('Open the shift');
+
+        // A newer notice for the same shift replaces it.
+        $this->notice($shift, $this->sam, '01JCHANGEBATCH0000000000BB');
+        $this->actingAs($this->sam)->get($this->answer($ended))->assertOk()
+            ->assertSee('This shift has changed again since that email.')
+            ->assertSee('Check the newest email, or open the shift for its current time.')
+            ->assertDontSee('doesn\'t apply any more');
+    }
+
+    public function test_the_schedule_panel_says_which_shifts_when_the_batch_covers_more_than_this_one(): void
+    {
+        $slot = WeeklySlot::factory()->create(['area_id' => $this->frontDesk->id, 'weekday' => 4, 'start_time' => '17:00', 'end_time' => '20:00']);
+        $dates = ['2026-10-22', '2026-10-29', '2026-11-05'];
+        $shifts = collect($dates)->map(function (string $date) use ($slot) {
+            $shift = $this->shift($date, $this->sam);
+            $shift->forceFill(['weekly_slot_id' => $slot->id])->save();
+
+            return $shift;
+        });
+        $shifts->each(fn (Shift $shift) => $this->notice($shift, $this->sam));
+
+        $response = $this->actingAs($this->sam)->get(route('calendar.shift', $shifts[1]))->assertOk();
+        $response->assertSee('The time changed for your Thursdays from October 22 to November 5. Does it still work for you?', false);
+
+        // A gap (one date confirmed on its own) isn't a range, so it counts the shifts left.
+        $shifts[1]->forceFill(['weekly_slot_id' => null])->save();
+        $this->actingAs($this->sam)->get(route('calendar.shift', $shifts[0]))->assertOk()
+            ->assertSee('The time changed for 3 of your shifts. Does it still work for you?', false);
+
+        // One shift in the batch keeps the short wording.
+        $single = $this->shift('2026-11-12', $this->sam);
+        $this->notice($single, $this->sam, '01JCHANGEBATCH0000000000CC');
+        $this->actingAs($this->sam)->get(route('calendar.shift', $single))->assertOk()
+            ->assertSee('The time changed. Does it still work for you?', false);
+    }
+
+    public function test_home_says_how_many_shifts_when_the_batch_has_more_than_one(): void
+    {
+        $this->notice($this->shift('2026-10-22', $this->sam), $this->sam);
+        $this->notice($this->shift('2026-10-29', $this->sam), $this->sam);
+
+        $this->actingAs($this->sam)->get('/')->assertOk()
+            ->assertSee('Now 5 to 8pm, was 6:30 to 9:30pm. 2 shifts, starting Thursday, October 22.', false);
+
+        $this->notice($this->shift('2026-11-05', $this->sam), $this->sam, '01JCHANGEBATCH0000000000DD', ['was_starts_at' => CarbonImmutable::parse('2026-11-05 15:00', self::TIMEZONE)->utc(), 'was_ends_at' => CarbonImmutable::parse('2026-11-05 18:00', self::TIMEZONE)->utc()]);
+        $this->actingAs($this->sam)->get('/')->assertOk()->assertSee('Your Thursday Front desk shift changed');
+
+        $this->notice($this->shift('2026-11-12', $this->sam), $this->sam, '01JCHANGEBATCH0000000000DD', ['was_starts_at' => CarbonImmutable::parse('2026-11-12 14:00', self::TIMEZONE)->utc(), 'was_ends_at' => CarbonImmutable::parse('2026-11-12 17:00', self::TIMEZONE)->utc()]);
+        $this->actingAs($this->sam)->get('/')->assertOk()
+            ->assertSee('2 shifts changed:');
+    }
+
     public function test_home_asks_about_an_open_notice_without_the_email(): void
     {
         $shift = $this->shift('2026-10-22', $this->sam);
@@ -339,7 +434,7 @@ class ChangeNoticePageTest extends TestCase
         $notice = $this->notice($this->shift('2026-10-22', $this->sam), $this->sam);
         $shift = $this->shift('2026-10-29');
 
-        // No session means no CSRF token: the same 419 the take and shadow forms give a guest.
+        // A guest has no session, so no login and no CSRF token: whatever status the take and shadow forms give a guest, this form gives too. (The test kernel doesn't enforce CSRF, so the status isn't asserted as a number.)
         $take = $this->post(route('shifts.take', $shift))->getStatusCode();
         $shadow = $this->post(route('shifts.shadow', $shift))->getStatusCode();
         $this->post(route('changes.confirm', $notice->batch))->assertStatus($take);

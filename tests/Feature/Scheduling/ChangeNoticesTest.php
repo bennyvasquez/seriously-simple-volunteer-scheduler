@@ -188,8 +188,12 @@ class ChangeNoticesTest extends TestCase
         $this->assertNull($rows[1]->ended_at);
         $this->assertSame(1, ChangeNotice::query()->open()->count());
         $this->assertNotSame($rows[0]->batch, $rows[1]->batch);
-        // The second notice remembers the time the shift had just before that change.
-        $this->assertSame('17:00', $rows[1]->was_starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        // The second notice carries over the first one's "was": the last time the person was asked about, not the unanswered 5pm in between.
+        $this->assertSame('18:00', $rows[1]->was_starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame('21:00', $rows[1]->was_ends_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $second = Notification::sent($this->sam, ShiftTimeChangedNotification::class)->last();
+        $this->assertStringContainsString('4 to 7pm (was 6 to 9pm)', $this->text($second, $this->sam));
+        $this->assertStringNotContainsString('(was 5 to 8pm)', $this->text($second, $this->sam));
     }
 
     public function test_shadows_get_notices_too(): void
@@ -238,10 +242,66 @@ class ChangeNoticesTest extends TestCase
         $this->assertStringContainsString('Still works for me', $text);
         $this->assertStringContainsString("I can't make the new time", $text);
         $this->assertStringContainsString('href="'.route('changes.show', $batch).'"', $text);
-        $this->assertStringContainsString('href="'.route('shifts.release', $this->shiftOn('2026-10-15')).'"', $text);
-        $this->assertStringContainsString("You'll log in first if you aren't already. If you don't answer, your shift lead will check with you before the shift.", $text);
+        // "I can't make the new time" opens the answer page, which links to Can't make it for the earliest shift still ahead, so it can't go stale a week later.
+        $this->assertSame($sent->stillWorksUrl, $sent->cantUrl);
+        $this->assertStringNotContainsString(route('shifts.release', $this->shiftOn('2026-10-15')), $text);
+        $this->assertStringContainsString("You'll log in first if you aren't already.", $text);
         $this->assertStringNotContainsString('Coordinator Example', $text);
         $this->assertStringNotContainsString('Jordan', $text);
+    }
+
+    public function test_the_email_leaves_out_the_lead_check_when_the_first_shift_starts_within_48_hours(): void
+    {
+        $this->regularsOnThreeThursdays();
+        $this->moveSlot();
+
+        // October 15 at 5pm is 32 hours away, so no heads-up will go out.
+        $soon = $this->text(Notification::sent($this->sam, ShiftTimeChangedNotification::class)->sole(), $this->sam);
+        $this->assertStringNotContainsString('your shift lead will check with you', $soon);
+
+        Notification::fake();
+        $shift = app(CreateOneTimeShift::class)->handle($this->coordinator, $this->frontDesk, '2026-11-10', '18:00', '21:00', 2, 0, null);
+        Assignment::create(['shift_id' => $shift->id, 'user_id' => $this->sam->id, 'type' => AssignmentType::Regular]);
+        app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '17:00', 'end_time' => '20:00']);
+
+        $later = $this->text(Notification::sent($this->sam, ShiftTimeChangedNotification::class)->sole(), $this->sam);
+        $this->assertStringContainsString("You'll log in first if you aren't already. If you don't answer, your shift lead will check with you before the shift.", $later);
+    }
+
+    public function test_a_shift_that_would_move_to_a_start_that_has_already_passed_keeps_its_times_and_is_listed_as_kept(): void
+    {
+        $this->regularsOnThreeThursdays();
+        // Thursday, October 15, noon: today's 6:30pm shift is still ahead.
+        $this->travelTo(CarbonImmutable::parse('2026-10-15 12:00', self::TIMEZONE));
+        Notification::fake();
+
+        $result = app(UpdateWeeklySlot::class)->handle($this->coordinator, $this->slot->fresh(), $this->slotAttributes(['start_time' => '10:00', 'end_time' => '13:00']), CarbonImmutable::parse('2026-10-15', self::TIMEZONE));
+
+        $today = $this->shiftOn('2026-10-15');
+        $this->assertSame('18:30', $today->starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame('21:30', $today->ends_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame([$today->id], $result->keptShifts->modelKeys());
+        $this->assertSame(UpdateWeeklySlot::KEPT_TIME_PASSED, $result->keptReasons[$today->id]);
+        $this->assertSame('The new time has already passed', $result->keptReasons[$today->id]);
+        $this->assertSame('10:00', $this->shiftOn('2026-10-22')->starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame(7, $result->updatedShifts);
+
+        // Nobody is asked about a time that never applied; the later dates get one notice each.
+        $this->assertSame(0, ChangeNotice::query()->where('shift_id', $today->id)->count());
+        $this->assertSame(2, ChangeNotice::query()->where('user_id', $this->sam->id)->count());
+        Notification::assertSentToTimes($this->sam, ShiftTimeChangedNotification::class, 1);
+        Notification::assertSentToTimes($this->jordan, ShiftTimeChangedNotification::class, 1);
+    }
+
+    public function test_the_notice_for_a_shift_replaced_by_a_newer_change_keeps_the_original_slot_time_through_a_slot_edit(): void
+    {
+        $this->regularsOnThreeThursdays();
+        $this->moveSlot();
+        app(UpdateWeeklySlot::class)->handle($this->coordinator, $this->slot->fresh(), $this->slotAttributes(['start_time' => '16:00', 'end_time' => '19:00']));
+
+        $rows = ChangeNotice::query()->where('user_id', $this->sam->id)->open()->get();
+        $this->assertCount(3, $rows);
+        $this->assertSame(['18:30'], $rows->map(fn (ChangeNotice $row) => $row->was_starts_at->setTimezone(self::TIMEZONE)->format('H:i'))->unique()->all());
     }
 
     public function test_the_email_lists_each_date_when_the_shifts_are_not_one_slot_with_one_change(): void

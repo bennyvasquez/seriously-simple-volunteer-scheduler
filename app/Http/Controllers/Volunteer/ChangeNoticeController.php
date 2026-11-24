@@ -9,13 +9,14 @@ use App\Models\Assignment;
 use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
+use App\Notifications\ShiftTimeChangedNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 /**
- * The answer page for a change notice (wireframes 57 and 58): "Does the new time still work for you?" for one person's batch, with "Still works for me" as a form POST and "I can't make the new time" as a link to "Can't make it" for the earliest shift. Both need a login. Someone else's batch answers exactly like one that doesn't exist (404), and a POST for it confirms nothing. The page says what happened when the batch can't be answered: confirmed already, replaced by a newer change, the person is off the shift, or the shift started. Home and the volunteer shift panel ask the same question with the same POST (`from` says where to come back to).
+ * The answer page for a change notice (wireframes 57 and 58): "Does the new time still work for you?" for one person's batch, with "Still works for me" as a form POST and "I can't make the new time" as a link to "Can't make it" for the earliest shift. Both need a login. Someone else's batch answers exactly like one that doesn't exist (404), and a POST for it confirms nothing. The page says what happened when the batch can't be answered: confirmed already, replaced by a newer change, changed since (the person left the shift and was put back), the person is off the shift, the shift was cancelled, or it started. Home and the volunteer shift panel ask the same question with the same POST (`from` says where to come back to).
  */
 class ChangeNoticeController extends Controller
 {
@@ -41,7 +42,8 @@ class ChangeNoticeController extends Controller
 
         [$mode, $shown] = match (true) {
             $on->isEmpty() => ['gone', $rows],
-            $ahead->isEmpty() => ['started', $on->values()],
+            // Cancelling keeps people on a shift, so a cancelled one is told apart from one that started.
+            $ahead->isEmpty() => [$on->contains(fn (ChangeNotice $row) => $row->shift->cancelled_at !== null) ? 'cancelled' : 'started', $on->values()],
             $open->isNotEmpty() => ['open', $open],
             $confirmed->isNotEmpty() => [$request->session()->pull('change_confirmed') ? 'thanks' : 'confirmed', $confirmed],
             $ahead->contains(fn (ChangeNotice $row) => $replaced($row)) => ['replaced', $ahead->values()],
@@ -90,7 +92,8 @@ class ChangeNoticeController extends Controller
      * What a batch says to the person, from its rows (earliest shift first, shift and area loaded): the heading, the new and old times, the dates and who changed it. When every shift has the same new and old time there's one "New time" and one "Was" and the first date; otherwise each date has its own line.
      *
      * @param  Collection<int, ChangeNotice>  $rows
-     * @return array{heading: string, same: bool, now: string, was: string, date: string, count: int, lines: list<array{date: string, now: string, was: string}>, changedBy: ?string, earliest: Shift}
+     *                                               `which` says which shifts a yes covers, for the question on the schedule panel: "your Thursdays from October 22 to December 10" when the rows are every date of one weekly slot between the first and the last (the email's range wording), otherwise "{n} of your shifts".
+     * @return array{heading: string, same: bool, now: string, was: string, date: string, count: int, which: string, lines: list<array{date: string, now: string, was: string}>, changedBy: ?string, earliest: Shift}
      */
     public static function summary(Collection $rows): array
     {
@@ -119,6 +122,9 @@ class ChangeNoticeController extends Controller
             'was' => $lines->first()['was'],
             'date' => $lines->first()['date'],
             'count' => $rows->count(),
+            'which' => $rows->count() > 1 && ShiftTimeChangedNotification::consecutiveDatesOfOneSlot($rows->map(fn (ChangeNotice $row) => $row->shift))
+                ? 'your '.$first->local_date->format('l').'s from '.$first->local_date->format('F j').' to '.$rows->last()->shift->local_date->format('F j')
+                : $rows->count().' of your shifts',
             'lines' => $lines->all(),
             'changedBy' => $changedBy === null || $changedBy->is_removed_person ? null : $changedBy->shortName(),
             'earliest' => $first,

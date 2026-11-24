@@ -12,7 +12,7 @@ final class UpdateResult
 {
     /**
      * @param  Collection<int, Shift>  $keptShifts
-     * @param  array<int, string>  $keptReasons  Each kept shift's id to why it was kept, worded to show on screen: the StaffedShiftChecks message, "Changed on its own" or "The slot doesn't run on this date any more".
+     * @param  array<int, string>  $keptReasons  Each kept shift's id to why it was kept, worded to show on screen: the StaffedShiftChecks message, "Changed on its own", "The slot doesn't run on this date any more" or "The new time has already passed".
      * @param  int  $emailed  How many people who can sign in are emailed about their changed shifts.
      */
     public function __construct(

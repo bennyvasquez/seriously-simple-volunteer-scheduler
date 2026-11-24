@@ -17,12 +17,14 @@ use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\ShiftCancelledNotification;
 use App\Notifications\ShiftRestoredNotification;
+use App\Notifications\ShiftTimeChangedNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -544,13 +546,119 @@ class UpdateClosureTest extends TestCase
         $this->assertArrayHasKey('starts_at', $entry->changes);
         $this->assertSame(['old' => 1, 'new' => 2], $entry->changes['people_needed']);
 
-        foreach ([$this->robin, $this->casey] as $person) {
-            Notification::assertSentTo($person, ShiftRestoredNotification::class, function (ShiftRestoredNotification $notification) use ($person) {
-                $this->assertStringContainsString('Thursday, November 26, 4 to 7pm', $notification->toMail($person)->introLines[0]);
+        // Robin was on it at the old time, so gets the time email with the question. Casey joined as it came back and never knew the old time, so gets "back on".
+        $sent = Notification::sent($this->robin, ShiftTimeChangedNotification::class)->sole();
+        $text = html_entity_decode((string) $sent->toMail($this->robin)->render(), ENT_QUOTES);
+        $this->assertStringContainsString('Your Front desk shift on Thursday, November 26 is back on, at a new time.', $text);
+        $this->assertStringContainsString('4 to 7pm (was 3:30 to 6:30pm)', $text);
+        $this->assertStringContainsString('Still works for me', $text);
+        $this->assertStringContainsString("I can't make the new time", $text);
+        Notification::assertNotSentTo($this->robin, ShiftRestoredNotification::class);
+        $notice = ChangeNotice::query()->where('user_id', $this->robin->id)->where('shift_id', $thanksgiving->id)->sole();
+        $this->assertSame($coordinator->id, $notice->changed_by);
+        $this->assertSame('15:30', $notice->was_starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+        $this->assertSame(1, ChangeLogEntry::query()->forSubject($thanksgiving)->ofAction('change_notice.sent')->where('affected_user_id', $this->robin->id)->count());
+        Notification::assertSentTo($this->casey, ShiftRestoredNotification::class, function (ShiftRestoredNotification $notification) {
+            $this->assertStringContainsString('Thursday, November 26, 4 to 7pm', $notification->toMail($this->casey)->introLines[0]);
 
-                return true;
-            });
-        }
+            return true;
+        });
+        Notification::assertNotSentTo($this->casey, ShiftTimeChangedNotification::class);
+        $this->assertSame(0, ChangeNotice::query()->where('user_id', $this->casey->id)->where('shift_id', $thanksgiving->id)->count());
+    }
+
+    public function test_removing_a_closure_over_a_shift_whose_slot_time_did_not_change_sends_back_on_and_no_notice(): void
+    {
+        $slot = $this->thursdaySlot();
+        app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-15');
+        $thanksgiving = $slot->shifts()->where('local_date', '2026-11-26')->sole();
+        $closure = $this->close('2026-11-26', '2026-11-26');
+        Notification::fake();
+        $noticesBefore = ChangeNotice::query()->count();
+
+        app(RemoveClosure::class)->handle($this->coordinator(), $closure);
+
+        $this->assertNull($thanksgiving->fresh()->cancelled_at);
+        $this->assertSame($noticesBefore, ChangeNotice::query()->count());
+        Notification::assertSentTo($this->robin, ShiftRestoredNotification::class);
+        Notification::assertNotSentTo($this->robin, ShiftTimeChangedNotification::class);
+    }
+
+    public function test_changing_a_closure_sends_one_email_with_the_time_question_and_the_other_shifts_that_are_back_on(): void
+    {
+        $slot = $this->thursdaySlot();
+        app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-15');
+        $thanksgiving = $slot->shifts()->where('local_date', '2026-11-26')->sole();
+        $friday = $this->shiftOn('2026-11-27', $this->robin);
+        $closure = $this->close('2026-11-26', '2026-11-27');
+        $coordinator = $this->coordinator();
+        // While the closure stands, the slot moves half an hour later.
+        app(UpdateWeeklySlot::class)->handle($coordinator, $slot->fresh(), [
+            'weekday' => 4, 'start_time' => '16:00', 'end_time' => '19:00', 'people_needed' => 1, 'shadow_spots' => 0,
+            'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
+        ]);
+        Notification::fake();
+
+        $emailed = app(UpdateClosure::class)->handle($coordinator, $closure, '2026-11-30', '2026-11-30', 'Thanksgiving');
+
+        $this->assertNull($thanksgiving->fresh()->cancelled_at);
+        $this->assertNull($friday->fresh()->cancelled_at);
+        $this->assertSame(1, ChangeNotice::query()->where('user_id', $this->robin->id)->where('shift_id', $thanksgiving->id)->count());
+        // Friday's one-time shift didn't change time, so it has no notice.
+        $this->assertSame(0, ChangeNotice::query()->where('shift_id', $friday->id)->count());
+        Notification::assertSentToTimes($this->robin, ShiftTimeChangedNotification::class, 1);
+        Notification::assertNotSentTo($this->robin, ShiftRestoredNotification::class);
+        $sent = Notification::sent($this->robin, ShiftTimeChangedNotification::class)->sole();
+        $text = html_entity_decode((string) $sent->toMail($this->robin)->render(), ENT_QUOTES);
+        $this->assertStringContainsString('is back on, at a new time.', $text);
+        $this->assertStringContainsString('Front desk shift on Friday, November 27, 3:30 to 6:30pm', $text);
+        $this->assertStringContainsString('is back on', $text);
+    }
+
+    public function test_moving_a_closure_that_brings_one_shift_back_at_a_new_time_and_cancels_another_sends_one_email(): void
+    {
+        $slot = $this->thursdaySlot();
+        app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-15');
+        $thanksgiving = $slot->shifts()->where('local_date', '2026-11-26')->sole();
+        $december = $slot->shifts()->where('local_date', '2026-12-03')->sole();
+        $closure = $this->close('2026-11-26', '2026-11-26');
+        $coordinator = $this->coordinator();
+        app(UpdateWeeklySlot::class)->handle($coordinator, $slot->fresh(), [
+            'weekday' => 4, 'start_time' => '16:00', 'end_time' => '19:00', 'people_needed' => 1, 'shadow_spots' => 0,
+            'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
+        ]);
+        Notification::fake();
+
+        app(UpdateClosure::class)->handle($coordinator, $closure, '2026-12-03', '2026-12-03', 'Holiday');
+
+        $this->assertNull($thanksgiving->fresh()->cancelled_at);
+        $this->assertNotNull($december->fresh()->cancelled_at);
+        Notification::assertSentToTimes($this->robin, ShiftTimeChangedNotification::class, 1);
+        Notification::assertNotSentTo($this->robin, ShiftCancelledNotification::class);
+        Notification::assertNotSentTo($this->robin, ShiftRestoredNotification::class);
+        $sent = Notification::sent($this->robin, ShiftTimeChangedNotification::class)->sole();
+        $text = html_entity_decode((string) $sent->toMail($this->robin)->render(), ENT_QUOTES);
+        $this->assertStringContainsString('is back on, at a new time.', $text);
+        $this->assertStringContainsString('is cancelled: Holiday. You don\'t need to do anything.', $text);
+        $this->assertStringContainsString('Thursday, December 3', $text);
+    }
+
+    public function test_changing_a_closure_over_a_shift_whose_slot_time_did_not_change_sends_back_on_and_no_notice(): void
+    {
+        $slot = $this->thursdaySlot();
+        app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-15');
+        $thanksgiving = $slot->shifts()->where('local_date', '2026-11-26')->sole();
+        $closure = $this->close('2026-11-26', '2026-11-27');
+        $coordinator = $this->coordinator();
+        Notification::fake();
+        $noticesBefore = ChangeNotice::query()->count();
+
+        app(UpdateClosure::class)->handle($coordinator, $closure, '2026-11-30', '2026-11-30', 'Thanksgiving');
+
+        $this->assertNull($thanksgiving->fresh()->cancelled_at);
+        $this->assertSame($noticesBefore, ChangeNotice::query()->count());
+        Notification::assertSentTo($this->robin, ShiftRestoredNotification::class);
+        Notification::assertNotSentTo($this->robin, ShiftTimeChangedNotification::class);
     }
 
     public function test_the_closure_previews_count_only_people_who_will_be_emailed(): void

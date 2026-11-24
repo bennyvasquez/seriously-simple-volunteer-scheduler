@@ -16,6 +16,7 @@ use App\Cover\CoverEligibility;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Volunteer\ChangeNoticeController;
 use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Models\Area;
 use App\Models\Assignment;
@@ -152,6 +153,11 @@ class ShiftController extends Controller
             return ['name' => $name, 'role' => $regular === null ? 'On this shift' : ($everyOther ? 'Regular, every other week' : 'Regular, every week'), 'remove' => null, 'end' => null];
         })->values();
 
+        $open = $upcoming ? ChangeNotice::openFor($user) : collect();
+        $changeNotice = $open->firstWhere('shift_id', $shift->id);
+        $batchRows = $changeNotice === null ? collect() : $open->where('batch', $changeNotice->batch)->values();
+        $changeWhich = $batchRows->count() > 1 ? ChangeNoticeController::summary($batchRows)['which'] : null;
+
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
             'when' => $shift->whenText(),
@@ -159,8 +165,9 @@ class ShiftController extends Controller
             'people' => $people,
             'shadowsTaken' => $shift->assignments->where('type', AssignmentType::Shadow)->count(),
             'volunteerAction' => $upcoming ? $this->volunteerAction($user, $shift) : null,
-            // The person's open time change on this shift, if any: the panel asks whether the new time works.
-            'changeNotice' => $upcoming ? ChangeNotice::openFor($user)->firstWhere('shift_id', $shift->id) : null,
+            // The person's open time change on this shift, if any: the panel asks whether the new time works. "Still works for me" answers the whole batch, so when the batch covers more shifts the question says which.
+            'changeNotice' => $changeNotice,
+            'changeWhich' => $changeWhich,
             'canAssign' => false,
             'canCancel' => false,
             'canPut' => false,

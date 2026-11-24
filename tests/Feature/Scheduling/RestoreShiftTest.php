@@ -21,11 +21,13 @@ use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\ShiftRestoredNotification;
+use App\Notifications\ShiftTimeChangedNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -345,11 +347,65 @@ class RestoreShiftTest extends TestCase
         $this->assertArrayHasKey('starts_at', $entry->changes);
         $this->assertArrayNotHasKey('shadow_spots', $entry->changes);
 
-        Notification::assertSentTo($this->robin, ShiftRestoredNotification::class, function (ShiftRestoredNotification $notification) {
-            $this->assertStringContainsString('Thursday, October 29, 5 to 7pm', $notification->toMail($this->robin)->introLines[0]);
+        // The slot's time moved while the shift was cancelled, so each person gets the time email, with the question, in place of "back on".
+        Notification::assertNotSentTo($this->robin, ShiftRestoredNotification::class);
+        Notification::assertNotSentTo($sam, ShiftRestoredNotification::class);
 
-            return true;
-        });
+        foreach ([$this->robin, $sam] as $person) {
+            $sent = Notification::sent($person, ShiftTimeChangedNotification::class)->sole();
+            $text = html_entity_decode((string) $sent->toMail($person)->render(), ENT_QUOTES);
+            $this->assertStringContainsString('Your Front desk shift on Thursday, October 29 is back on, at a new time.', $text);
+            $this->assertStringContainsString('5 to 7pm (was 4 to 6pm)', $text);
+            $this->assertStringContainsString('Still works for me', $text);
+            $this->assertStringContainsString("I can't make the new time", $text);
+
+            // Robin also has notices for the slot's other shifts, made when the slot moved.
+            $notice = ChangeNotice::query()->where('user_id', $person->id)->where('shift_id', $shift->id)->sole();
+            $this->assertSame($coordinator->id, $notice->changed_by);
+            $this->assertSame('16:00', $notice->was_starts_at->setTimezone(self::TIMEZONE)->format('H:i'));
+            $this->assertSame('18:00', $notice->was_ends_at->setTimezone(self::TIMEZONE)->format('H:i'));
+            $this->assertSame($sent->batch, $notice->batch);
+            $this->assertSame(1, ChangeLogEntry::query()->forSubject($shift)->ofAction('change_notice.sent')->where('affected_user_id', $person->id)->count());
+        }
+
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 2);
+    }
+
+    public function test_bringing_back_a_shift_whose_time_did_not_change_sends_back_on_and_no_notice(): void
+    {
+        $slot = $this->robinsSlot();
+        $shift = $slot->shifts()->where('local_date', '2026-10-29')->sole();
+        $coordinator = $this->coordinator();
+        app(CancelShift::class)->handle($coordinator, $shift, 'Power outage');
+        // Only the title changes while it's cancelled.
+        $this->changeSlot($slot, ['title' => 'Greeter']);
+        Notification::fake();
+
+        app(RestoreShift::class)->handle($coordinator, $shift);
+
+        $this->assertSame(0, ChangeNotice::query()->count());
+        Notification::assertSentTo($this->robin, ShiftRestoredNotification::class);
+        Notification::assertNotSentTo($this->robin, ShiftTimeChangedNotification::class);
+        Notification::assertSentTimes(ShiftRestoredNotification::class, 1);
+    }
+
+    public function test_a_regular_who_joins_as_the_shift_comes_back_at_a_new_time_gets_back_on_not_the_question(): void
+    {
+        $slot = $this->robinsSlot();
+        $shift = $slot->shifts()->where('local_date', '2026-10-29')->sole();
+        $coordinator = $this->coordinator();
+        app(CancelShift::class)->handle($coordinator, $shift, 'Power outage');
+        $this->changeSlot($slot, ['start_time' => '17:00', 'end_time' => '19:00', 'people_needed' => 2]);
+        $casey = User::factory()->create(['name' => 'Casey Example']);
+        app(AddRegular::class)->handle(null, $slot->fresh(), $casey, '2026-10-22');
+        Notification::fake();
+
+        app(RestoreShift::class)->handle($coordinator, $shift);
+
+        $this->assertSame([$this->robin->id], ChangeNotice::query()->where('shift_id', $shift->id)->pluck('user_id')->all());
+        Notification::assertSentTo($this->robin, ShiftTimeChangedNotification::class);
+        Notification::assertSentTo($casey, ShiftRestoredNotification::class);
+        Notification::assertNotSentTo($casey, ShiftTimeChangedNotification::class);
     }
 
     public function test_bringing_back_a_shift_adds_regulars_who_started_while_it_was_cancelled_but_not_turned_off_ones(): void
@@ -410,7 +466,7 @@ class RestoreShiftTest extends TestCase
         $coordinator = $this->coordinator();
         app(UpdateShift::class)->handle($coordinator, $shift, ['people_needed' => 3]);
         app(CancelShift::class)->handle($coordinator, $shift->fresh(), 'Power outage');
-        $this->changeSlot($slot, ['start_time' => '17:00', 'end_time' => '19:00']);
+        $this->changeSlot($slot, ['start_time' => '17:00', 'end_time' => '19:00', 'people_needed' => 2]);
         $casey = User::factory()->create(['name' => 'Casey Example']);
         app(AddRegular::class)->handle(null, $slot->fresh(), $casey, '2026-10-22', null, SlotFrequency::Weekly, null, true);
         Notification::fake();

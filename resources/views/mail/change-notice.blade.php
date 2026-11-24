@@ -17,7 +17,7 @@ Still works for me
 I can't make the new time
 </x-mail::button>
 
-You'll log in first if you aren't already. If you don't answer, your shift lead will check with you before the shift.
+You'll log in first if you aren't already.@if ($leadChecks) If you don't answer, your shift lead will check with you before the shift.@endif
 
 @foreach ($titleLines as $line)
 {{ $line }}

@@ -35,7 +35,11 @@ class SendChangeHeadsUps
             ->whereNull('cancelled_at')
             ->where('starts_at', '>', $now)
             ->where('starts_at', '<=', $now->addHours(self::HOURS))
-            ->whereIn('id', ChangeNotice::query()->open()->whereNull('lead_told_at')->select('shift_id'))
+            // Only shifts with an open notice made before the cutoff, so shifts whose notices were all made inside the window aren't locked every run.
+            ->whereExists(fn ($notices) => $notices->selectRaw('1')->from('change_notices')
+                ->whereColumn('change_notices.shift_id', 'shifts.id')
+                ->whereNull('change_notices.confirmed_at')->whereNull('change_notices.ended_at')->whereNull('change_notices.lead_told_at')
+                ->whereRaw('change_notices.created_at < DATE_SUB(shifts.starts_at, INTERVAL '.self::HOURS.' HOUR)'))
             ->orderBy('starts_at')->orderBy('id')
             ->get(['id', 'area_id']);
 

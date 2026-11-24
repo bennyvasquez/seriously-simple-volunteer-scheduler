@@ -1,4 +1,4 @@
-{{-- The answer page for a change notice (wireframes 57 and 58). $mode is open, thanks, confirmed, replaced, started or gone; $summary is ChangeNoticeController::summary(); $batch, $cantUrl (Can't make it for the earliest shift) and $shiftUrl (the shift on the schedule). --}}
+{{-- The answer page for a change notice (wireframes 57 and 58). $mode is open, thanks, confirmed, replaced, changed, cancelled, started or gone; $summary is ChangeNoticeController::summary(); $batch, $cantUrl (Can't make it for the earliest shift) and $shiftUrl (the shift on the schedule). --}}
 @extends('layouts.app')
 
 @php
@@ -8,6 +8,7 @@
         'confirmed' => 'You already said the new time works.',
         'replaced' => 'This shift has changed again since that email.',
         'changed' => 'This shift has changed since that email.',
+        'cancelled' => 'This shift was cancelled.',
         'started' => 'This shift has already started.',
         default => 'You\'re not on this shift any more.',
     };
@@ -39,8 +40,11 @@
 <a href="{{ $cantUrl }}" class="btn">I can't make it after all</a>
 <a href="{{ route('home') }}" class="btn btn-primary">Back to home</a>
 </div>
-@elseif (in_array($mode, ['replaced', 'changed'], true))
+@elseif ($mode === 'replaced')
 <p>Check the newest email, or open the shift for its current time.</p>
+<a href="{{ $shiftUrl }}" class="btn btn-primary">Open the shift</a>
+@elseif ($mode === 'changed')
+<p>You're on this shift at its current time. This email's question doesn't apply any more.</p>
 <a href="{{ $shiftUrl }}" class="btn btn-primary">Open the shift</a>
 @else
 <a href="{{ route('home') }}" class="btn btn-primary">Back to home</a>
