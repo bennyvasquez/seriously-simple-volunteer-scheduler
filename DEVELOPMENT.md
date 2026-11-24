@@ -24,6 +24,14 @@ Signing out of all devices relies on `SESSION_DRIVER=database`, which `.env.exam
 
 Every email the app sends lands in Mailpit at http://localhost:8025, not in real inboxes. Login links, invitations and two-factor codes show up there.
 
+## Changing an email's wording
+
+The wording of every email is in `lang/en/emails.php`, one array per email. Edit the line you want. Keep the `{variable_name}` placeholders the line already has (the comment above each line says what they hold), and don't add a placeholder the code doesn't fill in. A missing key or a placeholder left unfilled throws an error, so run `docker compose exec app php artisan test` afterwards: one test renders every email and fails on anything left over. Existing tests that check email text will fail if the new wording differs, so update their expected text in the same change. Wording with a fixed duration (10, 15 or 60 minutes, 7 days, 24 and 72 hours) is plain text, so changing those words doesn't change the real limit.
+
+Laravel's own "Regards," sign-off and "If you're having trouble clicking" line aren't in that file. They are JSON translation lines in the framework's mail view, changed in `lang/en.json`.
+
+A release overwrites `lang/en/emails.php`, so your edits are lost on the next upgrade until the email wording editor (step 2 in the spec) exists. Keep a note of what you changed.
+
 ## Running tests
 
 ```bash
