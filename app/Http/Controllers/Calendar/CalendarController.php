@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 
 /**
- * The coordinator calendar's read-only views: week (screen 30), day, and month (screen 33). The phone list (screen 34) is part of the week and day pages. Access is checked by the route's can:viewAny,App\Models\Area middleware.
+ * The calendar's read-only views, open to every active person: week (screen 30), day, and month (screen 33). The phone list (screen 34) is part of the week and day pages. Access is checked by the route's can:view-schedule middleware; the editing routes still need a role (can:viewAny,App\Models\Area).
  */
 class CalendarController extends Controller
 {

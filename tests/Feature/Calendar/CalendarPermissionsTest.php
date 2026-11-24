@@ -54,7 +54,7 @@ class CalendarPermissionsTest extends TestCase
         $this->assertTrue($admin->can('manage-settings'));
     }
 
-    public function test_volunteers_cannot_view_the_coordinator_calendar(): void
+    public function test_volunteers_dont_get_the_coordinator_tools(): void
     {
         $this->assertFalse(User::factory()->create()->canViewCalendar());
     }

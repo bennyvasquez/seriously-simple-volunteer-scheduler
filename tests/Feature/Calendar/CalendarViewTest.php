@@ -170,13 +170,6 @@ class CalendarViewTest extends TestCase
             ->assertSee('href="'.route('calendar.week', ['date' => '2026-11-05']).'" class="num"', false);
     }
 
-    public function test_volunteers_get_a_403(): void
-    {
-        $this->actingAs(User::factory()->create())->get(route('calendar.week'))->assertForbidden();
-        $this->actingAs(User::factory()->create())->get(route('calendar.day'))->assertForbidden();
-        $this->actingAs(User::factory()->create())->get(route('calendar.month'))->assertForbidden();
-    }
-
     public function test_an_area_lead_sees_every_area(): void
     {
         $this->shiftOn('2026-10-22', '10:00', '13:00', area: $this->hostedEvents);
