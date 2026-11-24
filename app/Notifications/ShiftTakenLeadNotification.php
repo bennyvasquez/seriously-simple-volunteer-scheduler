@@ -35,24 +35,24 @@ class ShiftTakenLeadNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $taker = $this->takerFirstName;
-        $regular = $this->regularHow === null ? null : $taker.' is now the '.$this->regularHow.' regular from '.$this->date.'.';
+        $regular = $this->regularHow === null ? null : EmailText::line('shift_taken_lead.regular', ['taker' => $taker, 'how' => $this->regularHow, 'date' => $this->date]);
 
         if ($this->releaserFirstName !== null) {
             $mail = (new MailMessage)
-                ->subject('Covered: '.$this->area.' on '.$this->date)
+                ->subject(EmailText::line('shift_taken_lead.subject_covered', ['area' => $this->area, 'date' => $this->date]))
                 ->line($this->tookBack
-                    ? $taker.' took back their '.$this->area.' shift on '.$this->when.'.'
-                    : $taker.' is covering '.$this->releaserFirstName.'\'s '.$this->area.' shift on '.$this->when.'.');
+                    ? EmailText::line('shift_taken_lead.took_back', ['taker' => $taker, 'area' => $this->area, 'when' => $this->when])
+                    : EmailText::line('shift_taken_lead.covering', ['taker' => $taker, 'releaser' => $this->releaserFirstName, 'area' => $this->area, 'when' => $this->when]));
 
             if ($regular !== null) {
                 $mail->line($regular);
             }
         } else {
             $mail = (new MailMessage)
-                ->subject($taker.' took '.$this->area.' on '.$this->date)
-                ->line($regular ?? $taker.' took the open '.$this->area.' shift on '.$this->when.'.');
+                ->subject(EmailText::line('shift_taken_lead.subject_took', ['taker' => $taker, 'area' => $this->area, 'date' => $this->date]))
+                ->line($regular ?? EmailText::line('shift_taken_lead.took_open', ['taker' => $taker, 'area' => $this->area, 'when' => $this->when]));
         }
 
-        return $mail->action('Open the shift', $this->url);
+        return $mail->action(EmailText::line('shift_taken_lead.action'), $this->url);
     }
 }

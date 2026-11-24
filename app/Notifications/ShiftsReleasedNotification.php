@@ -45,63 +45,67 @@ class ShiftsReleasedNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)->greeting('Hi '.$notifiable->firstName().',');
-        $noLongerRegular = $this->gaveUpSlot === null ? null : 'You\'re no longer the '.$this->gaveUpSlot['weekday'].' regular from '.$this->gaveUpSlot['from'].'.';
+        $mail = (new MailMessage)->greeting(EmailText::line('shifts_released.greeting', ['first_name' => $notifiable->firstName()]));
+        $noLongerRegular = $this->gaveUpSlot === null ? null : EmailText::line('shifts_released.no_longer_regular', ['weekday' => $this->gaveUpSlot['weekday'], 'from' => $this->gaveUpSlot['from']]);
+        $action = EmailText::line('shifts_released.action');
 
         if ($this->shifts === [] && $noLongerRegular !== null) {
-            return $mail->subject('You\'re no longer the '.$this->gaveUpSlot['weekday'].' regular')
+            return $mail->subject(EmailText::line('shifts_released.subject_no_longer_regular', ['weekday' => $this->gaveUpSlot['weekday']]))
                 ->line($noLongerRegular)
-                ->line('None of those dates are on the calendar yet, so nobody needed to be asked to cover them.')
-                ->action('Open my shifts', url('/'));
+                ->line(EmailText::line('shifts_released.none_on_calendar'))
+                ->action($action, url('/'));
         }
 
         if (count($this->shifts) === 1) {
             $shift = $this->shifts[0];
-            $mail->subject('You\'re off '.$shift['date'])
-                ->line('You\'re off your '.$shift['area'].' shift on '.$shift['when'].'.')
-                ->line($shift['nobodyAsked'] ? $shift['area'].' still has the people it needs, so nobody else was asked.' : 'We\'ve asked other volunteers to cover it, and we\'ll email you when someone does.');
+            $mail->subject(EmailText::line('shifts_released.subject.one', ['date' => $shift['date']]))
+                ->line(EmailText::line('shifts_released.off_shift', ['area' => $shift['area'], 'when' => $shift['when']]))
+                ->line($shift['nobodyAsked'] ? EmailText::line('shifts_released.nobody_asked', ['area' => $shift['area']]) : EmailText::line('shifts_released.asked_one'));
 
             if ($shift['shadows'] !== []) {
-                $mail->line(self::names($shift['shadows']).' going to shadow you, so we\'ve told them too.');
+                $mail->line(EmailText::choice('shifts_released.shadows_told', count($shift['shadows']), ['names' => self::names($shift['shadows'])]));
             }
 
             if ($noLongerRegular !== null) {
                 $mail->line($noLongerRegular);
             } elseif ($shift['regular']) {
-                $mail->line('You stay the '.$shift['weekday'].' regular. This only changes '.$shift['date'].'.');
+                $mail->line(EmailText::line('shifts_released.stay_regular', ['weekday' => $shift['weekday'], 'date' => $shift['date']]));
             }
 
             if (! $shift['nobodyAsked']) {
-                $mail->line('If you can make it after all, you can take it back from your home page while it\'s still open.');
+                $mail->line(EmailText::choice('shifts_released.take_back', 1));
             }
 
-            return $mail->action('Open my shifts', url('/'));
+            return $mail->action($action, url('/'));
         }
 
-        $mail->subject('You\'re off '.count($this->shifts).' shifts')
-            ->line('You\'re off these shifts:');
+        $mail->subject(EmailText::line('shifts_released.subject.other', ['count' => count($this->shifts)]))
+            ->line(EmailText::line('shifts_released.list_intro'));
 
         foreach ($this->shifts as $shift) {
-            $mail->line($shift['shadowSpot'] ? $shift['date'].': shadow spot on '.$shift['area'] : $shift['area'].', '.$shift['when']);
+            $mail->line($shift['shadowSpot'] ? EmailText::line('shifts_released.shadow_spot_item', ['date' => $shift['date'], 'area' => $shift['area']]) : EmailText::line('shifts_released.shift_item', ['area' => $shift['area'], 'when' => $shift['when']]));
         }
 
         $nobodyAsked = collect($this->shifts)->where('nobodyAsked', true);
         $asked = collect($this->shifts)->where('nobodyAsked', false)->where('shadowSpot', false);
 
         foreach ($nobodyAsked as $shift) {
-            $mail->line($shift['area'].' still has the people it needs on '.$shift['date'].', so nobody else was asked.');
+            $mail->line(EmailText::line('shifts_released.nobody_asked_on_date', ['area' => $shift['area'], 'date' => $shift['date']]));
         }
 
         if ($asked->isNotEmpty()) {
-            $mail->line($nobodyAsked->isEmpty() ? 'We\'ve asked other volunteers to cover them, and we\'ll email you when someone does.' : 'We\'ve asked other volunteers to cover the rest, and we\'ll email you when someone does.');
+            $mail->line(EmailText::line($nobodyAsked->isEmpty() ? 'shifts_released.asked_all' : 'shifts_released.asked_rest'));
         }
 
         // One line per group of shadows, naming the dates unless it's every one of them.
         $byShadows = collect($this->shifts)->filter(fn (array $shift) => $shift['shadows'] !== [])->groupBy(fn (array $shift) => implode("\n", $shift['shadows']));
 
         foreach ($byShadows as $group) {
-            $dates = count($group) === count($this->shifts) ? 'these dates' : Arr::join($group->pluck('date')->all(), ', ', ' and ');
-            $mail->line(self::names($group->first()['shadows']).' going to shadow you on '.$dates.', so we\'ve told them too.');
+            $shadows = $group->first()['shadows'];
+            $names = self::names($shadows);
+            $mail->line(count($group) === count($this->shifts)
+                ? EmailText::choice('shifts_released.shadows_told_every_date', count($shadows), ['names' => $names])
+                : EmailText::choice('shifts_released.shadows_told_on_dates', count($shadows), ['names' => $names, 'dates' => Arr::join($group->pluck('date')->all(), ', ', ' and ')]));
         }
 
         $weekdays = collect($this->shifts)->where('regular', true)->pluck('weekday')->unique()->values();
@@ -109,19 +113,19 @@ class ShiftsReleasedNotification extends Notification
         if ($noLongerRegular !== null) {
             $mail->line($noLongerRegular);
         } elseif ($weekdays->isNotEmpty()) {
-            $mail->line(($weekdays->count() === 1 ? 'You stay the '.$weekdays[0].' regular.' : 'You stay the regular on your weekly shifts.').' This only changes these dates.');
+            $mail->line($weekdays->count() === 1 ? EmailText::line('shifts_released.stay_regular_weekday', ['weekday' => $weekdays[0]]) : EmailText::line('shifts_released.stay_regular_weekly'));
         }
 
         if ($asked->isNotEmpty()) {
-            $mail->line('If you can make any of them after all, you can take them back from your home page while they\'re still open.');
+            $mail->line(EmailText::choice('shifts_released.take_back', count($this->shifts)));
         }
 
-        return $mail->action('Open my shifts', url('/'));
+        return $mail->action($action, url('/'));
     }
 
-    /** "Casey was", "Casey and Jo were". */
+    /** "Casey", "Casey and Jo". */
     private static function names(array $names): string
     {
-        return Arr::join($names, ', ', ' and ').(count($names) === 1 ? ' was' : ' were');
+        return Arr::join($names, ', ', ' and ');
     }
 }

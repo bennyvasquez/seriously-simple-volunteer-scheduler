@@ -17,8 +17,8 @@ class TwoFactorCodeNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Your login code')
-            ->line("Your code is {$this->code}. It works for 10 minutes.")
-            ->line('If you didn\'t just try to log in, change your password: someone may know it.');
+            ->subject(EmailText::line('two_factor_code.subject'))
+            ->line(EmailText::line('two_factor_code.code', ['code' => $this->code]))
+            ->line(EmailText::line('two_factor_code.outro'));
     }
 }

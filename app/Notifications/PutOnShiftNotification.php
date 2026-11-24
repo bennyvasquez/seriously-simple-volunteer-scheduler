@@ -27,7 +27,7 @@ class PutOnShiftNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject("You're on a {$this->area} shift")
-            ->line("You're on the {$this->area} shift on {$this->when}. If you can't make it, let your coordinator know.");
+            ->subject(EmailText::line('put_on_shift.subject', ['area' => $this->area]))
+            ->line(EmailText::line('put_on_shift.body', ['area' => $this->area, 'when' => $this->when]));
     }
 }

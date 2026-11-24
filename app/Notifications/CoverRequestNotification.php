@@ -42,40 +42,40 @@ class CoverRequestNotification extends Notification
         $area = $first['area'];
         $several = count($this->shifts) > 1;
 
-        $mail = (new MailMessage)->greeting('Hi '.$notifiable->firstName().',');
+        $mail = (new MailMessage)->greeting(EmailText::line('cover_request.greeting', ['first_name' => $notifiable->firstName()]));
 
         if ($this->stillOpen) {
-            $mail->subject('Still open: '.$first['area'].' on '.$first['date'])
-                ->line('Nobody has taken '.$this->releaserFirstName.'\'s '.$area.' shift yet. It\'s '.$first['when'].'.');
+            $mail->subject(EmailText::line('cover_request.subject_still_open', ['area' => $area, 'date' => $first['date']]))
+                ->line(EmailText::line('cover_request.still_open', ['releaser' => $this->releaserFirstName, 'area' => $area, 'when' => $first['when']]));
         } elseif ($this->gaveUpSlot) {
-            $mail->subject('Can you cover '.$area.' on '.($several ? 'some '.$this->weekday().'s' : $first['date']).'?')
-                ->line($this->releaserFirstName.' is giving up their weekly '.$this->weekday().' '.$area.' slot. These dates need someone:');
+            $mail->subject(EmailText::choice('cover_request.subject_gave_up', count($this->shifts), ['area' => $area, 'date' => $first['date'], 'weekdays' => $this->weekday().'s']))
+                ->line(EmailText::line('cover_request.gave_up', ['releaser' => $this->releaserFirstName, 'weekday' => $this->weekday(), 'area' => $area]));
         } else {
-            $mail->subject('Can you cover '.$area.($several ? ' on '.count($this->shifts).' dates?' : ' on '.$first['date'].'?'))
-                ->line($this->releaserFirstName.' can\'t make their '.$area.' '.($several ? 'shifts' : 'shift').'. Can you take '.($several ? 'one?' : 'it?'));
+            $mail->subject(EmailText::choice('cover_request.subject', count($this->shifts), ['area' => $area, 'date' => $first['date'], 'count' => count($this->shifts)]))
+                ->line(EmailText::choice('cover_request.cant_make', count($this->shifts), ['releaser' => $this->releaserFirstName, 'area' => $area]));
         }
 
         if (! $this->stillOpen) {
             foreach ($this->shifts as $shift) {
-                $mail->line($several ? '['.$shift['area'].', '.$shift['when'].']('.$shift['url'].')' : $shift['area'].', '.$shift['when']);
+                $mail->line($several ? EmailText::line('cover_request.shift_link', ['area' => $shift['area'], 'when' => $shift['when'], 'url' => $shift['url']]) : EmailText::line('cover_request.shift_item', ['area' => $shift['area'], 'when' => $shift['when']]));
             }
         }
 
         if ($this->note !== null && $this->note !== '') {
-            $mail->line(PlainText::line('Note from '.$this->releaserFirstName.': '.$this->note));
+            $mail->line(PlainText::line(EmailText::line('cover_request.note', ['releaser' => $this->releaserFirstName, 'note' => $this->note])));
         }
 
         if (! $several) {
-            $mail->action('Take this shift', $first['url'])
-                ->line('The first person to take it gets it. You\'ll log in first if you aren\'t already.');
+            $mail->action(EmailText::line('cover_request.action'), $first['url'])
+                ->line(EmailText::line('cover_request.first_person_one'));
         } else {
-            $mail->line('Pick a date to take it. The first person to take each date gets it. You\'ll log in first if you aren\'t already.');
+            $mail->line(EmailText::line('cover_request.first_person_several'));
         }
 
         return $mail
-            ->line('You\'re getting this because you volunteer with '.$this->organization.' and cover request emails are on for you.')
+            ->line(EmailText::line('cover_request.reason', ['organization' => $this->organization]))
             // The Emails page comes in a later task; this is its address.
-            ->line('[Stop getting cover requests]('.url('/account/emails').')');
+            ->line(EmailText::line('cover_request.stop', ['url' => url('/account/emails')]));
     }
 
     private function weekday(): string

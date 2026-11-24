@@ -18,9 +18,9 @@ class ConfirmItsYouNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Confirm it\'s you')
-            ->line('You asked to change the email address you log in with. Open this link to confirm it\'s you and keep going.')
-            ->action('Confirm it\'s me', $this->url)
-            ->line('This link works once and expires in 15 minutes. If you didn\'t ask for it, you can ignore this email and nothing changes.');
+            ->subject(EmailText::line('confirm_its_you.subject'))
+            ->line(EmailText::line('confirm_its_you.intro'))
+            ->action(EmailText::line('confirm_its_you.action'), $this->url)
+            ->line(EmailText::line('confirm_its_you.outro'));
     }
 }

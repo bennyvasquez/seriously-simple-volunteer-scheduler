@@ -59,22 +59,24 @@ class ShiftTimeChangedNotification extends Notification
         $sameNow = $rows->pluck('now')->unique()->count() === 1;
         $sameWas = $rows->pluck('was')->unique()->count() === 1;
         $this->subject = $sameNow && $rows->pluck('shift.area_id')->unique()->count() === 1
-            ? "Your {$area} shift ".($backOn ? 'is back on at ' : 'moved to ').$rows->first()['now']
-            : 'Your shifts '.($backOn ? 'are back on at new times' : 'changed');
+            ? EmailText::line($backOn ? 'shift_time_changed.subject.back_on' : 'shift_time_changed.subject.moved', ['area' => $area, 'time' => $rows->first()['now']])
+            : EmailText::line($backOn ? 'shift_time_changed.subject.back_on_several' : 'shift_time_changed.subject.changed');
 
         $this->intro = match (true) {
-            $backOn && ! $several => "Your {$area} shift on {$rows->first()['date']->format('l, F j')} is back on, at a new time.",
-            $backOn => "Your {$area} shifts are back on, at new times.",
-            $changedByName !== null => $changedByName.' changed the time of your '.$area.' '.($several ? 'shifts.' : 'shift.'),
-            default => "The {$area} schedule changed.",
+            $backOn && ! $several => EmailText::line('shift_time_changed.intro.back_on_one', ['area' => $area, 'date' => $rows->first()['date']->format('l, F j')]),
+            $backOn => EmailText::line('shift_time_changed.intro.back_on_several', ['area' => $area]),
+            $changedByName !== null => EmailText::line($several ? 'shift_time_changed.intro.changed_several' : 'shift_time_changed.intro.changed_one', ['changed_by' => $changedByName, 'area' => $area]),
+            default => EmailText::line('shift_time_changed.intro.by_system', ['area' => $area]),
         };
 
         if ($several && $sameNow && $sameWas && $rows->every(fn (array $row) => $row['titleSentence'] === '') && self::consecutiveDatesOfOneSlot($items->pluck('shift'))) {
             $row = $rows->first();
             $last = $rows->last()['date'];
-            $this->lines = [$row['date']->format('l').'s from '.$row['date']->format('F j').' to '.$last->format('F j').': '.$row['now'].' (was '.$row['was'].')'];
+            $this->lines = [EmailText::line('shift_time_changed.range', ['weekdays' => $row['date']->format('l').'s', 'from' => $row['date']->format('F j'), 'to' => $last->format('F j'), 'now' => $row['now'], 'was' => $row['was']])];
         } else {
-            $this->lines = $rows->map(fn (array $row) => $row['date']->format('l, F j').': '.$row['now'].' (was '.$row['was'].')'.($row['titleSentence'] === '' ? '' : '.'.$row['titleSentence']))->all();
+            $this->lines = $rows->map(fn (array $row) => $row['titleSentence'] === ''
+                ? EmailText::line('shift_time_changed.line', ['date' => $row['date']->format('l, F j'), 'now' => $row['now'], 'was' => $row['was']])
+                : EmailText::line('shift_time_changed.line_with_title', ['date' => $row['date']->format('l, F j'), 'now' => $row['now'], 'was' => $row['was'], 'title_sentence' => $row['titleSentence']]))->all();
         }
 
         $this->stillWorksUrl = route('changes.show', $batch);
@@ -127,13 +129,16 @@ class ShiftTimeChangedNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)->subject($this->subject)->greeting('Hi '.$notifiable->firstName().',')->markdown('mail.change-notice', [
+        return (new MailMessage)->subject($this->subject)->greeting(EmailText::line('shift_time_changed.greeting', ['first_name' => $notifiable->firstName()]))->markdown('mail.change-notice', [
             'intro' => $this->intro,
             'lines' => $this->lines,
             'titleLines' => $this->titleLines,
+            'question' => EmailText::line('shift_time_changed.question'),
+            'stillWorksLabel' => EmailText::line('shift_time_changed.still_works'),
             'stillWorksUrl' => $this->stillWorksUrl,
+            'cantLabel' => EmailText::line('shift_time_changed.cant'),
             'cantUrl' => $this->cantUrl,
-            'leadChecks' => $this->leadChecks,
+            'loginNote' => EmailText::line('shift_time_changed.login').($this->leadChecks ? ' '.EmailText::line('shift_time_changed.lead_checks') : ''),
         ]);
     }
 }

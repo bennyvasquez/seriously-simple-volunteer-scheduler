@@ -24,7 +24,7 @@ class MadeRegularNotification extends Notification
     {
         $this->area = $slot->area->name;
         $this->slot = $slot->describe();
-        $this->how = $regular->frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek ? 'every other week' : 'every week';
+        $this->how = EmailText::line($regular->frequency === SlotFrequency::EveryOtherWeek || $slot->frequency === SlotFrequency::EveryOtherWeek ? 'made_regular.how.every_other_week' : 'made_regular.how.every_week');
         $this->startingOn = ($regular->firstWorkedDate() ?? CarbonImmutable::parse($regular->starts_on->toDateString(), 'UTC'))->format('l, F j');
     }
 
@@ -36,11 +36,11 @@ class MadeRegularNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject("You're now a regular for {$this->area}")
-            ->line("You're now the regular for {$this->area} on {$this->slot}, {$this->how}, starting {$this->startingOn}.");
+            ->subject(EmailText::line('made_regular.subject', ['area' => $this->area]))
+            ->line(EmailText::line('made_regular.intro', ['area' => $this->area, 'slot' => $this->slot, 'how' => $this->how, 'starting_on' => $this->startingOn]));
 
         if ($this->shifts > 0) {
-            $mail->line("We've put you on ".($this->shifts === 1 ? '1 shift' : "{$this->shifts} shifts").' already on the schedule.');
+            $mail->line(EmailText::choice('made_regular.shifts', $this->shifts, ['count' => $this->shifts]));
         }
 
         return $mail;

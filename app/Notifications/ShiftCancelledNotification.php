@@ -22,8 +22,8 @@ class ShiftCancelledNotification extends Notification
      */
     public function __construct(Collection $shifts, public string $reason, ?Collection $restored = null)
     {
-        $this->shifts = $shifts->map(fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText())->values()->all();
-        $this->restored = ($restored ?? collect())->map(fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText())->values()->all();
+        $this->shifts = $shifts->map(fn (Shift $shift) => EmailText::line('shift_cancelled.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]))->values()->all();
+        $this->restored = ($restored ?? collect())->map(fn (Shift $shift) => EmailText::line('shift_restored.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]))->values()->all();
     }
 
     public function via(object $notifiable): array
@@ -33,14 +33,14 @@ class ShiftCancelledNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)->subject(count($this->shifts) === 1 ? 'A shift you were on is cancelled' : 'Shifts you were on are cancelled');
+        $mail = (new MailMessage)->subject(EmailText::choice('shift_cancelled.subject', count($this->shifts)));
 
         foreach (self::cancelledLines($this->shifts, $this->reason) as $line) {
             $mail->line($line);
         }
 
         if ($this->restored !== []) {
-            $mail->subject('Changes to your shifts');
+            $mail->subject(EmailText::line('shift_cancelled.subject_changes'));
 
             foreach (ShiftRestoredNotification::backOnLines($this->restored) as $line) {
                 $mail->line($line);
@@ -61,10 +61,14 @@ class ShiftCancelledNotification extends Notification
         $sentence = self::sentence($reason);
 
         if (count($shifts) === 1) {
-            return ["The {$shifts[0]} is cancelled: {$sentence} You don't need to do anything."];
+            return [EmailText::choice('shift_cancelled.body', 1, ['shift' => $shifts[0], 'reason' => $sentence])];
         }
 
-        return ["These shifts are cancelled: {$sentence}", ...array_map(fn (string $shift) => "The {$shift}.", $shifts), "You don't need to do anything."];
+        return [
+            EmailText::choice('shift_cancelled.body', count($shifts), ['reason' => $sentence]),
+            ...array_map(fn (string $shift) => EmailText::line('shift_cancelled.shift_item', ['shift' => $shift]), $shifts),
+            EmailText::line('shift_cancelled.outro'),
+        ];
     }
 
     /** The reason as a sentence: a period is added unless it already ends with one, or with a question or exclamation mark. */

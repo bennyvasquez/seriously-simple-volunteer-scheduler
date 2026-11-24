@@ -8,7 +8,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Str;
 
 /**
  * The urgent email (wireframe 49): a released shift starts in less than 24 hours and nobody has taken it. Sent to the area's active leads and everyone with the coordinator role (decision 12). `$reason` says why this person gets it: "a shift lead for Front desk" or "a coordinator". When one action escalates several shifts, merge() folds them into one email per person.
@@ -53,41 +52,43 @@ class CoverUrgentNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $reason = 'You\'re getting this because you\'re '.Arr::join($this->reasons, ', ', ' and ').'.';
+        $reason = EmailText::line('cover_urgent.reason', ['reasons' => Arr::join($this->reasons, ', ', ' and ')]);
 
         if (count($this->shifts) === 1) {
             $shift = $this->shifts[0];
 
             return (new MailMessage)
-                ->subject('Needs someone tomorrow: '.$shift['area'].', '.$shift['date'])
-                ->line('Nobody has taken this shift yet, and it starts in less than 24 hours.')
-                ->line($shift['area'].', '.$shift['when'].'. '.self::needs($shift))
+                ->subject(EmailText::line('cover_urgent.subject.one', ['area' => $shift['area'], 'date' => $shift['date']]))
+                ->line(EmailText::line('cover_urgent.unclaimed.one'))
+                ->line(EmailText::line('cover_urgent.shift_line', ['area' => $shift['area'], 'when' => $shift['when'], 'needs' => self::needs($shift)]))
                 ->line(self::released($shift))
-                ->action('Open the shift', $shift['url'])
-                ->line('It\'s marked urgent on the calendar until someone takes it. From the shift you can put someone on it yourself.')
+                ->action(EmailText::line('cover_urgent.action'), $shift['url'])
+                ->line(EmailText::line('cover_urgent.marked_urgent.one'))
                 ->line($reason);
         }
 
         $mail = (new MailMessage)
-            ->subject('Needs someone tomorrow: '.count($this->shifts).' shifts')
-            ->line('Nobody has taken these shifts yet, and they start in less than 24 hours.');
+            ->subject(EmailText::line('cover_urgent.subject.other', ['count' => count($this->shifts)]))
+            ->line(EmailText::line('cover_urgent.unclaimed.other'));
 
         foreach ($this->shifts as $shift) {
-            $mail->line('['.$shift['area'].', '.$shift['when'].']('.$shift['url'].'). '.self::needs($shift).' '.self::released($shift));
+            $mail->line(EmailText::line('cover_urgent.shift_link_line', ['area' => $shift['area'], 'when' => $shift['when'], 'url' => $shift['url'], 'needs' => self::needs($shift), 'released' => self::released($shift)]));
         }
 
         return $mail
-            ->line('They\'re marked urgent on the calendar until someone takes them. From each shift you can put someone on it yourself.')
+            ->line(EmailText::line('cover_urgent.marked_urgent.other'))
             ->line($reason);
     }
 
     private static function needs(array $shift): string
     {
-        return 'Needs '.$shift['openPlaces'].' more '.Str::plural('person', $shift['openPlaces']).'.';
+        return EmailText::choice('cover_urgent.needs', $shift['openPlaces'], ['count' => $shift['openPlaces']]);
     }
 
     private static function released(array $shift): string
     {
-        return $shift['releaser'].' released it on '.$shift['releasedOn'].'. We emailed '.$shift['notifiedCount'].' '.Str::plural('volunteer', $shift['notifiedCount']).' when it was released'.($shift['resent'] ? ' and again 72 hours before' : '').'.';
+        $count = $shift['notifiedCount'];
+
+        return EmailText::line('cover_urgent.released', ['releaser' => $shift['releaser'], 'released_on' => $shift['releasedOn']]).' '.EmailText::choice($shift['resent'] ? 'cover_urgent.emailed_again' : 'cover_urgent.emailed', $count, ['count' => $count]);
     }
 }

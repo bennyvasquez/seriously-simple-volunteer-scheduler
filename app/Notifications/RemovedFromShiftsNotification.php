@@ -13,10 +13,14 @@ class RemovedFromShiftsNotification extends Notification
     /** @var list<string> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
     public array $shifts;
 
+    /** The first shift's area name, for the subject when there's one shift. */
+    public string $area;
+
     /** @param  Collection<int, Shift>  $shifts */
     public function __construct(Collection $shifts)
     {
-        $this->shifts = $shifts->map(fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText())->values()->all();
+        $this->area = $shifts->first()->area->name;
+        $this->shifts = $shifts->map(fn (Shift $shift) => EmailText::line('removed_from_shifts.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]))->values()->all();
     }
 
     public function via(object $notifiable): array
@@ -26,21 +30,23 @@ class RemovedFromShiftsNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        if (count($this->shifts) === 1) {
+        $count = count($this->shifts);
+
+        if ($count === 1) {
             return (new MailMessage)
-                ->subject('You\'ve been removed from a '.explode(' shift on ', $this->shifts[0])[0].' shift')
-                ->line("You're no longer on the {$this->shifts[0]}.")
-                ->line('If you didn\'t expect this, ask your coordinator.');
+                ->subject(EmailText::choice('removed_from_shifts.subject', 1, ['area' => $this->area]))
+                ->line(EmailText::choice('removed_from_shifts.intro', 1, ['shift' => $this->shifts[0]]))
+                ->line(EmailText::line('removed_from_shifts.outro'));
         }
 
         $mail = (new MailMessage)
-            ->subject('You\'ve been removed from '.count($this->shifts).' shifts')
-            ->line('You\'re no longer on these shifts:');
+            ->subject(EmailText::choice('removed_from_shifts.subject', $count, ['count' => $count]))
+            ->line(EmailText::choice('removed_from_shifts.intro', $count));
 
         foreach ($this->shifts as $shift) {
-            $mail->line("The {$shift}.");
+            $mail->line(EmailText::line('removed_from_shifts.shift_item', ['shift' => $shift]));
         }
 
-        return $mail->line('If you didn\'t expect this, ask your coordinator.');
+        return $mail->line(EmailText::line('removed_from_shifts.outro'));
     }
 }

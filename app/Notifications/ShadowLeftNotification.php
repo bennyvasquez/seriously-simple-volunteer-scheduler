@@ -33,31 +33,32 @@ class ShadowLeftNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $name = $this->shadowFirstName;
+        $count = count($this->shifts);
 
-        if (count($this->shifts) === 1) {
+        if ($count === 1) {
             $shift = $this->shifts[0];
             $mail = (new MailMessage)
-                ->subject($name.' can\'t make their shadow shift')
-                ->line($name.' can\'t make their shadow shift on '.$shift['area'].', '.$shift['when'].'. We\'ve taken them off it, so they won\'t be there and the shadow spot is open again.');
+                ->subject(EmailText::choice('shadow_left.subject', 1, ['shadow' => $name]))
+                ->line(EmailText::choice('shadow_left.intro', 1, ['shadow' => $name, 'area' => $shift['area'], 'when' => $shift['when']]));
 
             return $this->withNote($mail)
-                ->action('Open the shift', $shift['url'])
-                ->line('You\'re getting this because you\'re a coordinator.');
+                ->action(EmailText::line('shadow_left.action'), $shift['url'])
+                ->line(EmailText::line('shadow_left.outro'));
         }
 
         $mail = (new MailMessage)
-            ->subject($name.' can\'t make '.count($this->shifts).' shadow shifts')
-            ->line($name.' can\'t make these shadow shifts. We\'ve taken them off, so they won\'t be there and the shadow spots are open again:');
+            ->subject(EmailText::choice('shadow_left.subject', $count, ['shadow' => $name, 'count' => $count]))
+            ->line(EmailText::choice('shadow_left.intro', $count, ['shadow' => $name]));
 
         foreach ($this->shifts as $shift) {
-            $mail->line('['.$shift['area'].', '.$shift['when'].']('.$shift['url'].')');
+            $mail->line(EmailText::line('shadow_left.shift_link', ['area' => $shift['area'], 'when' => $shift['when'], 'url' => $shift['url']]));
         }
 
-        return $this->withNote($mail)->line('You\'re getting this because you\'re a coordinator.');
+        return $this->withNote($mail)->line(EmailText::line('shadow_left.outro'));
     }
 
     private function withNote(MailMessage $mail): MailMessage
     {
-        return $this->note === null || $this->note === '' ? $mail : $mail->line(PlainText::line('Note from '.$this->shadowFirstName.': '.$this->note));
+        return $this->note === null || $this->note === '' ? $mail : $mail->line(PlainText::line(EmailText::line('shadow_left.note', ['shadow' => $this->shadowFirstName, 'note' => $this->note])));
     }
 }

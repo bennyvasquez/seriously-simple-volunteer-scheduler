@@ -38,29 +38,29 @@ class ShiftTakenNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject('You\'re on '.$this->area.', '.$this->date)
-            ->greeting('Hi '.$notifiable->firstName().($this->tookBack ? ', you\'re back on.' : ', thanks for covering!'));
+            ->subject(EmailText::line('shift_taken.subject', ['area' => $this->area, 'date' => $this->date]))
+            ->greeting(EmailText::line($this->tookBack ? 'shift_taken.greeting_back_on' : 'shift_taken.greeting_thanks', ['first_name' => $notifiable->firstName()]));
 
         if ($this->regularHow !== null) {
-            $mail->line('You\'re now the '.$this->regularHow.' regular for '.$this->area.', starting '.$this->date.'.');
+            $mail->line(EmailText::line('shift_taken.regular', ['how' => $this->regularHow, 'area' => $this->area, 'date' => $this->date]));
         }
 
-        $mail->line($this->when.', '.$this->area.'.');
+        $mail->line(EmailText::line('shift_taken.when_area', ['when' => $this->when, 'area' => $this->area]));
 
         if (! $this->tookBack && $this->releaserFirstName !== null && $this->note !== null && $this->note !== '') {
-            $mail->line(PlainText::line('Note from '.$this->releaserFirstName.': '.$this->note));
+            $mail->line(PlainText::line(EmailText::line('shift_taken.note', ['releaser' => $this->releaserFirstName, 'note' => $this->note])));
         }
 
         if ($this->shadowFirstNames !== []) {
-            $mail->line(Arr::join($this->shadowFirstNames, ', ', ' and ').(count($this->shadowFirstNames) === 1 ? ' is' : ' are').' shadowing.');
+            $mail->line(EmailText::choice('shift_taken.shadowing', count($this->shadowFirstNames), ['names' => Arr::join($this->shadowFirstNames, ', ', ' and ')]));
         }
 
         if ($this->skippedDates !== []) {
-            $mail->line('You\'re not on '.Arr::join($this->skippedDates, ', ', ' or ').' because you\'re already on another shift then.');
+            $mail->line(EmailText::line('shift_taken.not_on_other_shift', ['dates' => Arr::join($this->skippedDates, ', ', ' or ')]));
         }
 
         if ($this->fullDates !== []) {
-            $mail->line('You\'re not on '.Arr::join($this->fullDates, ', ', ' or ').' because they already have the people they need.');
+            $mail->line(EmailText::line('shift_taken.not_on_full', ['dates' => Arr::join($this->fullDates, ', ', ' or ')]));
         }
 
         return $mail;

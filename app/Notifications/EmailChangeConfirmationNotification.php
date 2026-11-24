@@ -21,8 +21,8 @@ class EmailChangeConfirmationNotification extends Notification
         $organization = Organization::query()->value('name') ?? config('app.name');
 
         return (new MailMessage)
-            ->subject('Confirm your new email address')
-            ->line('Someone asked to use this address to log in to '.$organization.'. If it was you, open this link to confirm. It works once, for 60 minutes. If it wasn\'t you, ignore this email and nothing changes.')
-            ->action('Confirm this address', $this->url);
+            ->subject(EmailText::line('email_change_confirmation.subject'))
+            ->line(EmailText::line('email_change_confirmation.intro', ['organization' => $organization]))
+            ->action(EmailText::line('email_change_confirmation.action'), $this->url);
     }
 }

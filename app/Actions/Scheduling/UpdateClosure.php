@@ -11,6 +11,7 @@ use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
+use App\Notifications\EmailText;
 use App\Notifications\ShiftCancelledNotification;
 use App\Notifications\ShiftRestoredNotification;
 use App\Notifications\ShiftTimeChangedNotification;
@@ -333,7 +334,7 @@ class UpdateClosure
 
                 if (isset($timeNotices[$id])) {
                     $notification = $timeNotices[$id]['notification'];
-                    $text = fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText();
+                    $text = fn (Shift $shift) => EmailText::line('shift_time_changed.shift_phrase', ['area' => $shift->area->name, 'when' => $shift->whenText()]);
                     $backOn = $restored->reject(fn (Shift $shift) => in_array($shift->id, $notification->shiftIds, true));
                     $lines = $backOn->isEmpty() ? [] : ShiftRestoredNotification::backOnLines($backOn->map($text)->values()->all());
 

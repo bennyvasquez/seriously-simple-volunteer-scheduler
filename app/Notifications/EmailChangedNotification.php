@@ -34,7 +34,7 @@ class EmailChangedNotification extends Notification
         $organization = Organization::query()->value('name') ?? config('app.name');
 
         return (new MailMessage)
-            ->subject('Your login email was changed')
-            ->line('Your login email for '.$organization.' was changed to '.$this->maskedAddress.'. If this wasn\'t you, contact a coordinator right away.');
+            ->subject(EmailText::line('email_changed.subject'))
+            ->line(EmailText::line('email_changed.body', ['organization' => $organization, 'new_address' => $this->maskedAddress]));
     }
 }

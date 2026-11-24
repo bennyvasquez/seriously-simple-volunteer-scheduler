@@ -10,25 +10,25 @@
 
 @endif
 @if ($stillWorksUrl !== null)
-The time of this shift changed, and you haven't told us yet whether the new time works.
+{{ $timeChanged }}
 
 <x-mail::button :url="$stillWorksUrl">
-Still works for me
+{{ $stillWorksLabel }}
 </x-mail::button>
 
 <x-mail::button :url="$cantUrl" color="error">
-I can't make the new time
+{{ $cantLabel }}
 </x-mail::button>
 
-You'll log in first if you aren't already.
+{{ $loginNote }}
 
 @endif
 @if ($releaseUrl !== null)
 <x-mail::button :url="$releaseUrl" color="error">
-Can't make it
+{{ $releaseLabel }}
 </x-mail::button>
 
 @endif
 
-You can turn these reminders off on the [Emails page]({{ $emailsUrl }}).
+{{ $turnOff }}
 </x-mail::message>

@@ -15,8 +15,8 @@ class PasswordChangedNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Your password was changed')
-            ->line('Your password was just changed.')
-            ->line('If that wasn\'t you, reset it again and tell a coordinator.');
+            ->subject(EmailText::line('password_changed.subject'))
+            ->line(EmailText::line('password_changed.intro'))
+            ->line(EmailText::line('password_changed.outro'));
     }
 }
