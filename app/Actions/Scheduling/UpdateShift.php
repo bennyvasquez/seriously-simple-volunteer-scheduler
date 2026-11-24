@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Notifications\ShiftChangedNotification;
+use App\Notifications\ShiftTimeChangedNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -18,10 +19,12 @@ use Illuminate\Validation\ValidationException;
 /**
  * Changes one shift's times, people needed, shadow spots or title. The date stays. Times are local wall-clock times, and an end before the start means the next day. Keys left out keep their current value.
  *
- * A shift with people on it can be edited too. StaffedShiftChecks refuses lowering the shadow spots below the shadows on it and a new time that double-books someone on it (shown beside the field), and lowering the people needed below the people on it is allowed. When the time or title changed, everyone on it who can sign in is emailed after the response with ShiftChangedNotification; changing only the people needed or shadow spots emails nobody. Locks the area, then the shift, then reads the people and their other shifts. Sets edited_at, so later changes to its weekly slot leave it alone. Refuses a shift that has started or is cancelled. Saving without a change does nothing.
+ * A shift with people on it can be edited too. StaffedShiftChecks refuses lowering the shadow spots below the shadows on it and a new time that double-books someone on it (shown beside the field), and lowering the people needed below the people on it is allowed. When the time or title changed, everyone on it who can sign in is emailed after the response: a changed time records a change notice for each of them (SendChangeNotices) and sends ShiftTimeChangedNotification, asking whether the new time works, while a changed title alone sends the plain ShiftChangedNotification; changing only the people needed or shadow spots emails nobody. Locks the area, then the shift, then reads the people and their other shifts. Sets edited_at, so later changes to its weekly slot leave it alone. Refuses a shift that has started or is cancelled. Saving without a change does nothing.
  */
 class UpdateShift
 {
+    public function __construct(private SendChangeNotices $notices) {}
+
     public function handle(User $actor, Shift $shift, array $attributes): Shift
     {
         $shift->loadMissing('area');
@@ -31,8 +34,9 @@ class UpdateShift
 
         $emailed = collect();
         $changes = null;
+        $timeNotices = [];
 
-        $result = DB::transaction(function () use ($actor, $shift, $attributes, $timezone, &$emailed, &$changes) {
+        $result = DB::transaction(function () use ($actor, $shift, $attributes, $timezone, &$emailed, &$changes, &$timeNotices) {
             Area::query()->whereKey($shift->area_id)->lockForUpdate()->firstOrFail();
             $fresh = Shift::query()->whereKey($shift->id)->lockForUpdate()->firstOrFail();
 
@@ -89,13 +93,20 @@ class UpdateShift
                 }
 
                 $notify = $fresh->isDirty(['starts_at', 'ends_at', 'title']);
+                $timeChanged = $fresh->isDirty(['starts_at', 'ends_at']);
+                $wasStartsAt = $fresh->getOriginal('starts_at');
+                $wasEndsAt = $fresh->getOriginal('ends_at');
                 $fresh->edited_at = now();
                 $logged = ChangeLogEntry::changesOf($fresh);
                 $fresh->save();
 
                 ChangeLogEntry::record($actor, 'shift.updated', $fresh, ['area_id' => $fresh->area_id], $logged);
 
-                if ($notify) {
+                if ($timeChanged) {
+                    $timeNotices = $this->notices->recordLocked($actor, [['shift' => $fresh->load('area'), 'was_starts_at' => $wasStartsAt, 'was_ends_at' => $wasEndsAt]]);
+                }
+
+                if ($notify && ! $timeChanged) {
                     $emailed = $fresh->assignments()->with('user')->get()->pluck('user')->filter(fn (User $user) => $user->canSignIn())->values();
                     $changes = collect([['shift' => $fresh->load('area'), 'was' => $wasRange, 'wasTitle' => $wasTitle]]);
                 }
@@ -108,6 +119,10 @@ class UpdateShift
 
         if ($changes !== null && $emailed->isNotEmpty()) {
             defer(fn () => $emailed->each(fn (User $person) => $person->notify(new ShiftChangedNotification($changes))));
+        }
+
+        if ($timeNotices !== []) {
+            defer(fn () => collect($timeNotices)->each(fn (array $sent) => $sent['user']->notify($sent['notification'])));
         }
 
         return $result;

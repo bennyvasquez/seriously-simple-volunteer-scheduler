@@ -45,6 +45,8 @@ class RemovePerson
             DB::table('slot_regulars')->where('user_id', $locked->id)->update(['user_id' => $removed->id]);
             DB::table('cover_requests')->where('released_by', $locked->id)->update(['released_by' => $removed->id]);
             DB::table('cover_requests')->where('filled_by', $locked->id)->update(['filled_by' => $removed->id]);
+            DB::table('change_notices')->where('user_id', $locked->id)->update(['user_id' => $removed->id]);
+            DB::table('change_notices')->where('changed_by', $locked->id)->update(['changed_by' => $removed->id]);
             DB::table('change_log')->where('actor_id', $locked->id)->update(['actor_id' => $removed->id]);
             DB::table('change_log')->where('affected_user_id', $locked->id)->update(['affected_user_id' => $removed->id]);
             DB::table('change_log')->where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)->update(['subject_id' => $removed->id]);

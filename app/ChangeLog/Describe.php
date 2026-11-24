@@ -86,6 +86,9 @@ final class Describe
             'cover_request.resent' => 'Cover request sent again for '.self::shiftDay($entry->subject),
             'cover_request.filled' => 'Cover request for '.self::shiftDay($entry->subject).' filled by '.$person,
             'cover_request.escalated' => ucfirst(self::shiftDay($entry->subject)).' marked urgent',
+            'change_notice.sent' => 'Asked '.$person.' whether the new time works for '.self::noticeShifts($entry, $details),
+            'change_notice.confirmed' => ($self ? 'Said' : 'Said for '.$person.' that').' the new time works for '.self::noticeShifts($entry, $details),
+            'change_notice.lead_told' => 'Told the leads that '.$person.' hasn\'t answered about the new time for '.self::noticeShifts($entry, $details),
             'closure.created' => self::closureWords($entry->subject),
             'closure.updated' => self::closureChanged($entry, $areas),
             'closure.removed' => self::closureRemoved($entry, $areas),
@@ -243,6 +246,14 @@ final class Describe
         }
 
         return ($details['type'] ?? null) === 'shadow' ? 'Gave up '.$whose.' shadow spot on '.$shift : 'Released '.$whose.' place on '.$shift;
+    }
+
+    /** "the Front desk shift on Thursday, October 22, 6 to 9pm", or "3 shifts" when the notice covered several. */
+    private static function noticeShifts(ChangeLogEntry $entry, array $details): string
+    {
+        $count = (int) ($details['count'] ?? 1);
+
+        return $count > 1 ? $count.' shifts' : self::shiftWords($entry->subject, true);
     }
 
     /** "Front desk, Thursday, October 22", without the time. */

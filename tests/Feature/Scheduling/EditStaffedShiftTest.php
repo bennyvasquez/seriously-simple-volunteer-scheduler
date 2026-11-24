@@ -16,6 +16,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Notifications\ShiftChangedNotification;
+use App\Notifications\ShiftTimeChangedNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -82,16 +83,13 @@ class EditStaffedShiftTest extends TestCase
             $entry->changes['starts_at'],
         );
 
+        // A time change asks whether the new time works, with the notice email.
         foreach ([$robin, $casey] as $person) {
-            Notification::assertSentTo($person, ShiftChangedNotification::class, function (ShiftChangedNotification $notification) use ($person) {
-                $mail = $notification->toMail($person);
-
-                return $mail->subject === 'Your Front desk shift changed'
-                    && in_array("Your Front desk shift on Thursday, October 22 changed. It's now 5 to 8pm; it was 6 to 9pm.", $mail->introLines, true)
-                    && in_array("If you can't make it, let your coordinator know.", $mail->introLines, true);
-            });
+            Notification::assertSentTo($person, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm'
+                && $notification->lines === ['Thursday, October 22: 5 to 8pm (was 6 to 9pm)']);
         }
-        Notification::assertSentTimes(ShiftChangedNotification::class, 2);
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 2);
+        Notification::assertNotSentTo($robin, ShiftChangedNotification::class);
     }
 
     public function test_a_title_change_is_in_the_email(): void
@@ -208,9 +206,9 @@ class EditStaffedShiftTest extends TestCase
         Notification::fake();
         app(UpdateShift::class)->handle($this->coordinator, $shift, ['start_time' => '17:00', 'end_time' => '20:00']);
 
-        Notification::assertSentTo($robin, ShiftChangedNotification::class);
-        Notification::assertNotSentTo($casey, ShiftChangedNotification::class);
-        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class);
+        Notification::assertNotSentTo($casey, ShiftTimeChangedNotification::class);
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
     }
 
     public function test_the_notification_for_several_shifts(): void

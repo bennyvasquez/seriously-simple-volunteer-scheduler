@@ -49,6 +49,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/shifts/{shift}/shadow', [ShadowController::class, 'show'])->name('shifts.shadow');
         Route::post('/shifts/{shift}/shadow', [ShadowController::class, 'store']);
     });
+    // Task 3 replaces this with the answer page; until then the notice emails can link to it and it answers 404.
+    Route::get('/changes/{batch}', fn () => abort(404))->name('changes.show');
     Route::get('/shifts/released', [ReleaseController::class, 'released'])->name('shifts.released');
     Route::get('/account/emails', [EmailSettingsController::class, 'edit'])->name('account.emails');
     Route::post('/account/emails', [EmailSettingsController::class, 'update']);

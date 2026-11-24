@@ -17,12 +17,14 @@ use App\Enums\SlotFrequency;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\PutOnShiftNotification;
 use App\Notifications\ShiftChangedNotification;
+use App\Notifications\ShiftTimeChangedNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -157,17 +159,11 @@ class EditScheduleTest extends TestCase
         $this->assertSame([], $result->keptReasons);
         $this->assertSame(1, $result->emailed);
 
-        Notification::assertSentTo($robin, ShiftChangedNotification::class, function (ShiftChangedNotification $notification) use ($robin) {
-            $mail = $notification->toMail($robin);
-
-            return $mail->subject === 'Your shifts changed'
-                && $notification->lines === [
-                    "Your Front desk shift on Thursday, October 15 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-                    "Your Front desk shift on Thursday, October 22 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-                    "Your Front desk shift on Thursday, October 29 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-                ];
-        });
-        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+        // One email asks about all three of Robin's Thursdays at once.
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm'
+            && $notification->lines === ['Thursday, October 15, and every Thursday after: 5 to 8pm (was 6 to 9pm)']);
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
+        Notification::assertSentTimes(ShiftChangedNotification::class, 0);
     }
 
     public function test_staffed_shifts_that_fail_a_check_are_kept_with_the_reason(): void
@@ -193,11 +189,11 @@ class EditScheduleTest extends TestCase
         $this->assertSame([$kept->id], $entry->details['kept_shift_ids']);
         $this->assertStringNotContainsString('Robin', json_encode($entry->details));
 
-        Notification::assertSentTo($robin, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => $notification->lines === [
-            "Your Front desk shift on Thursday, October 15 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-            "Your Front desk shift on Thursday, October 29 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-        ]);
-        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+        // Robin is asked about the two shifts that moved, not the one kept.
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm');
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
+        $this->assertSame(2, ChangeNotice::query()->where('user_id', $robin->id)->count());
+        $this->assertSame(0, ChangeNotice::query()->where('shift_id', $kept->id)->count());
     }
 
     public function test_hand_edited_shifts_are_still_kept(): void
@@ -213,9 +209,10 @@ class EditScheduleTest extends TestCase
         $this->assertSame('18:00', $this->localStart($edited->fresh()));
         $this->assertSame([$edited->id => 'Changed on its own'], $result->keptReasons);
         $this->assertSame(7, $result->updatedShifts);
-        Notification::assertSentTo($robin, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => count($notification->lines) === 2
-            && ! str_contains(implode(' ', $notification->lines), 'October 22'));
-        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class);
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
+        $this->assertSame(2, ChangeNotice::query()->where('user_id', $robin->id)->count());
+        $this->assertSame(0, ChangeNotice::query()->where('shift_id', $edited->id)->count());
     }
 
     public function test_a_staffed_shift_the_slot_no_longer_runs_on_is_kept_with_the_reason(): void
@@ -284,8 +281,8 @@ class EditScheduleTest extends TestCase
         $this->assertSame(['areas', 'weekly_slots', 'slot_regulars', 'shifts', 'put on', 'assignments'], array_slice($locks, 0, 6));
         $this->assertSame('17:00', $this->localStart($shift->fresh()));
         $this->assertSame(1, $result->emailed);
-        Notification::assertSentTo($casey, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => $notification->lines === [
-            "Your Front desk shift on Thursday, October 22 changed. It's now 5 to 8pm; it was 6 to 9pm.",
+        Notification::assertSentTo($casey, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->lines === [
+            'Thursday, October 22: 5 to 8pm (was 6 to 9pm)',
         ]);
     }
 
