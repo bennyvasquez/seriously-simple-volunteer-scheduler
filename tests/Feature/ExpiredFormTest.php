@@ -2,10 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
 use Illuminate\Testing\TestResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 /**
@@ -20,8 +21,8 @@ class ExpiredFormTest extends TestCase
         $request = Request::create($uri, $method, ['email' => 'someone@example.org']);
         $request->setLaravelSession($this->app['session.store']);
 
-        // The test kernel skips the token check, so the next step throws the mismatch the real check would.
-        $response = $this->app->make(ValidateCsrfToken::class)->handle($request, fn () => throw new TokenMismatchException('CSRF token mismatch.'));
+        // The same exception Laravel's token check ends up with: prepareException turns the mismatch into a 419.
+        $response = $this->app->make(ExceptionHandler::class)->render($request, new HttpException(419, 'CSRF token mismatch.', new TokenMismatchException('CSRF token mismatch.')));
 
         return new TestResponse($response, $request);
     }
@@ -48,16 +49,12 @@ class ExpiredFormTest extends TestCase
 
     public function test_a_stale_logout_keeps_the_419_page(): void
     {
-        $this->expectException(TokenMismatchException::class);
-
-        $this->render('POST', '/logout');
+        $this->render('POST', '/logout')->assertStatus(419);
     }
 
     public function test_a_stale_post_with_no_page_at_its_address_keeps_the_419_page(): void
     {
-        $this->expectException(TokenMismatchException::class);
-
-        $this->render('POST', '/no-such-page');
+        $this->render('POST', '/no-such-page')->assertStatus(419);
     }
 
     public function test_the_redirect_ignores_the_referer(): void
@@ -66,7 +63,7 @@ class ExpiredFormTest extends TestCase
         $request->headers->set('referer', 'https://evil.example.com/phish');
         $request->setLaravelSession($this->app['session.store']);
 
-        $response = $this->app->make(ValidateCsrfToken::class)->handle($request, fn () => throw new TokenMismatchException('CSRF token mismatch.'));
+        $response = $this->app->make(ExceptionHandler::class)->render($request, new HttpException(419, '', new TokenMismatchException));
 
         $this->assertSame('/shifts/42/take', parse_url($response->headers->get('Location'), PHP_URL_PATH));
         $this->assertStringNotContainsString('evil.example.com', $response->headers->get('Location'));
@@ -88,5 +85,21 @@ class ExpiredFormTest extends TestCase
     public function test_a_plain_visit_with_no_session_goes_to_login_without_the_message(): void
     {
         $this->get('/shifts/42/take')->assertRedirect('/login')->assertSessionMissing('status');
+    }
+
+    public function test_a_guest_posting_to_log_out_gets_no_expired_message(): void
+    {
+        $this->post('/logout')->assertSessionMissing('status');
+    }
+
+    public function test_the_callback_is_registered_for_a_real_token_mismatch(): void
+    {
+        // Laravel skips the token check when the environment is testing, so look like production for this one request.
+        $this->app['env'] = 'production';
+
+        $this->post('/login', ['email' => 'someone@example.org'], ['Sec-Fetch-Site' => 'none'])
+            ->assertRedirect('/login')
+            ->assertSessionHas('status', self::MESSAGE)
+            ->assertSessionMissing('_old_input');
     }
 }
