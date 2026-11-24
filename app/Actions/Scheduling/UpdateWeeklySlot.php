@@ -15,6 +15,8 @@ use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\ShiftChangedNotification;
+use App\Notifications\ShiftTimeChangedNotification;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Notifications\Notification;
@@ -25,7 +27,9 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Saves changes to a weekly slot and brings its future shifts up to date, as far as that is safe without change notices.
  *
- * Future shifts that nobody edited on their own get the slot's new times, people needed, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), a shift nobody is on is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A shift people are on gets the slot's details only when StaffedShiftChecks finds no problem (too few shadow spots for the shadows on it, or a time that double-books someone on it); otherwise it keeps its old details. After the response, each person on a changed shift who can sign in gets one ShiftChangedNotification listing every shift of theirs whose time or title changed; a change to people needed or shadow spots alone emails nobody. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars, who fill any cover request still open on it (the releaser hears who is covering). The generator then adds any new dates. Shifts edited on their own, shifts people are on whose date the slot no longer runs on, and shifts that failed a check keep their old details and are returned as kept with the reason, when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
+ * Future shifts that nobody edited on their own get the slot's new times, people needed, shadow spots and title. If the slot no longer runs on a shift's date (for example the first or last date moved), a shift nobody is on is cancelled with the reason "The weekly slot changed", without emailing anyone since nobody is on it. A shift people are on gets the slot's details only when StaffedShiftChecks finds no problem (too few shadow spots for the shadows on it, or a time that double-books someone on it); otherwise it keeps its old details. After the response, each person on a changed shift who can sign in gets one email: when a time changed, a change notice is recorded for each shift (SendChangeNotices) and they get ShiftTimeChangedNotification asking whether the new time works, otherwise one ShiftChangedNotification listing every shift of theirs whose title changed; a change to people needed or shadow spots alone emails nobody. A date the slot runs on again whose shift a slot change cancelled (going by the change log, not the reason text), with nobody on it and no closure, is brought back with the slot's details and its current regulars, who fill any cover request still open on it (the releaser hears who is covering). The generator then adds any new dates. A shift whose new start for its date has already passed (today's shift, moved earlier) keeps its own times, takes the slot's other details and is returned as kept with the reason "The new time has already passed", so nobody is asked about a time that never applied. Shifts edited on their own, shifts people are on whose date the slot no longer runs on, and shifts that failed a check keep their old details and are returned as kept with the reason, when they differ from the slot or are no longer on its dates. Shifts that have started, and shifts cancelled for any other reason, are never touched.
+ *
+ * With a start date (`$from`, a date today or later; an earlier one counts as today), only shifts on or after it are changed, cancelled, brought back or given a change notice, and the weekly slot itself changes for good: this is "This shift and the ones after it", and no slot is ever split. Shifts before it that nobody edited and that now differ from the slot (or that it no longer runs on) get `edited_at` and a `shift.updated` entry with `via` `slot.updated_from` and no field changes, so a later edit of the whole slot leaves them alone. A cancelled shift between today and the start date that is brought back by hand later gets the slot's new details.
  *
  * Changing the day or how often the slot repeats (including the first date of an every-other-week slot, which sets its weeks) is refused while the slot has current or future regulars or a future shift someone is on, since that changes when they work. Switching to a rotation is refused while it has current or future regulars. The refusals are written to be shown on screen.
  *
@@ -39,20 +43,27 @@ class UpdateWeeklySlot
 
     public const KEPT_OFF_SCHEDULE = 'The slot doesn\'t run on this date any more';
 
-    public function __construct(private GenerateShifts $generator) {}
+    public const KEPT_TIME_PASSED = 'The new time has already passed';
 
-    public function handle(User $actor, WeeklySlot $slot, array $attributes): UpdateResult
+    public function __construct(private GenerateShifts $generator, private SendChangeNotices $notices) {}
+
+    public function handle(User $actor, WeeklySlot $slot, array $attributes, ?CarbonImmutable $from = null): UpdateResult
     {
         $slot->loadMissing('area');
         Gate::forUser($actor)->authorize('manageSchedule', $slot->area);
 
         $organization = Organization::current();
+        // The first local date this edit reaches: the start date, or today when it's earlier (or none was given).
+        $today = $organization->today()->toDateString();
+        $fromDate = $from === null ? null : max($from->setTimezone($organization->timezone)->toDateString(), $today);
         // Each person who can sign in, keyed by id, with the changes to put in their one email.
         $emails = [];
         // The "is covering" emails for cover requests filled by regulars on dates brought back.
         $covered = [];
+        // The time change emails, one per person, from SendChangeNotices.
+        $timeNotices = [];
 
-        $result = DB::transaction(function () use ($actor, $organization, $slot, $attributes, &$emails, &$covered) {
+        $result = DB::transaction(function () use ($actor, $organization, $slot, $attributes, $fromDate, &$emails, &$covered, &$timeNotices) {
             // The area row first, the same order CreateClosure and the generator use, so a slot save and a closure can't deadlock on the shifts.
             Area::query()->whereKey($slot->area_id)->lockForUpdate()->first();
             // Then the slot, so two saves of the same slot can't interleave.
@@ -68,6 +79,7 @@ class UpdateWeeklySlot
 
             $timezone = $organization->timezone;
             $via = ['via' => 'slot.updated', 'weekly_slot_id' => $locked->id];
+            $viaEarlier = ['via' => 'slot.updated_from', 'weekly_slot_id' => $locked->id, 'from' => $fromDate];
 
             // Locked so nobody is put on a shift between reading its people and changing it.
             $shifts = $locked->shifts()->whereNull('cancelled_at')->where('starts_at', '>', now())
@@ -81,11 +93,22 @@ class UpdateWeeklySlot
             $kept = new EloquentCollection;
             $keptReasons = [];
             $cancelled = [];
+            $timeChanges = [];
 
             foreach ($shifts as $shift) {
                 $date = $shift->local_date->toDateString();
                 $runs = $locked->occursOn($date);
                 $people = $assignments->get($shift->id, collect())->pluck('user');
+
+                if ($fromDate !== null && $date < $fromDate) {
+                    // Earlier dates keep their details. One that now differs from the slot is marked as changed on its own, so a later edit of the whole slot leaves it alone.
+                    if ($shift->edited_at === null && (! $runs || $this->differs($shift, $locked, $date, $timezone))) {
+                        $shift->edited_at = now();
+                        $this->saveAndLog($actor, $shift, 'shift.updated', $viaEarlier);
+                    }
+
+                    continue;
+                }
 
                 if ($shift->edited_at !== null || ($people->isNotEmpty() && ! $runs)) {
                     if (! $runs || $this->differs($shift, $locked, $date, $timezone)) {
@@ -107,9 +130,23 @@ class UpdateWeeklySlot
 
                 $was = TimeFormat::range($shift->starts_at->setTimezone($timezone), $shift->ends_at->setTimezone($timezone));
                 $wasTitle = $shift->title;
+                $wasStartsAt = $shift->starts_at;
+                $wasEndsAt = $shift->ends_at;
                 $this->applySlot($shift, $locked, $date, $timezone);
 
+                // Today's shift can't move to a start that has already passed: it keeps its own times (the same as RestoreShift and UpdateShift) and is listed as kept. Its other details still change.
+                $timePassed = $shift->starts_at->lessThanOrEqualTo(now());
+
+                if ($timePassed) {
+                    $shift->fill(['starts_at' => $wasStartsAt, 'ends_at' => $wasEndsAt]);
+                }
+
                 if (! $shift->isDirty()) {
+                    if ($timePassed) {
+                        $kept->push($shift);
+                        $keptReasons[$shift->id] = self::KEPT_TIME_PASSED;
+                    }
+
                     continue;
                 }
 
@@ -127,20 +164,45 @@ class UpdateWeeklySlot
                 }
 
                 $notify = $people->isNotEmpty() && $shift->isDirty(['starts_at', 'ends_at', 'title']);
+                $timeChanged = $people->isNotEmpty() && $shift->isDirty(['starts_at', 'ends_at']);
                 $this->saveAndLog($actor, $shift, 'shift.updated', $via);
                 $updated[] = $shift->id;
+
+                if ($timePassed) {
+                    $kept->push($shift);
+                    $keptReasons[$shift->id] = self::KEPT_TIME_PASSED;
+                }
 
                 if ($notify) {
                     $shift->setRelation('area', $slot->area);
 
-                    foreach ($people->filter(fn (User $person) => $person->canSignIn()) as $person) {
+                    if ($timeChanged) {
+                        $timeChanges[] = ['shift' => $shift, 'was_starts_at' => $wasStartsAt, 'was_ends_at' => $wasEndsAt, 'was_title' => $wasTitle];
+                    }
+
+                    // A shift whose time changed goes in the time email, with its title change on its line.
+                    foreach ($timeChanged ? [] : $people->filter(fn (User $person) => $person->canSignIn()) as $person) {
                         $emails[$person->id] ??= ['person' => $person, 'changes' => []];
                         $emails[$person->id]['changes'][] = ['shift' => $shift, 'was' => $was, 'wasTitle' => $wasTitle];
                     }
                 }
             }
 
-            $updated = [...$updated, ...$this->revive($actor, $locked, $regulars, $organization, $cancelled, $via, $covered)];
+            // After the shift and assignment locks above. A person with a time change gets the one time email, which also carries the title-only changes to their other shifts, not a plain email as well.
+            $timeNotices = $this->notices->recordLocked($actor, $timeChanges);
+
+            // People whose time was undone along with a title change get the plain title email, joined with their other title-only shifts.
+            foreach ($this->notices->titleOnly as $userId => $titleOnly) {
+                $emails[$userId] ??= ['person' => $titleOnly['person'], 'changes' => []];
+                $emails[$userId]['changes'] = [...$emails[$userId]['changes'], ...$titleOnly['changes']];
+            }
+
+            foreach ($timeNotices as $sent) {
+                $sent['notification']->withTitleChanges(collect($emails[$sent['user']->id]['changes'] ?? []));
+                unset($emails[$sent['user']->id]);
+            }
+
+            $updated = [...$updated, ...$this->revive($actor, $locked, $regulars, $organization, $cancelled, $via, $covered, $fromDate)];
             $created = $this->generator->forSlot($organization, $locked);
 
             ChangeLogEntry::record($actor, 'slot.updated', $locked, [
@@ -150,17 +212,26 @@ class UpdateWeeklySlot
                 'kept_shift_ids' => $kept->pluck('id')->all(),
                 'cancelled_shift_ids' => $cancelled,
                 'created_shifts' => $created,
+                ...($fromDate === null ? [] : ['from' => $fromDate]),
             ], $changes);
 
             $slot->setRawAttributes($locked->getAttributes(), true);
 
-            return new UpdateResult(count($updated), $kept, count($cancelled), $created, $keptReasons, count($emails));
+            return new UpdateResult(count($updated), $kept, count($cancelled), $created, $keptReasons, count($emails) + count($timeNotices));
         });
 
         if ($emails !== []) {
             defer(function () use ($emails) {
                 foreach ($emails as $email) {
                     $email['person']->notify(new ShiftChangedNotification(collect($email['changes'])));
+                }
+            });
+        }
+
+        if ($timeNotices !== []) {
+            defer(function () use ($timeNotices) {
+                foreach ($timeNotices as $sent) {
+                    $sent['user']->notify($sent['notification']);
                 }
             });
         }
@@ -218,11 +289,11 @@ class UpdateWeeklySlot
      * @param  list<array{0: User, 1: Notification}>  $covered
      * @return list<int> The ids brought back.
      */
-    private function revive(User $actor, WeeklySlot $slot, EloquentCollection $regulars, Organization $organization, array $justCancelled, array $via, array &$covered): array
+    private function revive(User $actor, WeeklySlot $slot, EloquentCollection $regulars, Organization $organization, array $justCancelled, array $via, array &$covered, ?string $fromDate = null): array
     {
         $candidates = $slot->shifts()->whereNotNull('cancelled_at')
             ->whereNull('area_closure_id')->whereDoesntHave('assignments')
-            ->where('local_date', '>=', $organization->today()->toDateString())->whereNotIn('id', $justCancelled)
+            ->where('local_date', '>=', $fromDate ?? $organization->today()->toDateString())->whereNotIn('id', $justCancelled)
             ->orderBy('local_date')->lockForUpdate()->get();
 
         $revived = [];

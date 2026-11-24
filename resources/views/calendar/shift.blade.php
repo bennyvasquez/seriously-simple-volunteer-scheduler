@@ -20,7 +20,20 @@
 <p>{{ \App\Calendar\TimeFormat::range($shift->starts_at->setTimezone($organization->timezone), $shift->ends_at->setTimezone($organization->timezone)) }}</p>
 @if ($shift->title)<p>{{ $shift->title }}</p>@endif
 <p class="muted">{{ $repeats }}</p>
+@if ($timeChanged ?? null)<p class="muted">{{ $timeChanged }}</p>@endif
 </div>
+@if ($changeNotice ?? null)
+<form method="POST" action="{{ route('changes.confirm', $changeNotice->batch) }}">
+@csrf
+<input type="hidden" name="from" value="shift">
+<input type="hidden" name="shift" value="{{ $shift->id }}">
+<p><b>{{ ($changeWhich ?? null) === null ? 'The time changed.' : 'The time changed for '.$changeWhich.'.' }} Does it still work for you?</b></p>
+<div class="add-actions">
+<button type="submit" class="btn btn-primary">Still works for me</button>
+<a href="{{ route('shifts.release', $shift) }}" class="btn">I can't make the new time</a>
+</div>
+</form>
+@endif
 @if ($shift->cancelled_at)
 <p><b>Cancelled: {{ $shift->cancel_reason }}</b></p>
 @if ($cancelledBy === 'closure')
@@ -33,7 +46,7 @@
 @endif
 <div aria-label="People on this shift" role="group">
 @forelse ($people as $person)
-<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif
+<div class="row"><span>{{ $person['name'] }}</span><span class="muted">{{ $person['role'] }}</span>@if (($person['answer'] ?? null) === 'confirmed') <span class="tag">Confirmed the new time</span>@elseif (($person['answer'] ?? null) === 'waiting') <span class="tag">Hasn't answered yet</span>@endif @if ($person['remove'])<a href="{{ $person['remove'] }}" aria-label="Remove {{ $person['name'] }} from shift">Remove from shift</a>@endif @if ($person['end'])<a href="{{ $person['end'] }}" aria-label="End {{ $person['name'] }}'s time as a regular">End regular</a>@endif
 @if (($person['noShow'] ?? false) || ($person['canMark'] ?? false))
 @if ($person['noShow'])<b>No-show</b>@endif
 @if ($person['canMark'])
@@ -113,8 +126,9 @@
 <fieldset class="choices">
 <legend>Edit which shifts?</legend>
 <label class="check"><input type="radio" name="edit" value="shift" checked><span>This shift<br><span class="muted">Only {{ $shift->local_date->format('l, F j') }}. Later changes to the weekly slot won't overwrite it.@if ($emailCount > 0) {{ $emailCount === 1 ? 'The 1 person on it is' : 'The '.$emailCount.' people on it are' }} emailed if the time or what it's for changes.@endif</span></span></label>
-<label class="check"><input type="radio" name="edit" value="slot"><span>The weekly slot (future shifts nobody changed on their own)<br><span class="muted">{{ $shift->weeklySlot->describe() }}. Shifts with people on them change too, unless that would double-book someone or leave too few shadow spots. The people on them are emailed if the time or what it's for changes.</span></span></label>
+<label class="check"><input type="radio" name="edit" value="following"><span>This shift and the ones after it<br><span class="muted">The weekly slot changes from {{ $shift->local_date->format('F j') }} on, except shifts someone changed on their own. Earlier dates keep their details, and the regulars stay on.</span></span></label>
 </fieldset>
+<p class="muted">If the time changes, everyone on the changed shifts is asked whether the new time works.</p>
 <div class="add-actions">
 <button type="submit" class="btn btn-primary">Continue</button>
 <a href="{{ $panelUrl() }}" class="btn">Back</a>

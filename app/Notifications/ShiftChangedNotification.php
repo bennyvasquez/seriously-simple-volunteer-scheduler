@@ -41,7 +41,7 @@ class ShiftChangedNotification extends Notification
     }
 
     /** @param  array{shift: Shift, was: string, wasTitle: ?string}  $change */
-    private static function line(array $change): string
+    public static function line(array $change): string
     {
         $shift = $change['shift'];
         $timezone = Organization::current()->timezone;
@@ -53,10 +53,16 @@ class ShiftChangedNotification extends Notification
             $line .= " It's now {$now}; it was {$change['was']}.";
         }
 
-        if ($shift->title !== $change['wasTitle']) {
-            $line .= $shift->title !== null ? " It's now for {$shift->title}." : " It's no longer for {$change['wasTitle']}.";
+        return $line.self::titleSentence($shift, $change['wasTitle']);
+    }
+
+    /** " It's now for Open house.", " It's no longer for Open house.", or an empty string when the title didn't change. */
+    public static function titleSentence(Shift $shift, ?string $wasTitle): string
+    {
+        if ($shift->title === $wasTitle) {
+            return '';
         }
 
-        return $line;
+        return $shift->title !== null ? " It's now for {$shift->title}." : " It's no longer for {$wasTitle}.";
     }
 }

@@ -5,6 +5,7 @@ namespace App\Actions\Scheduling;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
@@ -21,7 +22,7 @@ use Illuminate\Support\Facades\Gate;
  */
 class RemoveFromShift
 {
-    /** Deletes the assignment and logs it, with the shift as the subject and about the person. The caller holds the area and shift locks, has authorized the actor and sends any email. `$via` is merged into the entry's details, so a caller can say how the removal came about. */
+    /** Deletes the assignment, ends the person's open change notices on the shift and logs the removal, with the shift as the subject and about the person. The caller holds the area and shift locks, has authorized the actor and sends any email. `$via` is merged into the entry's details, so a caller can say how the removal came about. */
     public function removeLocked(?User $actor, Shift $lockedShift, Assignment $assignment, array $via): void
     {
         $person = $assignment->user;
@@ -32,6 +33,9 @@ class RemoveFromShift
         $changes = ChangeLogEntry::changesOf($after);
 
         $assignment->delete();
+
+        // Their change notices on this shift are over; the leaving is what's logged.
+        ChangeNotice::query()->open()->where('user_id', $assignment->user_id)->where('shift_id', $lockedShift->id)->update(['ended_at' => now()]);
 
         ChangeLogEntry::record($actor, 'assignment.removed', $lockedShift, ['assignment_id' => $assignment->id, 'type' => $assignment->type->value] + $via, $changes, about: $person);
     }

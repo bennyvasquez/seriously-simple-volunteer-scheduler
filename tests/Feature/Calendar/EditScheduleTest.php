@@ -17,12 +17,14 @@ use App\Enums\SlotFrequency;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\PutOnShiftNotification;
 use App\Notifications\ShiftChangedNotification;
+use App\Notifications\ShiftTimeChangedNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -157,17 +159,11 @@ class EditScheduleTest extends TestCase
         $this->assertSame([], $result->keptReasons);
         $this->assertSame(1, $result->emailed);
 
-        Notification::assertSentTo($robin, ShiftChangedNotification::class, function (ShiftChangedNotification $notification) use ($robin) {
-            $mail = $notification->toMail($robin);
-
-            return $mail->subject === 'Your shifts changed'
-                && $notification->lines === [
-                    "Your Front desk shift on Thursday, October 15 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-                    "Your Front desk shift on Thursday, October 22 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-                    "Your Front desk shift on Thursday, October 29 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-                ];
-        });
-        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+        // One email asks about all three of Robin's Thursdays at once.
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm'
+            && $notification->lines === ['Thursdays from October 15 to October 29: 5 to 8pm (was 6 to 9pm)']);
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
+        Notification::assertSentTimes(ShiftChangedNotification::class, 0);
     }
 
     public function test_staffed_shifts_that_fail_a_check_are_kept_with_the_reason(): void
@@ -193,11 +189,12 @@ class EditScheduleTest extends TestCase
         $this->assertSame([$kept->id], $entry->details['kept_shift_ids']);
         $this->assertStringNotContainsString('Robin', json_encode($entry->details));
 
-        Notification::assertSentTo($robin, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => $notification->lines === [
-            "Your Front desk shift on Thursday, October 15 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-            "Your Front desk shift on Thursday, October 29 changed. It's now 5 to 8pm; it was 6 to 9pm.",
-        ]);
-        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+        // Robin is asked about the two shifts that moved, not the one kept, and the lines don't claim a range that includes the kept one.
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->subject === 'Your Front desk shift moved to 5 to 8pm'
+            && $notification->lines === ['Thursday, October 15: 5 to 8pm (was 6 to 9pm)', 'Thursday, October 29: 5 to 8pm (was 6 to 9pm)']);
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
+        $this->assertSame(2, ChangeNotice::query()->where('user_id', $robin->id)->count());
+        $this->assertSame(0, ChangeNotice::query()->where('shift_id', $kept->id)->count());
     }
 
     public function test_hand_edited_shifts_are_still_kept(): void
@@ -213,9 +210,10 @@ class EditScheduleTest extends TestCase
         $this->assertSame('18:00', $this->localStart($edited->fresh()));
         $this->assertSame([$edited->id => 'Changed on its own'], $result->keptReasons);
         $this->assertSame(7, $result->updatedShifts);
-        Notification::assertSentTo($robin, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => count($notification->lines) === 2
-            && ! str_contains(implode(' ', $notification->lines), 'October 22'));
-        Notification::assertSentTimes(ShiftChangedNotification::class, 1);
+        Notification::assertSentTo($robin, ShiftTimeChangedNotification::class);
+        Notification::assertSentTimes(ShiftTimeChangedNotification::class, 1);
+        $this->assertSame(2, ChangeNotice::query()->where('user_id', $robin->id)->count());
+        $this->assertSame(0, ChangeNotice::query()->where('shift_id', $edited->id)->count());
     }
 
     public function test_a_staffed_shift_the_slot_no_longer_runs_on_is_kept_with_the_reason(): void
@@ -284,8 +282,8 @@ class EditScheduleTest extends TestCase
         $this->assertSame(['areas', 'weekly_slots', 'slot_regulars', 'shifts', 'put on', 'assignments'], array_slice($locks, 0, 6));
         $this->assertSame('17:00', $this->localStart($shift->fresh()));
         $this->assertSame(1, $result->emailed);
-        Notification::assertSentTo($casey, ShiftChangedNotification::class, fn (ShiftChangedNotification $notification) => $notification->lines === [
-            "Your Front desk shift on Thursday, October 22 changed. It's now 5 to 8pm; it was 6 to 9pm.",
+        Notification::assertSentTo($casey, ShiftTimeChangedNotification::class, fn (ShiftTimeChangedNotification $notification) => $notification->lines === [
+            'Thursday, October 22: 5 to 8pm (was 6 to 9pm)',
         ]);
     }
 
@@ -773,7 +771,7 @@ class EditScheduleTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_the_shift_panel_offers_edit_for_this_shift_or_the_weekly_slot(): void
+    public function test_the_panel_offers_this_shift_and_the_ones_after_it(): void
     {
         $slot = $this->thursdaySlot('18:30', '21:30');
         $shift = $slot->shifts()->orderBy('local_date')->first();
@@ -787,14 +785,70 @@ class EditScheduleTest extends TestCase
             ->assertSee('Edit which shifts?')
             ->assertSee('This shift')
             ->assertSee("Only Thursday, October 15. Later changes to the weekly slot won't overwrite it.", false)
-            ->assertSee('The weekly slot (future shifts nobody changed on their own)')
-            ->assertSee("Shifts with people on them change too, unless that would double-book someone or leave too few shadow spots. The people on them are emailed if the time or what it's for changes.", false)
-            ->assertDontSee('keep their old details')
-            ->assertDontSee('This and following shifts')
+            ->assertSee('This shift and the ones after it')
+            ->assertSee('The weekly slot changes from October 15 on, except shifts someone changed on their own. Earlier dates keep their details, and the regulars stay on.', false)
+            ->assertSee('If the time changes, everyone on the changed shifts is asked whether the new time works.')
+            ->assertDontSee('The weekly slot (future shifts nobody changed on their own)')
             ->assertDontSee('After pressing Edit');
 
-        $this->actingAs($user)->get(route('calendar.shift', [$shift, 'edit' => 'slot']))->assertRedirect(route('calendar.slots.edit', $slot));
         $this->actingAs($user)->get(route('calendar.shift', [$shift, 'edit' => 'shift']))->assertOk()->assertSee('Save this shift');
+    }
+
+    public function test_following_opens_the_slot_form_from_that_date(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $shift = $slot->shifts()->orderBy('local_date')->skip(2)->first();
+        $user = $this->coordinator();
+
+        $this->actingAs($user)->get(route('calendar.shift', [$shift, 'edit' => 'following']))
+            ->assertRedirect(route('calendar.slots.edit', [$slot, 'from' => '2026-10-29']));
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-10-29']))
+            ->assertOk()
+            ->assertSee('Changes apply from Thursday, October 29 on. Earlier dates keep their details.')
+            ->assertSee('name="from" value="2026-10-29"', false);
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => 'nonsense']))
+            ->assertOk()
+            ->assertDontSee('Changes apply from');
+
+        $this->actingAs($user)->post(route('calendar.slots.update', $slot), ['from' => '2026-10-29', 'weekday' => 4, 'start_time' => '17:00', 'end_time' => '20:00', 'people_needed' => 1, 'shadow_spots' => 0, 'frequency' => 'weekly', 'fills_by' => 'regulars', 'valid_from' => '2026-10-15', 'valid_until' => '', 'refresh' => ''])
+            ->assertRedirect();
+
+        $this->assertSame('18:30', $this->localStart($slot->shifts()->orderBy('local_date')->first()));
+        $this->assertSame('17:00', $this->localStart($shift->fresh()));
+    }
+
+    public function test_the_existing_shifts_box_describes_the_save_with_and_without_a_start_date(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $user = $this->coordinator();
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-10-29']))
+            ->assertOk()
+            ->assertSee('Changes apply to shifts from Thursday, October 29 on that nobody changed on their own. Earlier dates keep their details.')
+            ->assertDontSee('Changes apply to future shifts nobody changed on their own');
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', $slot))
+            ->assertOk()
+            ->assertSee('Changes apply to future shifts nobody changed on their own')
+            ->assertDontSee('Earlier dates keep their details.');
+    }
+
+    public function test_a_past_start_date_is_shown_as_today_and_a_date_that_is_not_real_is_ignored(): void
+    {
+        $slot = $this->thursdaySlot('18:30', '21:30');
+        $user = $this->coordinator();
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-10-01']))
+            ->assertOk()
+            ->assertSee('Changes apply from Wednesday, October 14 on.')
+            ->assertSee('name="from" value="2026-10-14"', false);
+
+        $this->actingAs($user)->get(route('calendar.slots.edit', [$slot, 'from' => '2026-02-31']))
+            ->assertOk()
+            ->assertDontSee('Changes apply from')
+            ->assertSee('Changes apply to future shifts nobody changed on their own');
     }
 
     public function test_the_shift_edit_form_saves_one_shift(): void

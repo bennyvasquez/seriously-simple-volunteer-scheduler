@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\ShiftCancelledNotification;
 use App\Notifications\ShiftRestoredNotification;
+use App\Notifications\ShiftTimeChangedNotification;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Notifications\Notification;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Changes a closure's days or reason (spec section 8.5), with the same checks and messages as adding one. A closure that has started keeps its first day, and its last day can move only to yesterday or later; ending it yesterday reopens today. A closure that ended before yesterday keeps its days. Days that have passed are never changed: to fix them, remove the closure.
  *
- * In one transaction, locking the area, the closure, the area's weekly slots and their regulars (a shift that comes back catches up with its slot, see RestoreShift::restoreLocked()), and then every shift the change can touch (by start, then id): days it no longer covers get their shifts back (see releaseLocked()), newly covered days have their shifts cancelled (CreateClosure::cancelCovered()), and a new reason is copied onto the shifts it cancelled, without email. Shifts that have started are never changed. After the transaction commits, each of the area's weekly slots is generated again, so days that reopened get the shifts they never had; generation locks the slot and its regulars, which can't come after the shift locks held inside. After the response, each person gets at most one email: the shifts cancelled, the shifts back on, or both. A regular who comes back onto a released shift fills its cover request, and the releaser hears who is covering.
+ * In one transaction, locking the area, the closure, the area's weekly slots and their regulars (a shift that comes back catches up with its slot, see RestoreShift::restoreLocked()), and then every shift the change can touch (by start, then id): days it no longer covers get their shifts back (see releaseLocked()), newly covered days have their shifts cancelled (CreateClosure::cancelCovered()), and a new reason is copied onto the shifts it cancelled, without email. Shifts that have started are never changed. After the transaction commits, each of the area's weekly slots is generated again, so days that reopened get the shifts they never had; generation locks the slot and its regulars, which can't come after the shift locks held inside. After the response, each person gets at most one email: the shifts cancelled, the shifts back on, or both; a person whose shift came back at a new time gets the change notice email instead, with the rest as lines after its question. A regular who comes back onto a released shift fills its cover request, and the releaser hears who is covering.
  */
 class UpdateClosure
 {
@@ -48,6 +49,7 @@ class UpdateClosure
         private readonly CreateClosure $createClosure,
         private readonly RestoreShift $restoreShift,
         private readonly GenerateShifts $generateShifts,
+        private readonly SendChangeNotices $notices,
     ) {
         $this->outcome = ['cancelled' => collect(), 'restored' => collect(), 'emailed' => 0, 'removed' => collect()];
     }
@@ -116,7 +118,7 @@ class UpdateClosure
             }
 
             if ($changes === []) {
-                return [$locked->setRelation('area', $area), [], ['restoredByPerson' => [], 'restored' => [], 'removed' => collect(), 'covered' => []], false];
+                return [$locked->setRelation('area', $area), [], ['restoredByPerson' => [], 'restored' => [], 'removed' => collect(), 'covered' => [], 'timeNotices' => []], false];
             }
 
             $locked->save();
@@ -185,7 +187,7 @@ class UpdateClosure
 
         $this->outcome['restored'] = collect($released['restored']);
         $this->outcome['removed'] = $released['removed'];
-        $this->outcome['emailed'] = self::sendEmails($cancelledByPerson, $released['restoredByPerson'], $saved->reason);
+        $this->outcome['emailed'] = self::sendEmails($cancelledByPerson, $released['restoredByPerson'], $saved->reason, $released['timeNotices']);
         CoverFill::sendAfterCommit($released['covered']);
 
         return $saved;
@@ -226,11 +228,11 @@ class UpdateClosure
     }
 
     /**
-     * Releases the closure's cancelled shifts that haven't started, for days it no longer covers: each is handed to another closure of the area that covers its day (its id and reason, logged shift.updated), left cancelled with SLOT_CHANGED when its weekly slot no longer runs that day (logged shift.updated, nobody emailed), or brought back with RestoreShift::restoreLocked(). The caller holds the area, closure and shift locks and sends the email. RemoveClosure uses this too.
+     * Releases the closure's cancelled shifts that haven't started, for days it no longer covers: each is handed to another closure of the area that covers its day (its id and reason, logged shift.updated), left cancelled with SLOT_CHANGED when its weekly slot no longer runs that day (logged shift.updated, nobody emailed), or brought back with RestoreShift::restoreLocked(). A shift that comes back at a new time (its slot's time moved while it was cancelled) gets change notices for the people on it, one batch per person across all the shifts released, recorded here in the caller's transaction after every shift is restored; their email is the time email, in `timeNotices` keyed by person id, which sendEmails() sends in place of "back on". The caller holds the area, closure and shift locks and sends the email. RemoveClosure uses this too.
      *
      * @param  Collection<int, Shift>  $lockedShifts
      *                                                `covered` holds the emails for any cover requests the shifts' returning regulars filled (RestoreShift::restoreLocked()), for the caller to send after the commit with CoverFill::sendAfterCommit().
-     * @return array{restoredByPerson: array<int, array{person: User, shifts: list<Shift>}>, restored: list<Shift>, removed: Collection<int, User>, covered: list<array{0: User, 1: Notification}>}
+     * @return array{restoredByPerson: array<int, array{person: User, shifts: list<Shift>}>, restored: list<Shift>, removed: Collection<int, User>, covered: list<array{0: User, 1: Notification}>, timeNotices: array<int, array{user: User, notification: ShiftTimeChangedNotification}>}
      */
     public function releaseLocked(User $actor, AreaClosure $closure, Collection $lockedShifts, string $via): array
     {
@@ -238,6 +240,7 @@ class UpdateClosure
         $restored = [];
         $removed = collect();
         $covered = [];
+        $timeChanges = [];
 
         foreach ($lockedShifts as $shift) {
             $fate = self::fate($shift, $closure);
@@ -246,6 +249,11 @@ class UpdateClosure
                 $result = $this->restoreShift->restoreLocked($actor, $shift, ['via' => $via, 'area_closure_id' => $closure->id]);
                 $shift->setRelation('area', $closure->area);
                 $restored[] = $shift;
+
+                if ($result['timeChange'] !== null) {
+                    $timeChanges[] = ['shift' => $shift, 'back_on' => true] + $result['timeChange'];
+                }
+
                 $removed = $removed->merge($result['removed']);
                 array_push($covered, ...$result['covered']);
 
@@ -265,7 +273,10 @@ class UpdateClosure
             ChangeLogEntry::record($actor, 'shift.updated', $shift, ['area_id' => $shift->area_id, 'via' => $via, 'area_closure_id' => $closure->id], $changes);
         }
 
-        return ['restoredByPerson' => $restoredByPerson, 'restored' => $restored, 'removed' => $removed->unique('id')->values(), 'covered' => $covered];
+        // After every shift is restored (and any overlap removal done) and under the shift locks.
+        $timeNotices = collect($this->notices->recordLocked($actor, $timeChanges))->keyBy(fn (array $sent) => $sent['user']->id)->all();
+
+        return ['restoredByPerson' => $restoredByPerson, 'restored' => $restored, 'removed' => $removed->unique('id')->values(), 'covered' => $covered, 'timeNotices' => $timeNotices];
     }
 
     /** Generates the area's weekly slots again after a closure stops covering days, so the days that reopened get their shifts. Runs after the closure's transaction commits. Logs what it made as shifts.generated, with the closure change in `via`. */
@@ -293,13 +304,14 @@ class UpdateClosure
     }
 
     /**
-     * Sends each person one email after the response: their cancelled shifts with the reason, their shifts that are back on, or both in one email.
+     * Sends each person one email after the response: their cancelled shifts with the reason, their shifts that are back on, or both in one email. A person whose shift came back at a new time (`$timeNotices`, from releaseLocked()) gets the change notice email instead, which asks whether the new time works and carries their other back on and cancelled shifts as lines after the question.
      *
      * @param  array<int, array{person: User, shifts: list<Shift>}>  $cancelledByPerson
      * @param  array<int, array{person: User, shifts: list<Shift>}>  $restoredByPerson
+     * @param  array<int, array{user: User, notification: ShiftTimeChangedNotification}>  $timeNotices  Keyed by person id.
      * @return int How many people are emailed.
      */
-    public static function sendEmails(array $cancelledByPerson, array $restoredByPerson, string $reason): int
+    public static function sendEmails(array $cancelledByPerson, array $restoredByPerson, string $reason, array $timeNotices = []): int
     {
         $byStart = fn (array $shifts) => collect($shifts)->sortBy(fn (Shift $shift) => $shift->starts_at->getTimestamp())->values();
         $people = [];
@@ -310,10 +322,29 @@ class UpdateClosure
             }
         }
 
-        defer(function () use ($people, $cancelledByPerson, $restoredByPerson, $reason, $byStart) {
+        foreach ($timeNotices as $id => $sent) {
+            $people[$id] = $sent['user'];
+        }
+
+        defer(function () use ($people, $cancelledByPerson, $restoredByPerson, $reason, $byStart, $timeNotices) {
             foreach ($people as $id => $person) {
                 $cancelled = $byStart($cancelledByPerson[$id]['shifts'] ?? []);
                 $restored = $byStart($restoredByPerson[$id]['shifts'] ?? []);
+
+                if (isset($timeNotices[$id])) {
+                    $notification = $timeNotices[$id]['notification'];
+                    $text = fn (Shift $shift) => $shift->area->name.' shift on '.$shift->whenText();
+                    $backOn = $restored->reject(fn (Shift $shift) => in_array($shift->id, $notification->shiftIds, true));
+                    $lines = $backOn->isEmpty() ? [] : ShiftRestoredNotification::backOnLines($backOn->map($text)->values()->all());
+
+                    if ($cancelled->isNotEmpty()) {
+                        $lines = [...$lines, ...ShiftCancelledNotification::cancelledLines($cancelled->map($text)->values()->all(), $reason)];
+                    }
+
+                    $person->notify($notification->withMoreLines($lines));
+
+                    continue;
+                }
 
                 $person->notify($cancelled->isNotEmpty() ? new ShiftCancelledNotification($cancelled, $reason, $restored) : new ShiftRestoredNotification($restored));
             }

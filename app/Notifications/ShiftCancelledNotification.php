@@ -33,20 +33,10 @@ class ShiftCancelledNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        if (count($this->shifts) === 1) {
-            $mail = (new MailMessage)
-                ->subject('A shift you were on is cancelled')
-                ->line("The {$this->shifts[0]} is cancelled: {$this->sentence()} You don't need to do anything.");
-        } else {
-            $mail = (new MailMessage)
-                ->subject('Shifts you were on are cancelled')
-                ->line("These shifts are cancelled: {$this->sentence()}");
+        $mail = (new MailMessage)->subject(count($this->shifts) === 1 ? 'A shift you were on is cancelled' : 'Shifts you were on are cancelled');
 
-            foreach ($this->shifts as $shift) {
-                $mail->line("The {$shift}.");
-            }
-
-            $mail->line("You don't need to do anything.");
+        foreach (self::cancelledLines($this->shifts, $this->reason) as $line) {
+            $mail->line($line);
         }
 
         if ($this->restored !== []) {
@@ -60,10 +50,27 @@ class ShiftCancelledNotification extends Notification
         return $mail;
     }
 
-    /** The reason as a sentence: a period is added unless it already ends with one, or with a question or exclamation mark. */
-    private function sentence(): string
+    /**
+     * The email's lines for cancelled shifts, also used when the change notice email carries them.
+     *
+     * @param  list<string>  $shifts
+     * @return list<string>
+     */
+    public static function cancelledLines(array $shifts, string $reason): array
     {
-        $reason = trim($this->reason);
+        $sentence = self::sentence($reason);
+
+        if (count($shifts) === 1) {
+            return ["The {$shifts[0]} is cancelled: {$sentence} You don't need to do anything."];
+        }
+
+        return ["These shifts are cancelled: {$sentence}", ...array_map(fn (string $shift) => "The {$shift}.", $shifts), "You don't need to do anything."];
+    }
+
+    /** The reason as a sentence: a period is added unless it already ends with one, or with a question or exclamation mark. */
+    private static function sentence(string $reason): string
+    {
+        $reason = trim($reason);
 
         return preg_match('/[.!?]$/', $reason) === 1 ? $reason : $reason.'.';
     }

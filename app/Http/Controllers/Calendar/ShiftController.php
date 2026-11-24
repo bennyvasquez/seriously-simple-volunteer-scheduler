@@ -11,13 +11,16 @@ use App\Actions\Scheduling\RestoreShift;
 use App\Actions\Scheduling\TakeShadowSpot;
 use App\Actions\Scheduling\UpdateShift;
 use App\Calendar\PersonSearch;
+use App\Calendar\TimeFormat;
 use App\Cover\CoverEligibility;
 use App\Enums\AssignmentType;
 use App\Enums\SlotFrequency;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Volunteer\ChangeNoticeController;
 use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Models\Area;
 use App\Models\Assignment;
+use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
@@ -72,8 +75,8 @@ class ShiftController extends Controller
         $canEditSlot = $canEdit && $shift->weeklySlot !== null && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         $edit = $canEdit ? (string) $request->query('edit', '') : '';
 
-        if ($edit === 'slot' && $canEditSlot) {
-            return redirect()->route('calendar.slots.edit', [$shift->weeklySlot] + $this->areaQuery($request));
+        if ($edit === 'following' && $canEditSlot) {
+            return redirect()->route('calendar.slots.edit', [$shift->weeklySlot, 'from' => $shift->local_date->toDateString()] + $this->areaQuery($request));
         }
 
         // Edit on a repeating shift first asks which shifts to change; a one-time shift goes straight to its form.
@@ -89,11 +92,16 @@ class ShiftController extends Controller
             : null;
         $over?->setAttribute('display_name', PersonSearch::displayName($user, $over));
 
+        // One query for every notice on this shift: the heading uses the newest of them, and each row the person's newest one that hasn't ended.
+        $notices = ChangeNotice::query()->where('shift_id', $shift->id)->orderByDesc('id')->get();
+        $answers = $notices->whereNull('ended_at')->unique('user_id')->mapWithKeys(fn (ChangeNotice $notice) => [$notice->user_id => $notice->confirmed_at === null ? 'waiting' : 'confirmed']);
+
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
             'when' => $shift->whenText(),
             'repeats' => $this->repeats($shift),
-            'people' => $this->people($shift, $user, $canAddRegular),
+            'timeChanged' => $this->timeChanged($notices->first()),
+            'people' => $this->people($shift, $user, $canAddRegular, $answers),
             'shadowsTaken' => $shift->assignments->where('type', AssignmentType::Shadow)->count(),
             'canAssign' => $canAssign,
             'canCancel' => $canCancel,
@@ -145,6 +153,11 @@ class ShiftController extends Controller
             return ['name' => $name, 'role' => $regular === null ? 'On this shift' : ($everyOther ? 'Regular, every other week' : 'Regular, every week'), 'remove' => null, 'end' => null];
         })->values();
 
+        $open = $upcoming ? ChangeNotice::openFor($user) : collect();
+        $changeNotice = $open->firstWhere('shift_id', $shift->id);
+        $batchRows = $changeNotice === null ? collect() : $open->where('batch', $changeNotice->batch)->values();
+        $changeWhich = $batchRows->count() > 1 ? ChangeNoticeController::summary($batchRows)['which'] : null;
+
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
             'when' => $shift->whenText(),
@@ -152,6 +165,9 @@ class ShiftController extends Controller
             'people' => $people,
             'shadowsTaken' => $shift->assignments->where('type', AssignmentType::Shadow)->count(),
             'volunteerAction' => $upcoming ? $this->volunteerAction($user, $shift) : null,
+            // The person's open time change on this shift, if any: the panel asks whether the new time works. "Still works for me" answers the whole batch, so when the batch covers more shifts the question says which.
+            'changeNotice' => $changeNotice,
+            'changeWhich' => $changeWhich,
             'canAssign' => false,
             'canCancel' => false,
             'canPut' => false,
@@ -453,8 +469,8 @@ class ShiftController extends Controller
         return 'Repeats '.$every.', since '.$slot->valid_from->format('M j').'. '.($slot->valid_until === null ? 'No end date.' : 'Ends '.$slot->valid_until->format('M j').'.');
     }
 
-    /** @return Collection<int, array{name: string, role: string, remove: ?string, end: ?string, assignment: int, noShow: bool, canMark: bool}> The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
-    private function people(Shift $shift, User $viewer, bool $canManageSlot): Collection
+    /** @return Collection<int, array{name: string, role: string, remove: ?string, end: ?string, assignment: int, noShow: bool, canMark: bool, answer: ?string}> (answer is 'confirmed' or 'waiting' from the person's newest open change notice on the shift, else null) The full name only for people the viewer may see (spec section 13); a first name and last initial otherwise. */
+    private function people(Shift $shift, User $viewer, bool $canManageSlot, Collection $answers): Collection
     {
         $date = $shift->local_date->toDateString();
         $slot = $shift->weeklySlot;
@@ -466,17 +482,18 @@ class ShiftController extends Controller
         // Shadows on a shift that has ended can be marked a no-show, or have it undone, by anyone who can edit the shift.
         $canMark = $shift->cancelled_at === null && $shift->ends_at->lessThanOrEqualTo(now()) && Gate::forUser($viewer)->allows('update', $shift);
 
-        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer, $remove, $canManageSlot, $canMark) {
+        return $shift->assignments->sortBy([['type', 'asc'], ['id', 'asc']])->map(function (Assignment $assignment) use ($slot, $date, $viewer, $remove, $canManageSlot, $canMark, $answers) {
             $name = PersonSearch::displayName($viewer, $assignment->user);
+            $answer = $answers->get($assignment->user_id);
 
             if ($assignment->type === AssignmentType::Shadow) {
-                return ['name' => $name, 'role' => 'Shadowing', 'remove' => $remove($assignment), 'end' => null, 'assignment' => $assignment->id, 'noShow' => $assignment->no_show_at !== null, 'canMark' => $canMark];
+                return ['name' => $name, 'role' => 'Shadowing', 'remove' => $remove($assignment), 'end' => null, 'assignment' => $assignment->id, 'noShow' => $assignment->no_show_at !== null, 'canMark' => $canMark, 'answer' => $answer];
             }
 
             $regular = $slot?->regulars->first(fn (SlotRegular $regular) => $regular->user_id === $assignment->user_id && $regular->activeOn($date));
 
             if ($regular === null) {
-                return ['name' => $name, 'role' => 'Regular', 'remove' => $remove($assignment), 'end' => null];
+                return ['name' => $name, 'role' => 'Regular', 'remove' => $remove($assignment), 'end' => null, 'answer' => $answer];
             }
 
             // On a slot that already runs every other week, its regulars work every date it runs.
@@ -485,7 +502,19 @@ class ShiftController extends Controller
             // The link to end their time as a regular, for people who manage the slot's area.
             $end = $canManageSlot ? route('calendar.slots.regulars.end', [$slot, $regular, 'date' => $date] + $this->areaQuery(request())) : null;
 
-            return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week', 'remove' => $remove($assignment), 'end' => $end];
+            return ['name' => $name, 'role' => $everyOther ? 'Regular, every other week' : 'Regular, every week', 'remove' => $remove($assignment), 'end' => $end, 'answer' => $answer];
         })->values();
+    }
+
+    /** "Time changed on October 14 from 5 to 8pm." from the shift's newest notice, or null when its time never changed. */
+    private function timeChanged(?ChangeNotice $notice): ?string
+    {
+        if ($notice === null) {
+            return null;
+        }
+
+        $timezone = Organization::current()->timezone;
+
+        return 'Time changed on '.$notice->created_at->setTimezone($timezone)->format('F j').' from '.TimeFormat::range($notice->was_starts_at->setTimezone($timezone), $notice->was_ends_at->setTimezone($timezone)).'.';
     }
 }

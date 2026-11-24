@@ -19,6 +19,7 @@ use App\Http\Controllers\People\PeopleController;
 use App\Http\Controllers\People\PersonController;
 use App\Http\Controllers\PersonSecurityController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\Volunteer\ChangeNoticeController;
 use App\Http\Controllers\Volunteer\EmailSettingsController;
 use App\Http\Controllers\Volunteer\HomeController;
 use App\Http\Controllers\Volunteer\ReleaseController;
@@ -49,6 +50,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/shifts/{shift}/shadow', [ShadowController::class, 'show'])->name('shifts.shadow');
         Route::post('/shifts/{shift}/shadow', [ShadowController::class, 'store']);
     });
+    Route::get('/changes/{batch}', [ChangeNoticeController::class, 'show'])->whereAlphaNumeric('batch')->name('changes.show');
+    Route::post('/changes/{batch}', [ChangeNoticeController::class, 'confirm'])->whereAlphaNumeric('batch')->name('changes.confirm');
     Route::get('/shifts/released', [ReleaseController::class, 'released'])->name('shifts.released');
     Route::get('/account/emails', [EmailSettingsController::class, 'edit'])->name('account.emails');
     Route::post('/account/emails', [EmailSettingsController::class, 'update']);

@@ -13,3 +13,6 @@ Schedule::command('ssvs:generate-shifts')->dailyAt('03:00')->withoutOverlapping(
 
 // Walk open cover requests up the escalation ladder: sent again 72 hours before, urgent 24 hours before. Each step happens once per request, so running it often only makes the timing closer.
 Schedule::command('ssvs:cover-requests')->everyTenMinutes()->withoutOverlapping();
+
+// Once per shift, 48 hours before it starts, tell its leads who hasn't answered a time change. Safe to run often: each shift is told once.
+Schedule::command('ssvs:change-heads-ups')->everyTenMinutes()->withoutOverlapping();

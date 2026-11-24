@@ -178,21 +178,24 @@ class AddController extends Controller
         Gate::forUser($request->user())->authorize('manageSchedule', $slot->area);
 
         $areaQuery = $this->areaQuery($request);
+        // "This shift and the ones after it": the form carries the date it starts from. Anything that isn't a date is ignored.
+        $from = $this->fromDate($request->input('from'));
+        $back = [$slot] + ($from === null ? [] : ['from' => $from->toDateString()]) + $areaQuery;
 
         if ($request->filled('refresh')) {
-            return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->withInput();
+            return redirect()->route('calendar.slots.edit', $back)->withInput();
         }
 
         // A first date in the past is fine when it is unchanged; the action refuses a changed one before today.
         $data = $request->validate(SlotAttributes::formRules($slot), $this->messages());
 
         try {
-            $result = $updateSlot->handle($request->user(), $slot, SlotAttributes::fromForm($data));
+            $result = $updateSlot->handle($request->user(), $slot, SlotAttributes::fromForm($data), $from);
         } catch (DomainException $e) {
-            return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->withErrors(['slot' => $e->getMessage()])->withInput();
+            return redirect()->route('calendar.slots.edit', $back)->withErrors(['slot' => $e->getMessage()])->withInput();
         }
 
-        return redirect()->route('calendar.slots.edit', [$slot] + $areaQuery)->with('slotSaved', [
+        return redirect()->route('calendar.slots.edit', $back)->with('slotSaved', [
             'updated' => $result->updatedShifts,
             'cancelled' => $result->cancelledShifts,
             'created' => $result->createdShifts,
@@ -200,6 +203,25 @@ class AddController extends Controller
             // A list of pairs rather than an id-keyed map, so the order survives the session.
             'kept' => collect($result->keptReasons)->map(fn (string $reason, int $id) => ['id' => $id, 'reason' => $reason])->values()->all(),
         ]);
+    }
+
+    /** A `Y-m-d` date from the request as a local date, or null when it isn't one. */
+    private function fromDate(mixed $value): ?CarbonImmutable
+    {
+        if (! is_string($value) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+
+        $date = CarbonImmutable::createFromFormat('!Y-m-d', $value, Organization::current()->timezone);
+
+        if ($date === false || $date->toDateString() !== $value) {
+            return null;
+        }
+
+        // A date before today counts as today, the same as the action.
+        $today = Organization::current()->today();
+
+        return $date->lessThan($today) ? $today : $date;
     }
 
     /** Creates a weekly slot from the full form. */
@@ -238,8 +260,9 @@ class AddController extends Controller
             'areaQuery' => $this->areaQuery($request),
             'preview' => $this->preview($organization, $area, $values),
             'weekdays' => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-            'existing' => $slot === null ? null : $this->existingShifts($slot),
+            'existing' => $slot === null ? null : $this->existingShifts($slot, $this->fromDate($request->input('from'))),
             'saved' => $slot === null ? null : $this->savedNotice($request, $organization),
+            'from' => $slot === null ? null : $this->fromDate($request->input('from')),
         ]);
     }
 
@@ -248,9 +271,10 @@ class AddController extends Controller
      *
      * @return list<string>|null
      */
-    private function existingShifts(WeeklySlot $slot): ?array
+    private function existingShifts(WeeklySlot $slot, ?CarbonImmutable $from = null): ?array
     {
         $shifts = $slot->shifts()->whereNull('cancelled_at')->where('starts_at', '>', now())->withCount('assignments')->orderBy('local_date')->get();
+        $shifts = $from === null ? $shifts : $shifts->filter(fn (Shift $shift) => $shift->local_date->toDateString() >= $from->toDateString())->values();
         $total = $shifts->count();
 
         if ($total === 0) {
