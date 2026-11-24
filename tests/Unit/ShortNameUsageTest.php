@@ -15,6 +15,8 @@ class ShortNameUsageTest extends TestCase
      */
     private const ALLOWED = [
         "greeting('Hi '.\$notifiable->firstName()",
+        // The invitation's greeting line is in lang/en/emails.php; the code passes the first name in.
+        "->greeting(EmailText::line('invitation.greeting', ['first_name' => \$notifiable->firstName()]))",
         "'Hi '.\$user->firstName()",
         // The taken page thanks the person who just took the shift, so it greets them.
         "'It\\'s yours. Thanks, '.\$user->firstName().'!'",

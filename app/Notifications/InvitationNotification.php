@@ -20,12 +20,12 @@ class InvitationNotification extends Notification
         $organization = Organization::query()->value('name') ?? config('app.name');
 
         return (new MailMessage)
-            ->subject("You're invited to volunteer with {$organization}")
-            ->greeting('Hi '.$notifiable->firstName().',')
+            ->subject(EmailText::line('invitation.subject', ['organization' => $organization]))
+            ->greeting(EmailText::line('invitation.greeting', ['first_name' => $notifiable->firstName()]))
             ->line($this->invitedBy === null
-                ? "You've been added to {$organization}'s volunteer schedule."
-                : "{$this->invitedBy} added you to {$organization}'s volunteer schedule.")
-            ->action('Accept your invitation', $this->url)
-            ->line('This link works once and expires in 7 days. If you weren\'t expecting this email, you can ignore it.');
+                ? EmailText::line('invitation.intro', ['organization' => $organization])
+                : EmailText::line('invitation.intro_by_person', ['invited_by' => $this->invitedBy, 'organization' => $organization]))
+            ->action(EmailText::line('invitation.action'), $this->url)
+            ->line(EmailText::line('invitation.outro'));
     }
 }

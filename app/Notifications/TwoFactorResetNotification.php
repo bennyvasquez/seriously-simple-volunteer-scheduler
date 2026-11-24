@@ -27,7 +27,7 @@ class TwoFactorResetNotification extends Notification
         $organization = Organization::query()->value('name') ?? config('app.name');
 
         return (new MailMessage)
-            ->subject('Your second step was reset')
-            ->line($this->adminFirstName.', an admin at '.$organization.', reset the second step for your login. Next time you log in with your password, you\'ll set up your authenticator app again. If you didn\'t ask for this, contact a coordinator right away.');
+            ->subject(EmailText::line('two_factor_reset.subject'))
+            ->line(EmailText::line('two_factor_reset.body', ['admin' => $this->adminFirstName, 'organization' => $organization]));
     }
 }
