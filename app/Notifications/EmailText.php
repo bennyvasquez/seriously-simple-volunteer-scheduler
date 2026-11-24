@@ -16,7 +16,7 @@ use RuntimeException;
  *
  * Subjects are the exception: a line whose key has a `subject` part ("login_link.subject", "cover_request.subject_still_open", "removed_from_shifts.subject.one") always comes back as a plain string with no entities, and an edited subject on one line, since a subject header is never HTML.
  *
- * A stored edit that can't be used (it names a variable the default line doesn't have, or one this email doesn't fill in, or it lost a link the default has) is reported and the default line is sent instead, so a bad edit never stops an email.
+ * A stored edit that can't be used (it names a variable the default line doesn't have, or one this email doesn't fill in, or it lost a link or the {note} the default has) is reported and the default line is sent instead, so a bad edit never stops an email.
  */
 final class EmailText
 {
@@ -57,7 +57,7 @@ final class EmailText
             $text .= $i % 2 === 0 ? $part : self::plain($vars[$part]);
         }
 
-        return PlainText::line($text);
+        return new HtmlString(self::escapeStart(PlainText::line($text)->toHtml()));
     }
 
     /**
@@ -111,13 +111,13 @@ final class EmailText
     }
 
     /**
-     * The variables the default line has that an edit must keep: the links the code builds, so nobody removes the only way to a page by accident.
+     * The variables the default line has that an edit must keep: the links the code builds, so nobody removes the only way to a page by accident, and {note}, so a volunteer's own note never silently disappears.
      *
      * @return list<string>
      */
     public static function requiredVariables(string $key): array
     {
-        return array_values(array_filter(self::allowedVariables($key), fn (string $name) => str_ends_with($name, '_link')));
+        return array_values(array_filter(self::allowedVariables($key), fn (string $name) => str_ends_with($name, '_link') || $name === 'note'));
     }
 
     /** Whether the line is (part of) a subject, which is never HTML. */
@@ -132,10 +132,10 @@ final class EmailText
         return false;
     }
 
-    /** Whitespace, line breaks included, as single spaces, trimmed: how an edit is stored and sent. */
+    /** Unicode format characters (bidi overrides, zero-width characters) removed, and whitespace, line breaks included, as single spaces, trimmed: how an edit is stored and sent. */
     public static function normalize(string $text): string
     {
-        return trim(preg_replace('/\s+/u', ' ', $text));
+        return trim(preg_replace(['/\p{Cf}/u', '/\s+/u'], ['', ' '], $text));
     }
 
     /**
@@ -223,9 +223,7 @@ final class EmailText
         }
 
         foreach ($parts as $i => $part) {
-            if ($i === 0) {
-                $text .= self::escapeStart(PlainText::escape($part));
-            } elseif ($i % 2 === 0) {
+            if ($i % 2 === 0) {
                 $text .= PlainText::escape($part);
             } else {
                 $value = $vars[$part];
@@ -237,7 +235,8 @@ final class EmailText
             }
         }
 
-        return new HtmlString($text);
+        // The start of the whole line, so an edit that begins with a value that's empty ("{x}- item") is covered too.
+        return new HtmlString(self::escapeStart($text));
     }
 
     /**
@@ -259,10 +258,10 @@ final class EmailText
         return $parts;
     }
 
-    /** Typed text that starts like a Markdown list item, rule or heading underline ("- ", "+ ", "1. ", "2) ", "---", "===") has its first mark made an entity, so it stays a sentence. */
+    /** A line that starts like a Markdown list item, rule or heading underline ("- ", "+ ", "1. ", "2) ", "---", "==="), after any spaces, has its first mark made an entity, so it stays a sentence. "#" and ">" are entities already. */
     private static function escapeStart(string $text): string
     {
-        return preg_replace(['/^-/', '/^\+/', '/^=/', '/^(\d+)\./', '/^(\d+)\)/'], ['&#45;', '&#43;', '&#61;', '$1&#46;', '$1&#41;'], $text, 1);
+        return preg_replace(['/^(\s*)-/', '/^(\s*)\+/', '/^(\s*)=/', '/^(\s*\d+)\./', '/^(\s*\d+)\)/'], ['$1&#45;', '$1&#43;', '$1&#61;', '$1&#46;', '$1&#41;'], $text, 1);
     }
 
     /** A value as HTML for a mail line: an HtmlString as it is, anything else escaped the way Blade escapes it. */

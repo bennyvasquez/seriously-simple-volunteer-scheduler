@@ -66,7 +66,7 @@ class SaveEmailWordingTest extends TestCase
         $this->assertDatabaseMissing('email_wordings', ['key' => 'two_factor_code.code']);
 
         $this->save(['two_factor_code.code' => 'Here is your code: {code}.']);
-        $this->save(['two_factor_code.code' => '']);
+        $this->save(['two_factor_code.code' => null]);
 
         $this->assertSame('Your code is 123456. It works for 10 minutes.', EmailText::line('two_factor_code.code', ['code' => '123456']));
         $this->assertSame(2, ChangeLogEntry::query()->where('action', 'email_wording.reset')->count());
@@ -89,7 +89,10 @@ class SaveEmailWordingTest extends TestCase
 
     public function test_an_empty_or_too_long_line_is_refused(): void
     {
-        $this->assertSame(['login_link.intro'], array_keys($this->refusal(['login_link.intro' => "   \n  "])));
+        // Only null puts a line back to the default: a cleared box, spaces or invisible characters alone are refused.
+        foreach (['', "   \n  ", "\u{200B}\u{FEFF}"] as $empty) {
+            $this->assertSame(['login_link.intro' => ['Type the wording, or use Back to the default.']], $this->refusal(['login_link.intro' => $empty]));
+        }
         $this->assertSame(['login_link.intro'], array_keys($this->refusal(['login_link.intro' => str_repeat('a', 1001)])));
 
         // A refusal of one line stops the whole save.
@@ -100,6 +103,47 @@ class SaveEmailWordingTest extends TestCase
 
         $this->save(['login_link.intro' => str_repeat('a', 1000)]);
         $this->assertDatabaseCount('email_wordings', 1);
+    }
+
+    public function test_an_edit_with_a_web_address_is_refused(): void
+    {
+        foreach (['See https://example.org for more.', 'Go to HTTP://example.org', 'Visit www.example.org', 'Visit WWW.example.org', 'Open ftp://example.org'] as $text) {
+            $this->assertSame(['login_link.intro' => ['Emails can\'t have web addresses typed into them. Links come from SSVS.']], $this->refusal(['login_link.intro' => $text]), $text);
+        }
+
+        $this->assertDatabaseCount('email_wordings', 0);
+    }
+
+    public function test_the_note_variable_cant_be_removed(): void
+    {
+        $errors = $this->refusal(['cover_request.note' => '{releaser} left a note.']);
+        $this->assertStringContainsString('{note}', $errors['cover_request.note'][0]);
+
+        $this->save(['cover_request.note' => 'A note from {releaser}: {note}']);
+        $this->assertDatabaseHas('email_wordings', ['key' => 'cover_request.note', 'text' => 'A note from {releaser}: {note}']);
+    }
+
+    public function test_format_characters_are_removed_before_checking_and_storing(): void
+    {
+        // A right-to-left override and zero-width characters, which could hide or reorder what the text says.
+        $this->save(['login_link.intro' => "Tap\u{202E}the\u{200B} button\u{200D}.\u{2066}"]);
+
+        $this->assertSame('Tapthe button.', EmailWording::query()->where('key', 'login_link.intro')->value('text'));
+
+        // A variable split by a zero-width space is checked as the variable it reads as.
+        $this->save(['two_factor_code.code' => "Code: {co\u{200B}de}."]);
+        $this->assertSame('Code: {code}.', EmailWording::query()->where('key', 'two_factor_code.code')->value('text'));
+    }
+
+    public function test_a_first_edit_saved_by_someone_else_at_the_same_moment_is_refused_plainly(): void
+    {
+        // The other save lands between this save's check and its insert.
+        EmailWording::creating(function (EmailWording $wording) {
+            DB::table('email_wordings')->insertOrIgnore(['key' => $wording->key, 'text' => 'Someone else\'s edit.', 'updated_by' => null, 'created_at' => now(), 'updated_at' => now()]);
+        });
+
+        $this->assertSame(['login_link.intro' => ['Someone else just changed this line. Check it and try again.']], $this->refusal(['login_link.intro' => 'My edit.']));
+        $this->assertSame(0, ChangeLogEntry::query()->where('action', 'like', 'email_wording.%')->count());
     }
 
     public function test_a_key_that_isnt_a_line_is_refused(): void

@@ -50,6 +50,7 @@ use App\Notifications\TwoFactorCodeNotification;
 use App\Notifications\TwoFactorResetNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -76,6 +77,7 @@ class EmailTextTest extends TestCase
             'emails.test_email.count.other' => '{names} are shadowing.',
             'emails.test_email.with_link' => 'Take {shift_link} at {area}.',
             'emails.test_email.subject' => 'Your {area} shift',
+            'emails.test_email.note' => '{first_name} left a note: {note}',
         ], 'en');
     }
 
@@ -354,6 +356,28 @@ class EmailTextTest extends TestCase
             $this->edit(['test_email.hello' => $edit]);
 
             $this->assertStringStartsWith($start, EmailText::line('test_email.hello', ['first_name' => 'Jordan', 'area' => 'Front desk'])->toHtml(), $edit);
+        }
+    }
+
+    public function test_an_edit_that_starts_like_markdown_stays_one_paragraph(): void
+    {
+        $vars = ['first_name' => 'Jordan', 'area' => 'Front desk', 'note' => 'See you.'];
+        $paragraph = fn (HtmlString $line) => preg_match('#^<p>[^<]*</p>$#', trim((string) Markdown::parse($line->toHtml()))) === 1;
+
+        foreach (['- item', '1. item', '+ item', '---', '# heading', '2) item', '=== item', '> quote'] as $start) {
+            EmailWording::query()->delete();
+            $this->edit(['test_email.hello' => $start.' {first_name} {area}', 'test_email.note' => $start.' {first_name}: {note}']);
+
+            $this->assertTrue($paragraph(EmailText::line('test_email.hello', $vars)), "{$start} on an ordinary line");
+            $this->assertTrue($paragraph(EmailText::plainTextLine('test_email.note', $vars)), "{$start} on a note line");
+
+            // An edit that starts with a value that's empty, or only spaces, is covered too.
+            EmailWording::query()->delete();
+            $this->edit(['test_email.hello' => '{first_name}'.$start.' {area}', 'test_email.note' => '{first_name}'.$start.' {note}']);
+            foreach (['', '   '] as $empty) {
+                $this->assertTrue($paragraph(EmailText::line('test_email.hello', ['first_name' => $empty] + $vars)), "{$start} after an empty value");
+                $this->assertTrue($paragraph(EmailText::plainTextLine('test_email.note', ['first_name' => $empty] + $vars)), "{$start} after an empty value on a note line");
+            }
         }
     }
 

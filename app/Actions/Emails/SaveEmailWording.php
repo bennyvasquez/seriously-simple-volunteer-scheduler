@@ -6,11 +6,14 @@ use App\Models\ChangeLogEntry;
 use App\Models\EmailWording;
 use App\Models\User;
 use App\Notifications\EmailText;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Saves edited email lines (spec section 10). `$lines` maps a line key ("login_link.intro") to its new text; null or an empty string puts the line back to the default. Every line is checked before anything is stored: the key has to be a line in lang/en/emails.php, the text can't be only spaces or longer than MAX characters, every {variable} has to be one the default line has, written exactly, and a link variable the default has (one ending in `_link`) has to stay. A refusal is a ValidationException keyed by line key, and nothing is saved. Text is stored with its whitespace made single spaces, which is how it's sent.
+ * Saves edited email lines (spec section 10). `$lines` maps a line key ("login_link.intro") to its new text; only null puts the line back to the default. Every line is checked before anything is stored: the key has to be a line in lang/en/emails.php, the text can't be empty, only spaces or longer than MAX characters, it can't hold a web address ("://" or "www.", since mail apps turn bare addresses into links themselves), every {variable} has to be one the default line has, written exactly, and a link variable (one ending in `_link`) or {note} the default has must stay. A refusal is a ValidationException keyed by line key, and nothing is saved. Text is stored with Unicode format characters (bidi overrides, zero-width characters) removed and its whitespace made single spaces, which is how it's sent.
+ *
+ * Two first edits of the same line at once can deadlock or collide on the unique key: the transaction is tried up to three times, and a collision that's left is refused with a plain message rather than an error page.
  *
  * Only lines whose text changed are written and logged, so a save never touches a line someone else changed meanwhile unless this save changes it too. Text that matches the default is the default: saving it puts the line back rather than storing a copy, so a later improvement to the default still reaches that line. Each changed line gets one change log entry, `email_wording.changed` or `email_wording.reset`, with the text before and after (the default's text when the line wasn't edited) and the line and email keys in details.
  */
@@ -22,41 +25,53 @@ class SaveEmailWording
     public function handle(User $actor, array $lines): void
     {
         $wanted = $this->check($lines);
+        $current = null;
 
-        DB::transaction(function () use ($actor, $wanted) {
-            ksort($wanted);
-            $rows = EmailWording::query()->whereIn('key', array_keys($wanted))->orderBy('key')->lockForUpdate()->get()->keyBy('key');
+        try {
+            DB::transaction(function () use ($actor, $wanted, &$current) {
+                $this->store($actor, $wanted, $current);
+            }, 3);
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages([(string) $current => 'Someone else just changed this line. Check it and try again.']);
+        } finally {
+            EmailWording::forgetCache();
+        }
+    }
 
-            foreach ($wanted as $key => $text) {
-                $default = EmailText::defaultText($key);
-                $row = $rows->get($key);
-                $old = $row?->text ?? $default;
-                $new = $text ?? $default;
+    /** @param array<string, ?string> $wanted */
+    private function store(User $actor, array $wanted, ?string &$current): void
+    {
+        ksort($wanted);
+        $rows = EmailWording::query()->whereIn('key', array_keys($wanted))->orderBy('key')->lockForUpdate()->get()->keyBy('key');
 
-                if ($old === $new && ($row === null) === ($text === null)) {
-                    continue;
-                }
+        foreach ($wanted as $key => $text) {
+            $current = $key;
+            $default = EmailText::defaultText($key);
+            $row = $rows->get($key);
+            $old = $row?->text ?? $default;
+            $new = $text ?? $default;
 
-                $details = ['key' => $key, 'email' => explode('.', $key)[0]];
-                $changes = ['text' => ['old' => $old, 'new' => $new]];
-
-                if ($text === null) {
-                    ChangeLogEntry::record($actor, 'email_wording.reset', $row, $details, $changes);
-                    $row->delete();
-
-                    continue;
-                }
-
-                $row ??= new EmailWording(['key' => $key]);
-                $row->text = $text;
-                $row->updated_by = $actor->id;
-                $row->save();
-
-                ChangeLogEntry::record($actor, 'email_wording.changed', $row, $details, $changes);
+            if ($old === $new && ($row === null) === ($text === null)) {
+                continue;
             }
-        });
 
-        EmailWording::forgetCache();
+            $details = ['key' => $key, 'email' => explode('.', $key)[0]];
+            $changes = ['text' => ['old' => $old, 'new' => $new]];
+
+            if ($text === null) {
+                ChangeLogEntry::record($actor, 'email_wording.reset', $row, $details, $changes);
+                $row->delete();
+
+                continue;
+            }
+
+            $row ??= new EmailWording(['key' => $key]);
+            $row->text = $text;
+            $row->updated_by = $actor->id;
+            $row->save();
+
+            ChangeLogEntry::record($actor, 'email_wording.changed', $row, $details, $changes);
+        }
     }
 
     /**
@@ -79,7 +94,7 @@ class SaveEmailWording
                 continue;
             }
 
-            if ($text === null || $text === '') {
+            if ($text === null) {
                 $wanted[$key] = null;
 
                 continue;
@@ -107,11 +122,15 @@ class SaveEmailWording
     private function problemWith(string $key, string $text): ?string
     {
         if ($text === '') {
-            return 'Write something for this line, or put it back to the default.';
+            return 'Type the wording, or use Back to the default.';
         }
 
         if (mb_strlen($text) > self::MAX) {
             return 'Keep this line to '.self::MAX.' characters or fewer. It has '.mb_strlen($text).'.';
+        }
+
+        if (stripos($text, '://') !== false || stripos($text, 'www.') !== false) {
+            return 'Emails can\'t have web addresses typed into them. Links come from SSVS.';
         }
 
         $allowed = EmailText::allowedVariables($key);
@@ -125,6 +144,10 @@ class SaveEmailWording
         }
 
         $missing = array_values(array_filter(EmailText::requiredVariables($key), fn (string $name) => ! str_contains($text, '{'.$name.'}')));
+
+        if (in_array('note', $missing, true)) {
+            return 'Keep {note} in this line: it\'s the note the volunteer wrote, and without it they\'d never know it wasn\'t sent.';
+        }
 
         if ($missing !== []) {
             return 'Keep '.self::list(array_map(fn (string $name) => '{'.$name.'}', $missing)).' in this line: it\'s the link people use from this email.';
