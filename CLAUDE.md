@@ -1,6 +1,6 @@
 # Working on SSVS
 
-The Seriously Simple Volunteer Scheduler (SSVS) helps a small organization run its volunteer schedule: weekly shifts with regulars, cover requests when someone can't make it, and shadowing for new volunteers. The Lansing Makers Network (LMN) is its first deployment. Keep the generic product (README, docs/spec.md) separate from any one organization's setup (docs/deployments/).
+The Seriously Simple Volunteer Scheduler (SSVS) helps a small organization run its volunteer schedule: weekly shifts with regulars, cover requests when someone can't make it, and shadowing for new volunteers. The Lansing Makers Network (LMN) is its first deployment. Keep the generic product (README, docs/spec.md) separate from any one organization's setup, which lives outside this repository (docs/deployments/README.md says what it covers). Don't add an organization's setup notes here.
 
 ## Start here
 
