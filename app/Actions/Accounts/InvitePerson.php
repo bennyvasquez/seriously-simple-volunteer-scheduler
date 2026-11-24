@@ -57,6 +57,6 @@ class InvitePerson
         });
 
         // After the response, so a mail failure never shows an error for a change that was saved.
-        defer(fn () => $person->notify(new InvitationNotification($url, $actor->name)));
+        defer(fn () => $person->notify(new InvitationNotification($url, $actor->shortName())));
     }
 }
