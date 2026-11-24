@@ -1,9 +1,7 @@
-{{-- The Home, Schedule and Me menu on every signed-in page. It's left out for anyone who can't use those pages yet: not signed in, turned off, or still setting up the password and two-factor that their role needs (the same test as EnsureAccountIsSecure). --}}
+{{-- The Home, Schedule and Me menu on every signed-in page. It's left out for anyone who can't use those pages yet: not signed in, turned off, or still setting up the password and two-factor that their role needs (User::hasFinishedSecuritySetup(), which EnsureAccountIsSecure also uses). --}}
 @php
 $navUser = auth()->user();
-$showNav = $navUser !== null
-    && $navUser->isActive()
-    && (! $navUser->requiresTwoFactor() || ($navUser->password !== null && $navUser->hasEnabledTwoFactorAuthentication()));
+$showNav = $navUser !== null && $navUser->isActive() && $navUser->hasFinishedSecuritySetup();
 @endphp
 @if ($showNav)
 <nav aria-label="Main" class="main-nav">

@@ -61,6 +61,43 @@ class MainNavTest extends TestCase
         $this->get(route('login'))->assertOk()->assertDontSee('aria-label="Main"', false);
     }
 
+    public function test_a_coordinator_who_hasnt_finished_two_factor_sees_no_menu(): void
+    {
+        $user = User::factory()->create();
+        app(GrantRole::class)->handle(null, $user, Role::Coordinator, null);
+
+        $this->actingAs($user)->get(route('account.security'))->assertOk()->assertDontSee('aria-label="Main"', false);
+    }
+
+    public function test_a_coordinator_with_no_password_sees_no_menu_where_theyre_sent(): void
+    {
+        $user = User::factory()->withoutPassword()->create();
+        app(GrantRole::class)->handle(null, $user, Role::Coordinator, null);
+        $this->enableTwoFactor($user);
+
+        $this->actingAs($user)->get(route('home'))->assertRedirect(route('account.security'));
+        $this->get(route('account.security'))->assertOk()->assertDontSee('aria-label="Main"', false);
+    }
+
+    public function test_has_finished_security_setup_covers_each_case(): void
+    {
+        $this->assertTrue(User::factory()->withoutPassword()->create()->hasFinishedSecuritySetup());
+
+        $noTwoFactor = User::factory()->create();
+        app(GrantRole::class)->handle(null, $noTwoFactor, Role::Coordinator, null);
+        $this->assertFalse($noTwoFactor->hasFinishedSecuritySetup());
+
+        $noPassword = User::factory()->withoutPassword()->create();
+        app(GrantRole::class)->handle(null, $noPassword, Role::Coordinator, null);
+        $this->enableTwoFactor($noPassword);
+        $this->assertFalse($noPassword->hasFinishedSecuritySetup());
+
+        $done = User::factory()->create();
+        app(GrantRole::class)->handle(null, $done, Role::Coordinator, null);
+        $this->enableTwoFactor($done);
+        $this->assertTrue($done->hasFinishedSecuritySetup());
+    }
+
     public function test_home_has_no_calendar_button(): void
     {
         $user = User::factory()->create();
