@@ -157,7 +157,8 @@ class PersonController extends Controller
         $firstName = $person->shortName();
         $typed = trim((string) $request->input('confirm', ''));
 
-        if (mb_strtolower($typed) !== mb_strtolower($firstName)) {
+        // The short name ends in a period ("Robin E."), and typing it without the period is fine too.
+        if (mb_strtolower(rtrim($typed, '.')) !== mb_strtolower(rtrim($firstName, '.'))) {
             throw ValidationException::withMessages(['confirm' => 'Type '.$firstName.' to confirm.']);
         }
 

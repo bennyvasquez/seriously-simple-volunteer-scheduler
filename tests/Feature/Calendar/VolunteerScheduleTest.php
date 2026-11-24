@@ -11,6 +11,7 @@ use App\Models\Shift;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
@@ -69,6 +70,35 @@ class VolunteerScheduleTest extends TestCase
     private function week(User $user)
     {
         return $this->actingAs($user)->get(route('calendar.week', ['date' => '2026-10-21']));
+    }
+
+    public function test_the_week_page_runs_the_same_number_of_queries_however_many_shifts_it_has(): void
+    {
+        $first = $this->shiftOn('2026-10-19', needed: 2);
+        $this->place($first, $this->jordan());
+        $this->place($first, $this->sam);
+
+        $count = function (): int {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->week($this->sam)->assertOk();
+            $queries = count(DB::getQueryLog());
+            DB::disableQueryLog();
+
+            return $queries;
+        };
+
+        // The first request also records when the volunteer was last seen, which is throttled, so measure from the second.
+        $count();
+        $few = $count();
+
+        foreach (['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24'] as $date) {
+            $shift = $this->shiftOn($date, needed: 3);
+            $this->place($shift, $this->jordan());
+            $this->place($shift, $this->sam);
+        }
+
+        $this->assertSame($few, $count());
     }
 
     public function test_a_volunteer_sees_no_coordinator_controls(): void

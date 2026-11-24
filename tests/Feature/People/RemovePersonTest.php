@@ -323,6 +323,23 @@ class RemovePersonTest extends TestCase
         $this->actingAs($this->admin)->post(route('people.two-factor.reset', $removed), ['identity_checked' => '1'])->assertNotFound();
     }
 
+    public function test_the_confirmation_accepts_the_short_name_with_or_without_its_period(): void
+    {
+        foreach (['Robin E', 'robin e.', ' ROBIN E. '] as $typed) {
+            $robin = User::factory()->create(['name' => 'Robin Example']);
+
+            $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => $typed])
+                ->assertRedirect(route('people.index'))
+                ->assertSessionHasNoErrors();
+
+            $this->assertModelMissing($robin);
+        }
+
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $this->actingAs($this->coordinator)->post(route('people.remove.store', $robin), ['confirm' => 'Robin'])->assertSessionHasErrors(['confirm' => 'Type Robin E. to confirm.']);
+        $this->assertModelExists($robin);
+    }
+
     public function test_the_confirmation_needs_the_first_name(): void
     {
         $robin = User::factory()->create(['name' => 'Robin Example']);
