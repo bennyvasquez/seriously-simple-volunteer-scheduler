@@ -93,6 +93,7 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'last_seen_at' => 'datetime',
             'cover_request_emails' => 'boolean',
+            'reminder_emails' => 'boolean',
             'cleared_at' => 'datetime',
             'shadowing_since' => 'datetime',
         ];

@@ -321,7 +321,7 @@ class CoverLadderTest extends TestCase
             return $notification->notice === ShadowSpotNotice::StillUncovered
                 && $mail->subject === 'Your shadow shift tomorrow still has nobody to shadow'
                 && str_contains($lines, 'Nobody has taken Robin E.\'s Front desk shift on Thursday, October 22 yet. If someone does, we\'ll email you.')
-                && str_contains($lines, 'If nobody does, there\'s nobody to shadow, so please don\'t come in for it. Alex L. (Shift lead) knows.');
+                && str_contains($lines, 'If nobody does, there\'s nobody to shadow, so please reach out to the volunteer coordinators to confirm next steps. Alex L. (Shift lead) knows.');
         });
     }
 

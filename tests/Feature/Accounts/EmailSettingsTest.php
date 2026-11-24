@@ -28,12 +28,16 @@ class EmailSettingsTest extends TestCase
             ->assertSee('<h1>Emails</h1>', false)
             ->assertSee("Email me when someone can't make a shift I could take", false)
             ->assertSee('Usually one or two emails each time a shift needs covering.')
+            ->assertSee('<h2>Reminders</h2>', false)
+            ->assertSee('Remind me before my shifts')
+            ->assertSee("One email before each shift you're on.", false)
+            ->assertSee('name="reminder_emails" value="1" checked', false)
             ->assertSee('Always sent')
             ->assertSee('name="cover_request_emails" value="1" checked', false)
             ->assertSee('href="'.route('home').'"', false);
 
         $sam->forceFill(['cover_request_emails' => false])->save();
-        $this->actingAs($sam->fresh())->get(route('account.emails'))->assertDontSee('value="1" checked', false);
+        $this->actingAs($sam->fresh())->get(route('account.emails'))->assertDontSee('name="cover_request_emails" value="1" checked', false);
     }
 
     public function test_a_guest_is_sent_to_log_in_and_lands_back_on_the_emails_page(): void
@@ -50,7 +54,7 @@ class EmailSettingsTest extends TestCase
         $shift = app(CreateOneTimeShift::class)->handle($coordinator, Area::factory()->create(), now()->addDays(3)->toDateString(), '18:00', '20:00', 1, 0, null);
         $this->assertTrue(CoverEligibility::recipients($shift)->contains('id', $sam->id));
 
-        $this->actingAs($sam)->post(route('account.emails'), [])->assertRedirect(route('account.emails'))->assertSessionHas('status', 'Saved.');
+        $this->actingAs($sam)->post(route('account.emails'), ['reminder_emails' => '1'])->assertRedirect(route('account.emails'))->assertSessionHas('status', 'Saved.');
 
         $this->assertFalse($sam->fresh()->cover_request_emails);
         $this->assertFalse(CoverEligibility::recipients($shift)->contains('id', $sam->id));
@@ -60,7 +64,7 @@ class EmailSettingsTest extends TestCase
         $this->assertSame(['cover_request_emails' => ['old' => true, 'new' => false]], $entry->changes);
         $this->assertSame('Turned off cover request emails', Describe::entry($entry, $sam));
 
-        $this->actingAs($sam)->post(route('account.emails'), ['cover_request_emails' => '1'])->assertRedirect(route('account.emails'));
+        $this->actingAs($sam)->post(route('account.emails'), ['cover_request_emails' => '1', 'reminder_emails' => '1'])->assertRedirect(route('account.emails'));
 
         $this->assertTrue($sam->fresh()->cover_request_emails);
         $this->assertTrue(CoverEligibility::recipients($shift)->contains('id', $sam->id));
@@ -68,21 +72,70 @@ class EmailSettingsTest extends TestCase
         $this->assertSame('Turned on cover request emails', Describe::entry(ChangeLogEntry::query()->latest('id')->first(), $sam));
     }
 
+    public function test_reminders_are_on_by_default(): void
+    {
+        $this->assertTrue(User::factory()->create()->fresh()->reminder_emails);
+    }
+
+    public function test_turning_reminders_off_logs_old_and_new(): void
+    {
+        $sam = User::factory()->create()->fresh();
+
+        $this->actingAs($sam)->post(route('account.emails'), ['cover_request_emails' => '1'])->assertRedirect(route('account.emails'));
+
+        $this->assertFalse($sam->fresh()->reminder_emails);
+        $this->assertTrue($sam->fresh()->cover_request_emails);
+        $entry = ChangeLogEntry::query()->ofAction('user.email_settings_changed')->sole();
+        $this->assertSame(['reminder_emails' => ['old' => true, 'new' => false]], $entry->changes);
+        $this->assertSame('Turned off shift reminder emails', Describe::entry($entry, $sam));
+    }
+
+    public function test_turning_both_off_in_one_save_logs_both_and_describes_both(): void
+    {
+        $sam = User::factory()->create()->fresh();
+
+        $this->actingAs($sam)->post(route('account.emails'), [])->assertRedirect(route('account.emails'));
+
+        $entry = ChangeLogEntry::query()->ofAction('user.email_settings_changed')->sole();
+        $this->assertSame(['cover_request_emails' => ['old' => true, 'new' => false], 'reminder_emails' => ['old' => true, 'new' => false]], $entry->changes);
+        $this->assertSame('Turned off cover request emails and shift reminder emails', Describe::entry($entry, $sam));
+    }
+
+    public function test_turning_reminders_back_on_is_described(): void
+    {
+        $sam = User::factory()->create(['reminder_emails' => false])->fresh();
+
+        $this->actingAs($sam)->post(route('account.emails'), ['cover_request_emails' => '1', 'reminder_emails' => '1']);
+
+        $entry = ChangeLogEntry::query()->ofAction('user.email_settings_changed')->sole();
+        $this->assertSame(['reminder_emails' => ['old' => false, 'new' => true]], $entry->changes);
+        $this->assertSame('Turned on shift reminder emails', Describe::entry($entry, $sam));
+    }
+
+    public function test_saving_both_unchanged_logs_nothing(): void
+    {
+        $sam = User::factory()->create();
+
+        $this->actingAs($sam)->post(route('account.emails'), ['cover_request_emails' => '1', 'reminder_emails' => '1']);
+
+        $this->assertSame(0, ChangeLogEntry::query()->ofAction('user.email_settings_changed')->count());
+    }
+
     public function test_the_status_shows_on_the_page_after_saving(): void
     {
         $sam = User::factory()->create();
 
-        $this->actingAs($sam)->followingRedirects()->post(route('account.emails'), ['cover_request_emails' => '1'])->assertSee('Saved.');
+        $this->actingAs($sam)->followingRedirects()->post(route('account.emails'), ['cover_request_emails' => '1', 'reminder_emails' => '1'])->assertSee('Saved.');
     }
 
     public function test_saving_without_a_change_logs_nothing(): void
     {
         $sam = User::factory()->create();
 
-        $this->actingAs($sam)->post(route('account.emails'), ['cover_request_emails' => '1'])->assertSessionHas('status', 'Saved.');
+        $this->actingAs($sam)->post(route('account.emails'), ['cover_request_emails' => '1', 'reminder_emails' => '1'])->assertSessionHas('status', 'Saved.');
 
         $this->assertSame(0, ChangeLogEntry::query()->ofAction('user.email_settings_changed')->count());
-        app(UpdateEmailSettings::class)->handle($sam, true);
+        app(UpdateEmailSettings::class)->handle($sam, true, true);
         $this->assertSame(0, ChangeLogEntry::query()->ofAction('user.email_settings_changed')->count());
     }
 

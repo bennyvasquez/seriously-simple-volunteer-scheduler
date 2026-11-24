@@ -12,13 +12,13 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Changes the organization's name, time zone and how many weeks ahead shifts are made. Admins only. A new time zone doesn't move or regenerate shifts already made. Raising weeks ahead makes the extra shifts right away, after the change is saved; lowering it leaves existing shifts alone. Logs organization.updated.
+ * Changes the organization's name, time zone, how many weeks ahead shifts are made and how many hours before a shift its reminder goes out (2, 12, 24 or 48, or null for off). Admins only. A new time zone doesn't move or regenerate shifts already made. Raising weeks ahead makes the extra shifts right away, after the change is saved; lowering it leaves existing shifts alone. Logs organization.updated.
  */
 class UpdateSettings
 {
     public function __construct(private GenerateShifts $generateShifts) {}
 
-    public function handle(User $actor, string $name, string $timezone, int $weeksAhead): Organization
+    public function handle(User $actor, string $name, string $timezone, int $weeksAhead, ?int $reminderHours): Organization
     {
         Gate::forUser($actor)->authorize('manage-settings');
 
@@ -39,15 +39,19 @@ class UpdateSettings
             $errors['weeks_ahead'] = 'Choose a number of weeks from 1 to 26.';
         }
 
+        if ($reminderHours !== null && ! in_array($reminderHours, Organization::REMINDER_CHOICES, true)) {
+            $errors['reminder_hours'] = 'Choose when reminders go out from the list.';
+        }
+
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
         }
 
-        [$organization, $raised] = DB::transaction(function () use ($actor, $name, $timezone, $weeksAhead) {
+        [$organization, $raised] = DB::transaction(function () use ($actor, $name, $timezone, $weeksAhead, $reminderHours) {
             $organization = Organization::query()->lockForUpdate()->firstOrFail();
             $before = $organization->weeks_ahead;
 
-            $organization->fill(['name' => $name, 'timezone' => $timezone, 'weeks_ahead' => $weeksAhead]);
+            $organization->fill(['name' => $name, 'timezone' => $timezone, 'weeks_ahead' => $weeksAhead, 'reminder_hours' => $reminderHours]);
             $changes = ChangeLogEntry::changesOf($organization);
 
             if ($changes !== []) {
