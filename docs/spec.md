@@ -2,7 +2,7 @@
 
 Status: draft, October 2026. Owner: benny Vasquez.
 
-This spec describes what the app does and why. It's written for anyone building or deploying it. Organization-specific setup lives in [deployments/](deployments/), starting with [the Lansing Makers Network](deployments/lmn.md).
+This spec describes what the app does and why. It's written for anyone building or deploying it. Each organization keeps its own setup notes outside this repository; [deployments/README.md](deployments/README.md) says what they cover.
 
 ## 1. The problem
 
@@ -551,6 +551,7 @@ Run a test copy a couple of weeks before launch. Coordinators enter the real sch
 | 2026-11-23 | A form posted after its page was open longer than the session goes back to the page with "This page was open too long, so nothing was saved. Please try again." and nothing is saved (#80). A render callback in `bootstrap/app.php` handles a token mismatch on a POST whose address also has a page: it redirects to that path as a GET, never to a Referer or typed input, so the login page reveals nothing about an email address. A post whose address has no page (log out) keeps the 419 page. A guest whose session expired is sent to log in and then back to the page they were on (Laravel stores the previous same-site page), and a guest POST other than log out and the "Forgot your password?" button on the confirm screen (`/account/forgot-password`) also gets the message on the login page. The message shows on the pages that display a status: take, shadow, release, change notice and login. Other pages don't show it yet (my call, for benny to check, 2026-11-23). |
 | 2026-11-23 | The release form and the check step say "{Area} still has the people it needs, so nobody else will be asked." when the person's place isn't needed (the shift would still have its people without them), the same rule ReleaseShifts uses, in the future tense because nothing has happened yet. A shadow's form says only that they'll leave the shadow spot. For several shifts, the check step marks each shift where nobody will be asked and says how many will be covered and how many won't. A removed releaser is "Someone" in every email a volunteer gets: the taker's "It's yours" (with the note), the shadows' "back on" and the leads' "Covered" (#58) (my call, for benny to check, 2026-11-23). |
 | 2026-11-23 | The week view fits all seven days at 1024 pixels wide: day columns can shrink to 96 pixels and the calendar sidebar to 200 pixels. Below that width the grid still scrolls sideways, as before (issue #74; my call, for benny to check, 2026-11-23). |
+| 2026-11-24 | Each organization's setup notes (people, schedule shape, integrations, hosting, launch plan) live outside this repository, so the repository can be public. LMN's moved to a private repository for now; docs/deployments/README.md says what the notes should cover. Earlier plans in docs/plans/ still mention docs/deployments/lmn.md as a record of what was done then. |
 
 ## 19. Open questions
 
