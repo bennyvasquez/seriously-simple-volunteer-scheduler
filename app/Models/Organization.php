@@ -17,14 +17,17 @@ class Organization extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'timezone', 'weeks_ahead', 'required_shadow_shifts'];
+    /** The hours before a shift that a reminder can go out. A null reminder_hours means reminders are off. */
+    public const REMINDER_CHOICES = [2, 12, 24, 48];
+
+    protected $fillable = ['name', 'timezone', 'weeks_ahead', 'required_shadow_shifts', 'reminder_hours'];
 
     /** Matches the column default, so a new model has it before it's reloaded. */
-    protected $attributes = ['weeks_ahead' => 8];
+    protected $attributes = ['weeks_ahead' => 8, 'reminder_hours' => 24];
 
     protected function casts(): array
     {
-        return ['weeks_ahead' => 'integer', 'required_shadow_shifts' => 'integer'];
+        return ['weeks_ahead' => 'integer', 'required_shadow_shifts' => 'integer', 'reminder_hours' => 'integer'];
     }
 
     protected static function booted(): void

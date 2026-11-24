@@ -14,7 +14,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * Organization settings (screen 38): name, time zone and weeks ahead (admins only), and the Shadowing section (how many shadow shifts before review), which coordinators can reach too.
+ * Organization settings (screen 38): name, time zone, weeks ahead and reminder timing (admins only), and the Shadowing section (how many shadow shifts before review), which coordinators can reach too.
  */
 class SettingsController extends Controller
 {
@@ -43,15 +43,17 @@ class SettingsController extends Controller
             'name' => ['required', 'string', 'max:150'],
             'timezone' => ['required', 'string', Rule::in(DateTimeZone::listIdentifiers())],
             'weeks_ahead' => ['required', 'integer', 'between:1,26'],
+            'reminder_hours' => ['required', Rule::in(['off', ...array_map('strval', Organization::REMINDER_CHOICES)])],
         ], [
             'name.required' => 'Give the organization a name.',
             'name.max' => 'Keep the name to 150 characters or fewer.',
             'name.*' => 'Give the organization a name.',
             'timezone.*' => 'Pick a time zone from the list.',
             'weeks_ahead.*' => 'Choose a number of weeks from 1 to 26.',
+            'reminder_hours.*' => 'Choose when reminders go out from the list.',
         ]);
 
-        $updateSettings->handle($request->user(), (string) $request->input('name'), (string) $request->input('timezone'), (int) $request->input('weeks_ahead'));
+        $updateSettings->handle($request->user(), (string) $request->input('name'), (string) $request->input('timezone'), (int) $request->input('weeks_ahead'), $request->input('reminder_hours') === 'off' ? null : (int) $request->input('reminder_hours'));
 
         return redirect()->route('settings', $this->areaQuery($request))->with('status', 'Saved the settings.');
     }

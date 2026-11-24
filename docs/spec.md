@@ -89,7 +89,7 @@ These tables describe what's built today, checked against the code's policies an
 | Make someone shadowing a shift its regular, for one date (the shift panel) or every week ("Add a regular"), turning their shadow places into regular places | No | Their areas | All areas | All areas |
 | Create and edit areas, including the lead name | No | No | Yes | Yes |
 | Closures | No | No | Yes | Yes |
-| Organization settings (name, time zone, weeks ahead) | No | No | No | Yes |
+| Organization settings (name, time zone, weeks ahead, reminder timing) | No | No | No | Yes |
 | Shadowing setting (shadow shifts before review) | No | No | Yes | Yes |
 | Mark a shadow's no-show | No | Their areas | All areas | All areas |
 | "Ready for review" in Needs attention | No | No | Yes | Yes |
@@ -333,7 +333,7 @@ When someone stops volunteering, a coordinator turns their account off. That rem
 
 ## 14. Settings
 
-Organization: name, time zone, weeks to generate ahead, required shadow shifts, reminder timing, public calendar on or off, "become a volunteer" link. Built so far: name, time zone and weeks to generate ahead (1 to 26), changed by admins only, and "Shadow shifts before review" (the required shadow shifts, 1 to 10, default 2), changed by coordinators and admins in a Shadowing section (section 9). The rest come with their features.
+Organization: name, time zone, weeks to generate ahead, required shadow shifts, reminder timing, public calendar on or off, "become a volunteer" link. Built so far: name, time zone and weeks to generate ahead (1 to 26), and "Remind people before their shifts" (off, or 2, 12, 24 or 48 hours before a shift, default 24, stored as `reminder_hours` with null for off), changed by admins only, and "Shadow shifts before review" (the required shadow shifts, 1 to 10, default 2), changed by coordinators and admins in a Shadowing section (section 9). The rest come with their features.
 Per area: name, escalation timings, chat webhook, whether it appears on the public calendar. The per-area escalation timings aren't built yet: every area uses the defaults, 72 hours for the second request and 24 hours for the urgent alert (section 8.3).
 Integrations: email (SMTP), chat webhooks, SMS provider, member sync, hours export, Google Calendar.
 

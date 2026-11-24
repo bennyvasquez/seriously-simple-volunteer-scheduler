@@ -197,7 +197,7 @@ class AreasAndSettingsTest extends TestCase
 
         $this->actingAs($this->withRole(Role::Admin))->get(route('settings'))->assertOk()->assertSee('Organization settings')->assertSee('America/Detroit');
 
-        $this->actingAs($this->withRole(Role::Admin))->put(route('settings'), ['name' => 'Example Makers', 'timezone' => 'America/Chicago', 'weeks_ahead' => 6])->assertRedirect(route('settings'));
+        $this->actingAs($this->withRole(Role::Admin))->put(route('settings'), ['name' => 'Example Makers', 'timezone' => 'America/Chicago', 'weeks_ahead' => 6, 'reminder_hours' => '24'])->assertRedirect(route('settings'));
         $organization = Organization::current();
         $this->assertSame(['Example Makers', 'America/Chicago', 6], [$organization->name, $organization->timezone, $organization->weeks_ahead]);
     }
@@ -285,14 +285,14 @@ class AreasAndSettingsTest extends TestCase
     public function test_the_action_refuses_non_admins_and_bad_values(): void
     {
         try {
-            app(UpdateSettings::class)->handle($this->coordinator(), 'Example Makerspace', 'America/Detroit', 4);
+            app(UpdateSettings::class)->handle($this->coordinator(), 'Example Makerspace', 'America/Detroit', 4, 24);
             $this->fail('A coordinator should not change settings.');
         } catch (AuthorizationException) {
             $this->assertSame(2, Organization::current()->weeks_ahead);
         }
 
         $this->expectException(ValidationException::class);
-        app(UpdateSettings::class)->handle($this->withRole(Role::Admin), 'Example Makerspace', 'Mars/Olympus', 4);
+        app(UpdateSettings::class)->handle($this->withRole(Role::Admin), 'Example Makerspace', 'Mars/Olympus', 4, 24);
     }
 
     public function test_raising_weeks_ahead_generates_more_shifts_now(): void
@@ -306,7 +306,7 @@ class AreasAndSettingsTest extends TestCase
         $this->assertSame(2, $before);
 
         $admin = $this->withRole(Role::Admin);
-        $organization = app(UpdateSettings::class)->handle($admin, 'Example Makerspace', 'America/Detroit', 4);
+        $organization = app(UpdateSettings::class)->handle($admin, 'Example Makerspace', 'America/Detroit', 4, 24);
 
         $this->assertSame(4, $organization->weeks_ahead);
         $this->assertSame(4, Shift::query()->where('weekly_slot_id', $slot->id)->count());
@@ -325,7 +325,7 @@ class AreasAndSettingsTest extends TestCase
         ]);
         $before = Shift::query()->orderBy('id')->get()->map(fn (Shift $s) => [$s->id, $s->starts_at->toDateTimeString(), $s->local_date->toDateString()])->all();
 
-        app(UpdateSettings::class)->handle($this->withRole(Role::Admin), 'Example Makerspace', 'America/Los_Angeles', 2);
+        app(UpdateSettings::class)->handle($this->withRole(Role::Admin), 'Example Makerspace', 'America/Los_Angeles', 2, 24);
 
         $after = Shift::query()->orderBy('id')->get()->map(fn (Shift $s) => [$s->id, $s->starts_at->toDateTimeString(), $s->local_date->toDateString()])->all();
         $this->assertSame($before, $after);
@@ -340,8 +340,65 @@ class AreasAndSettingsTest extends TestCase
             'frequency' => 'weekly', 'valid_from' => '2026-10-15', 'valid_until' => null, 'title' => null, 'is_rotation' => false,
         ]);
 
-        app(UpdateSettings::class)->handle($this->withRole(Role::Admin), 'Example Makerspace', 'America/Detroit', 1);
+        app(UpdateSettings::class)->handle($this->withRole(Role::Admin), 'Example Makerspace', 'America/Detroit', 1, 24);
 
         $this->assertSame(2, Shift::query()->count());
+    }
+
+    public function test_new_organizations_remind_24_hours_before(): void
+    {
+        $this->assertSame(24, Organization::current()->reminder_hours);
+        $this->assertSame(24, (new Organization)->reminder_hours);
+        $this->assertSame([2, 12, 24, 48], Organization::REMINDER_CHOICES);
+    }
+
+    public function test_an_admin_can_turn_reminders_off_and_back_on(): void
+    {
+        $admin = $this->withRole(Role::Admin);
+        $base = ['name' => 'Example Makerspace', 'timezone' => 'America/Detroit', 'weeks_ahead' => 2];
+
+        $this->actingAs($admin)->put(route('settings'), $base + ['reminder_hours' => 'off'])->assertSessionHasNoErrors();
+        $this->assertNull(Organization::current()->reminder_hours);
+        $entry = ChangeLogEntry::query()->ofAction('organization.updated')->sole();
+        $this->assertSame(['old' => 24, 'new' => null], $entry->changes['reminder_hours']);
+
+        $this->actingAs($admin)->put(route('settings'), $base + ['reminder_hours' => '48'])->assertSessionHasNoErrors();
+        $this->assertSame(48, Organization::current()->reminder_hours);
+        $this->assertSame(['old' => null, 'new' => 48], ChangeLogEntry::query()->ofAction('organization.updated')->latest('id')->first()->changes['reminder_hours']);
+
+        $this->actingAs($admin)->get(route('settings'))->assertOk()
+            ->assertSee('Remind people before their shifts')
+            ->assertSee('Everyone on a shift gets an email this long before it starts. People can turn reminders off for themselves.')
+            ->assertSee('2 hours')->assertSee('12 hours')->assertSee('24 hours')->assertSee('48 hours')->assertSee('Off');
+    }
+
+    public function test_the_reminder_setting_refuses_other_values(): void
+    {
+        $admin = $this->withRole(Role::Admin);
+        $base = ['name' => 'Example Makerspace', 'timezone' => 'America/Detroit', 'weeks_ahead' => 2];
+
+        foreach (['13', '0', 'x', ''] as $bad) {
+            $this->actingAs($admin)->put(route('settings'), $base + ['reminder_hours' => $bad])
+                ->assertSessionHasErrors(['reminder_hours' => 'Choose when reminders go out from the list.']);
+        }
+
+        $this->assertSame(24, Organization::current()->reminder_hours);
+
+        try {
+            app(UpdateSettings::class)->handle($admin, 'Example Makerspace', 'America/Detroit', 2, 13);
+            $this->fail('Thirteen should be refused.');
+        } catch (ValidationException $e) {
+            $this->assertSame('Choose when reminders go out from the list.', $e->errors()['reminder_hours'][0]);
+        }
+    }
+
+    public function test_a_coordinator_doesnt_see_the_reminder_setting_and_cant_change_it(): void
+    {
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->get(route('settings'))->assertOk()->assertDontSee('Remind people before their shifts');
+        $this->actingAs($coordinator)->put(route('settings'), ['name' => 'Example Makerspace', 'timezone' => 'America/Detroit', 'weeks_ahead' => 2, 'reminder_hours' => 'off'])->assertForbidden();
+
+        $this->assertSame(24, Organization::current()->reminder_hours);
     }
 }
