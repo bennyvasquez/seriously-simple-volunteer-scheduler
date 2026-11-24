@@ -49,7 +49,8 @@ class ReleaseController extends Controller
         $shadow = $assignment->type === AssignmentType::Shadow;
 
         // The shadows who'd hear their spot is on hold: only when this person is the last one filling a place.
-        $shadowNames = ! $shadow && $shift->filledCount() === 1
+        $needsCover = ! $shadow && $this->needsCover($shift, $assignment);
+        $shadowNames = $needsCover && $shift->filledCount() === 1
             ? $shift->assignments->where('type', AssignmentType::Shadow)->sortBy('id')->pluck('user')->filter(fn (User $person) => $person->canSignIn())->map(fn (User $person) => $person->shortName())->values()->all()
             : [];
 
@@ -58,6 +59,7 @@ class ReleaseController extends Controller
             'card' => self::card($shift),
             'shadow' => $shadow,
             'shadowNames' => $shadowNames,
+            'needsCover' => $needsCover,
             'regular' => $shadow ? null : $this->regular($user, $shift),
             'values' => [
                 'scope' => (string) $request->old('scope', ''),
@@ -133,7 +135,7 @@ class ReleaseController extends Controller
 
                 return view('volunteer.release-check', [
                     'shift' => $shift,
-                    'shifts' => $preview['shifts']->map(fn (Shift $listed) => self::card($listed))->all(),
+                    'shifts' => $this->checkCards($user, $preview['shifts']),
                     'range' => self::dayText($from).' to '.self::dayText($to),
                     'regularLine' => $stays,
                     'lastOnCalendar' => $preview['lastOnCalendar'] === null ? null : self::dayText($preview['lastOnCalendar']),
@@ -172,7 +174,7 @@ class ReleaseController extends Controller
             if (! $confirmed) {
                 return view('volunteer.release-check', [
                     'shift' => $shift,
-                    'shifts' => $preview->map(fn (Shift $listed) => self::card($listed))->all(),
+                    'shifts' => $this->checkCards($user, $preview),
                     'range' => null,
                     'regularLine' => $noLonger,
                     'lastOnCalendar' => null,
@@ -237,6 +239,29 @@ class ReleaseController extends Controller
     private function assignment(User $user, Shift $shift): ?Assignment
     {
         return $shift->assignments()->where('user_id', $user->id)->first();
+    }
+
+    /**
+     * Whether a place opens that someone has to cover when this person comes off the shift: they hold a regular place and, without it, the shift would have fewer people than it needs. The same rule ReleaseShifts uses (openPlaces() above 0 once their place is gone), worked out here before anything changes. A shadow never opens a place, and a cancelled shift has none to fill.
+     */
+    private function needsCover(Shift $shift, ?Assignment $assignment): bool
+    {
+        if ($assignment === null || $assignment->type !== AssignmentType::Regular || $shift->cancelled_at !== null) {
+            return false;
+        }
+
+        return $shift->people_needed - ($shift->assignments()->where('type', AssignmentType::Regular)->count() - 1) > 0;
+    }
+
+    /**
+     * The cards for the check step, each with `nobodyAsked` true when the shift keeps the people it needs without this person (so nobody is asked to cover it).
+     *
+     * @param  Collection<int, Shift>  $shifts
+     * @return list<array{date: string, area: string, what: string, nobodyAsked: bool}>
+     */
+    private function checkCards(User $user, Collection $shifts): array
+    {
+        return $shifts->map(fn (Shift $listed) => self::card($listed) + ['nobodyAsked' => ! $this->needsCover($listed, $this->assignment($user, $listed))])->values()->all();
     }
 
     /** The person's weekly regular for this shift's slot on its date, the one "Give up my weekly slot" ends, or null when they aren't its regular then. */

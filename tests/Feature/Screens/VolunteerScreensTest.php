@@ -337,6 +337,41 @@ class VolunteerScreensTest extends TestCase
             ->assertSee('Just Thursday, October 22')->assertSee('Several dates (I\'m away)', false)->assertDontSee('Give up my weekly');
     }
 
+    public function test_the_release_form_says_nobody_will_be_asked_when_the_shift_keeps_the_people_it_needs(): void
+    {
+        $crowded = $this->shift('2026-10-22', needed: 1);
+        $this->on($crowded, $this->sam);
+        $this->on($crowded, User::factory()->cleared()->create());
+        $short = $this->shift('2026-10-23', needed: 1);
+        $this->on($short, $this->sam);
+
+        $this->page($this->sam, route('shifts.release', $crowded))
+            ->assertSee('Front desk still has the people it needs, so nobody else will be asked.', false)->assertDontSee('We\'ll ask other volunteers', false);
+        $this->page($this->sam, route('shifts.release', $short))
+            ->assertSee('We\'ll ask other volunteers to cover it', false)->assertDontSee('nobody else will be asked', false);
+    }
+
+    public function test_the_check_step_says_which_shifts_need_covering(): void
+    {
+        $crowded = $this->shift('2026-10-22');
+        $this->on($crowded, $this->sam);
+        $this->on($crowded, User::factory()->cleared()->create());
+        $short = $this->shift('2026-10-23');
+        $this->on($short, $this->sam);
+        $fields = ['scope' => 'range', 'from' => '2026-10-22', 'to' => '2026-10-23'];
+
+        $mixed = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $crowded), $fields)->assertOk());
+        $mixed->assertSee('We\'ll ask other volunteers to cover one of them.', false)
+            ->assertSee('The other one still has the people it needs, so nobody else will be asked.', false)
+            ->assertSeeInOrder(['Thursday, October 22', 'Nobody else will be asked', 'Friday, October 23'], false);
+
+        $none = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $crowded), ['from' => '2026-10-22', 'to' => '2026-10-22'] + $fields)->assertOk());
+        $none->assertSee('Front desk still has the people it needs, so nobody else will be asked.', false)->assertDontSee('We\'ll ask other volunteers', false);
+
+        $all = $this->decoded($this->actingAs($this->sam)->post(route('shifts.release', $short), ['from' => '2026-10-23', 'to' => '2026-10-23'] + $fields)->assertOk());
+        $all->assertSee('We\'ll ask other volunteers to cover it.', false)->assertDontSee('nobody else will be asked', false);
+    }
+
     public function test_a_shadow_just_confirms_leaving_the_shadow_spot(): void
     {
         $shift = $this->shift('2026-10-20');

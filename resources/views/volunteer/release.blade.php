@@ -56,7 +56,9 @@
 </div>
 
 @unless ($shadow)
-<p class="muted">You're off the shift as soon as you confirm. We'll ask other volunteers to cover it right away, and tell your lead if it's still open 24 hours before.@if ($shadowNames !== []) {{ App\Http\Controllers\Volunteer\ReleaseController::names($shadowNames) }} {{ count($shadowNames) === 1 ? 'was' : 'were' }} shadowing you, so we'll let them know too.@endif</p>
+<p class="muted">You're off the shift as soon as you confirm.
+@if (! $needsCover){{ $shift->area->name }} still has the people it needs, so nobody else will be asked.@else We'll ask other volunteers to cover it right away, and tell your lead if it's still open 24 hours before.@endif
+@if ($shadowNames !== []) {{ App\Http\Controllers\Volunteer\ReleaseController::names($shadowNames) }} {{ count($shadowNames) === 1 ? 'was' : 'were' }} shadowing you, so we'll let them know too.@endif</p>
 @endunless
 
 <button type="submit" class="btn btn-primary">{{ $shadow ? 'Leave this shadow spot' : 'Release this shift' }}</button>

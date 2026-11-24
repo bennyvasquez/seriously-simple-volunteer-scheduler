@@ -3,6 +3,8 @@
 
 @php
     $count = count($shifts);
+    $asked = count(array_filter($shifts, fn (array $listed) => ! $listed['nobodyAsked']));
+    $notAsked = $count - $asked;
 @endphp
 
 @section('title', 'Can\'t make it: check which shifts')
@@ -14,7 +16,7 @@
 @if ($count > 0)
 <ul class="shift-list">
 @foreach ($shifts as $listed)
-<li class="card"><span class="when">{{ $listed['date'] }}</span><span>{{ $listed['what'] }}</span></li>
+<li class="card"><span class="when">{{ $listed['date'] }}</span><span>{{ $listed['what'] }}</span>@if ($count > 1 && $listed['nobodyAsked'])<span class="muted">Nobody else will be asked</span>@endif</li>
 @endforeach
 </ul>
 @else
@@ -32,7 +34,7 @@
 @endif
 
 @if ($count > 0)
-<p class="muted">You're off {{ $count === 1 ? 'it' : 'all '.$count }} as soon as you confirm. We'll ask other volunteers to cover {{ $count === 1 ? 'it' : 'each one' }}.</p>
+<p class="muted">You're off {{ $count === 1 ? 'it' : 'all '.$count }} as soon as you confirm. @if ($notAsked === 0)We'll ask other volunteers to cover {{ $count === 1 ? 'it' : 'each one' }}.@elseif ($asked === 0){{ $count === 1 ? $shifts[0]['area'].' still has the people it needs, so nobody else will be asked.' : 'Each one still has the people it needs, so nobody else will be asked.' }}@else We'll ask other volunteers to cover {{ $asked === 1 ? 'one' : $asked }} of them. {{ $notAsked === 1 ? 'The other one still has the people it needs' : 'The other '.$notAsked.' still have the people they need' }}, so nobody else will be asked.@endif</p>
 @endif
 
 <form method="POST" action="{{ route('shifts.release', $shift) }}">

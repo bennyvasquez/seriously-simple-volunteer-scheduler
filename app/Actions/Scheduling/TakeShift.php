@@ -181,7 +181,7 @@ class TakeShift
         $shadows = collect(CoverFill::shadows($locked))->map(fn (User $shadow) => $shadow->shortName())->all();
         $notification = new ShiftTakenNotification(
             $locked,
-            $request?->releasedBy?->shortName(),
+            $request?->releaserName(),
             $request?->note,
             $shadows,
             $request !== null && $request->released_by === $person->id,
