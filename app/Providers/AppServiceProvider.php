@@ -13,6 +13,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\Events\NotificationFailed;
 use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Event;
@@ -77,8 +78,8 @@ class AppServiceProvider extends ServiceProvider
             Mail::alwaysFrom((string) config('mail.from.address'), $name);
         });
 
-        // Once the email is sent, the app name is plain text again for anything else that reads it.
-        Event::listen(NotificationSent::class, function (NotificationSent $event) {
+        // Once the email is sent, or its sending fails (Laravel fires NotificationFailed for any exception while sending), the app name is plain text again for anything else that reads it, including later jobs in a long-running queue worker.
+        Event::listen([NotificationSent::class, NotificationFailed::class], function (NotificationSent|NotificationFailed $event) {
             if ($event->channel === 'mail' && config('app.name') instanceof Htmlable) {
                 config(['app.name' => config('mail.from.name')]);
             }

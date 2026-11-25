@@ -64,7 +64,7 @@ final class EmailText
     }
 
     /**
-     * Joins pieces of one line, such as two sentences. When a piece is an HtmlString (an edited line), the result is one too, with the plain pieces escaped the way Blade would have escaped them; otherwise it's the plain string it always was.
+     * Joins pieces of one line, such as two sentences. When a piece is an HtmlString (an edited line), the result is one too, with the plain pieces escaped the way Blade would have escaped them; otherwise it's the plain string it always was. A plain piece only gets HTML escaping, never Markdown escaping, so plain pieces must be EmailText results or separators written in the code (" ", ".", "\n\n"). A raw value, such as a shift title or a name, has to be wrapped in PlainText::line() first.
      */
     public static function join(string|HtmlString ...$parts): string|HtmlString
     {
