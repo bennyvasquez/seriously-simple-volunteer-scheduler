@@ -272,6 +272,16 @@ class EndRegularTest extends TestCase
             ->assertSee('End their time as a regular');
     }
 
+    public function test_a_last_date_sent_empty_comes_back_empty(): void
+    {
+        $slot = $this->slot();
+        $regular = $this->regular($slot, '2026-10-15');
+
+        $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.end', [$slot, $regular, 'date' => '2026-10-29', 'last_date' => '']))
+            ->assertOk()
+            ->assertDontSee('value="2026-10-28"', false);
+    }
+
     public function test_the_page_is_not_for_a_regular_of_another_slot_or_for_people_who_cannot_manage_it(): void
     {
         $slot = $this->slot();

@@ -153,8 +153,10 @@ class RegularController extends Controller
     {
         $this->checkEnd($request, $slot, $regular);
         $date = $this->dateParam($request);
-        $asked = $request->old('last_date', Input::string($request, 'last_date'));
-        $lastDate = Input::date($asked) !== null ? $asked : CarbonImmutable::parse($date, 'UTC')->subDay()->toDateString();
+        $dayBefore = CarbonImmutable::parse($date, 'UTC')->subDay()->toDateString();
+        $asked = Input::text($request->old('last_date', Input::string($request, 'last_date', $dayBefore)));
+        // A field sent empty stays empty; anything else that isn't a real date gets the day before.
+        $lastDate = $asked === '' || Input::date($asked) !== null ? $asked : $dayBefore;
 
         return $this->endView($request, $calendar, $slot, $regular, $date, $lastDate);
     }
