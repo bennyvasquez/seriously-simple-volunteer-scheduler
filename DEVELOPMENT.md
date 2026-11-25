@@ -22,7 +22,7 @@ Signing out of all devices relies on `SESSION_DRIVER=database`, which `.env.exam
 
 ## What production refuses
 
-When `APP_ENV=production`, the app turns `APP_DEBUG` off at start-up (and logs one critical line), because the debug page shows request bodies, headers and SQL, and it refuses to send email through the `log` mailer, because that would write login links and codes to the log file. Neither applies to local development or the tests, which use Mailpit and the array mailer. A production `.env` needs the values listed at the top of `.env.example`.
+When `APP_ENV=production`, the app turns `APP_DEBUG` off at start-up (and logs a critical line every time the app starts until it's fixed; debug is turned off as the app finishes starting, so only a crash during start-up itself could still show the debug page), because the debug page shows request bodies, headers and SQL, and it refuses to send email through the `log` mailer, because that would write login links and codes to the log file. Neither applies to local development or the tests, which use Mailpit and the array mailer. A production `.env` needs the values listed at the top of `.env.example`.
 
 ## Email in development
 

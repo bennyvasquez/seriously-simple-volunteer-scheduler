@@ -150,12 +150,13 @@ class SecurityHeadersTest extends TestCase
         $this->assertFalse(Route::has('storage.local.upload'));
     }
 
-    public function test_robots_txt_disallows_everything(): void
+    public function test_robots_txt_lets_crawlers_read_the_noindex_header(): void
     {
         $lines = preg_split('/\R/', trim(File::get(public_path('robots.txt'))));
 
         $this->assertContains('User-agent: *', $lines);
-        $this->assertContains('Disallow: /', $lines);
+        $this->assertNotContains('Disallow: /', $lines);
+        $this->get('/login')->assertHeader('X-Robots-Tag', 'noindex, nofollow');
     }
 
     public function test_every_page_says_noindex(): void

@@ -48,6 +48,16 @@ class SetupCommandTest extends TestCase
         $this->assertSame(0, User::query()->count());
     }
 
+    public function test_a_name_made_only_of_control_characters_gets_one_message(): void
+    {
+        $this->setUpInstall(['--admin-name' => "\x07"])
+            ->expectsOutputToContain("This name has characters we can't use.")
+            ->doesntExpectOutputToContain('Enter your name.')
+            ->assertFailed();
+
+        $this->assertSame(0, User::query()->count());
+    }
+
     public function test_it_creates_the_organization_and_first_admin(): void
     {
         Notification::fake();
