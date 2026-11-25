@@ -9,6 +9,7 @@ use App\Http\Responses\FailedTwoFactorLoginResponse;
 use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\User;
 use App\Support\EmailAddress;
+use App\Support\Input;
 use App\Support\TwoFactorAlert;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
@@ -49,12 +50,12 @@ class FortifyServiceProvider extends ServiceProvider
             // A new password attempt cancels any pending login started earlier in this session (including an email-link one). If the attempt fails, nothing stays pending, so a failed attempt can't leave a link-started login in a state that allows an emailed code.
             $request->session()->forget(['login.id', 'login.remember', 'login.via', 'login.email_code_sent']);
 
-            $user = User::query()->where('email', EmailAddress::normalize((string) $request->input(Fortify::username())))->first();
+            $user = User::query()->where('email', EmailAddress::normalize(Input::string($request, Fortify::username())))->first();
 
             $usable = $user !== null && $user->canSignIn() && $user->password !== null;
 
             // Every path does one hash check, so the work done doesn't depend on whether the address has a usable account. The hash for the other paths is made once and kept in the cache, so making it adds time only on the first such login after the cache is cleared, and the timebox around this callback evens that out along with what's left.
-            $matches = Hash::check((string) $request->input('password'), $usable ? $user->password : self::dummyHash());
+            $matches = Hash::check(Input::string($request, 'password'), $usable ? $user->password : self::dummyHash());
 
             if (! $usable || ! $matches) {
                 return null;

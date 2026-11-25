@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\Organization;
 use App\Rules\NoWebAddress;
+use App\Support\Input;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -46,7 +47,7 @@ class AreaController extends Controller
             'name.*' => 'Give the area a name.',
         ]);
 
-        $area = $createArea->handle($request->user(), (string) $request->input('name'));
+        $area = $createArea->handle($request->user(), Input::string($request, 'name'));
 
         return redirect()->route('calendar.week', $this->areaQuery($request))->with('status', "Added {$area->name}.");
     }
@@ -88,7 +89,7 @@ class AreaController extends Controller
             'lead_name.*' => 'Keep it to 40 characters or fewer.',
         ]);
 
-        $area = $updateArea->handle($request->user(), $area, (string) $request->input('name'), AreaColor::from((string) $request->input('color')), $request->input('lead_name'));
+        $area = $updateArea->handle($request->user(), $area, Input::string($request, 'name'), AreaColor::from(Input::string($request, 'color')), $request->input('lead_name'));
 
         return redirect()->route('calendar.week', $this->areaQuery($request))->with('status', "Saved {$area->name}.");
     }

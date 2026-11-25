@@ -15,6 +15,7 @@ use App\Models\CoverRequest;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Support\Input;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -78,7 +79,7 @@ class TakeController extends Controller
             'slotEveryOtherWeek' => $slot !== null && $slot->frequency === SlotFrequency::EveryOtherWeek,
             'openPlaces' => $shift->openPlaces(),
             'shadows' => $shift->assignments->where('type', AssignmentType::Shadow)->sortBy('id')->map(fn ($assignment) => $assignment->user->shortName())->values()->all(),
-            'how' => (string) $request->old('how', ''),
+            'how' => Input::text($request->old('how', '')),
         ]);
     }
 
@@ -87,7 +88,7 @@ class TakeController extends Controller
         $user = $request->user();
         Gate::forUser($user)->authorize('take', $shift);
 
-        $how = TakeHow::tryFrom((string) $request->input('how'));
+        $how = TakeHow::tryFrom(Input::string($request, 'how'));
 
         if ($how === null) {
             return redirect()->route('shifts.take', $shift)->withErrors(['how' => self::PICK_HOW]);

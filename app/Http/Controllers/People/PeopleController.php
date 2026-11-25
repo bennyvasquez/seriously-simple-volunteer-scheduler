@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\Input;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -28,9 +29,9 @@ class PeopleController extends Controller
         $viewer = $request->user();
         $isCoordinator = $viewer->isCoordinator();
 
-        $q = trim((string) $request->query('q', ''));
+        $q = trim(Input::string($request, 'q', ''));
         $role = $this->choice($request->query('role'), ['volunteer', ...array_column(Role::cases(), 'value')]);
-        $invitation = InvitationStatus::tryFrom((string) $request->query('invitation', ''));
+        $invitation = InvitationStatus::tryFrom(Input::string($request, 'invitation', ''));
         $show = $this->choice($request->query('show'), ['active', 'off', 'all']) ?? 'active';
         $area = Area::query()->find(is_scalar($request->query('area')) ? (int) $request->query('area') : 0);
 

@@ -20,6 +20,7 @@ use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\Input;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -155,7 +156,7 @@ class PersonController extends Controller
         $person = $this->manageable($request, $user);
         // Kept from this request: once the row is gone there's nothing to read it from.
         $firstName = $person->shortName();
-        $typed = trim((string) $request->input('confirm', ''));
+        $typed = trim(Input::string($request, 'confirm', ''));
 
         // The short name ends in a period ("Robin E."), and typing it without the period is fine too.
         if (mb_strtolower(rtrim($typed, '.')) !== mb_strtolower(rtrim($firstName, '.'))) {
@@ -237,7 +238,7 @@ class PersonController extends Controller
      */
     private function chosenRole(Request $request): array
     {
-        $value = (string) $request->input('role', '');
+        $value = Input::string($request, 'role', '');
         $areaId = $request->input('area');
 
         if (str_contains($value, ':')) {
