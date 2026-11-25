@@ -20,6 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) use ($expiredFormMessage): void {
+        // A second layer behind the site address Laravel uses for links (AppServiceProvider::useSiteAddress()): a request sent to any other host name is refused. Laravel skips this check in tests and in the local environment. Read from config(), not env(), so it works once the configuration is cached.
+        $middleware->trustHosts(at: fn () => ['^'.preg_quote((string) parse_url((string) config('app.url'), PHP_URL_HOST)).'$'], subdomains: false);
+
         $middleware->web(append: [
             EnsureAccountIsSecure::class,
             RecordLastSeen::class,

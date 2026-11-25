@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Translation\Translator;
@@ -40,10 +41,26 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
+     * Makes every link the app builds, emailed ones included, use the site's own address from APP_URL instead of the address a request was sent to. It reads config(), not env(), so it still works once the configuration is cached.
+     */
+    public function useSiteAddress(): void
+    {
+        $siteAddress = (string) config('app.url');
+
+        URL::forceRootUrl($siteAddress);
+
+        if (str_starts_with($siteAddress, 'https://')) {
+            URL::forceScheme('https');
+        }
+    }
+
+    /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
+        $this->useSiteAddress();
+
         // Laravel's mail layout puts the app name in each email's header, under "Regards," and in the footer, and the sender's name comes from the mail settings. Before an email goes out, both become the organization's name from Settings, so volunteers see who's writing to them rather than "SSVS". The address stays the one in MAIL_FROM_ADDRESS.
         Event::listen(NotificationSending::class, function (NotificationSending $event) {
             $name = $event->channel === 'mail' ? Organization::query()->value('name') : null;
