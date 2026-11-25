@@ -9,7 +9,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -37,7 +37,7 @@ services:
     # Development only: catches every email the app sends. Inbox at http://localhost:8025.
     image: axllent/mailpit:v1.34
     ports:
-      - "8025:8025"
+      - "127.0.0.1:8025:8025"
 
   # Browser tests only, under the browser profile so `docker compose up` doesn't start them. Run them with: docker compose --profile browser run --rm dusk
   browser:

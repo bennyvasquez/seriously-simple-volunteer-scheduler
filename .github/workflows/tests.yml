@@ -16,6 +16,8 @@ jobs:
     steps:
       # Pinned to a full commit hash so a moved tag can't change what runs. Dependabot updates the hash and the comment.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build the AlmaLinux 10 app image
         run: docker compose build app
@@ -37,6 +39,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build the AlmaLinux 10 app image
         run: docker compose --profile browser build dusk
