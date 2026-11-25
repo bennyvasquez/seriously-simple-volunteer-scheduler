@@ -6,11 +6,12 @@ use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /** Sent to someone a coordinator removed from shifts. Takes a collection so removing them from a range of dates sends one email; a single shift passes a one-item collection. */
 class RemovedFromShiftsNotification extends Notification
 {
-    /** @var list<string> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
+    /** @var list<string|HtmlString> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
     public array $shifts;
 
     /** The first shift's area name, for the subject when there's one shift. */

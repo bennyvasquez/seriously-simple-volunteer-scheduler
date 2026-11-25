@@ -207,6 +207,9 @@ a{color:#1a1a1a}a:hover{color:#000}
 .log-entry{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:14px 16px;border-bottom:1px solid #e3e3e3}
 .log-when{font-size:14px;color:#444}
 .log-change{font-size:14px;color:#333;background:#f7f7f7;border-left:3px solid #b5b5b5;padding:6px 10px;margin-top:6px}
+.log-text{display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.log-old{background:#fde8e8;text-decoration:line-through;padding:0 2px}
+.log-new{background:#e3f4e3;padding:0 2px}
 .log-pager{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 @media (max-width:699px){
 .log-page{padding:16px}
@@ -259,4 +262,38 @@ body{padding-bottom:56px}
 html{scroll-padding-bottom:56px}
 /* The top bar is 68px and the menu 56px, so a short calendar fills the screen without scrolling past its end. */
 .cal{min-height:calc(100vh - 68px - 56px)}
+}
+
+/* The email editor (wireframes 61 to 63). On a computer the preview sits beside the boxes and scrolls on its own when the email is taller than the window; on a phone it's above them, and only once Preview is pressed. It comes after the boxes in the page, so only the phone rule moves it. */
+.email-page{padding:20px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;max-width:1100px;margin:0 auto}
+.email-page h1{margin:0;font-size:26px}
+.email-page p{margin:0}
+.email-list{list-style:none;margin:0;padding:0}
+.email-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #eee;padding:10px 0;min-height:44px;text-decoration:none;color:#1a1a1a}
+.email-list li:first-child .email-row{border-top:0}
+.email-when{border-left:4px solid #1a1a1a}
+.email-layout{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.email-lines{flex:999 1 480px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.email-form{display:flex;flex-direction:column;gap:14px}
+.email-subhead{margin:6px 0 0;font-size:18px}
+.email-line .field{font-size:15px}
+.email-line .field label{font-weight:700}
+.email-line .field input{width:100%}
+.email-line-edited{border:2px solid #1a1a1a}
+.email-line .link{font-size:14px}
+.var{background:#e6edf5;border:1px solid #2b5a8a;border-radius:4px;padding:0 3px;font-family:ui-monospace,monospace;font-size:13px;color:#10263d}
+.email-words{margin:0;display:flex;flex-direction:column;gap:6px}
+.email-words div{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid #eee;padding-top:6px}
+.email-words dd{margin:0;text-align:right}
+.email-preview{flex:1 1 340px;min-width:0;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;box-sizing:border-box}
+.email-version-button{align-self:flex-start}
+.mail{background:#fff;border:1px solid #ddd;border-radius:8px;padding:16px;font-size:15px;line-height:1.5;display:flex;flex-direction:column;gap:12px;overflow-wrap:anywhere}
+.mail p{margin:0}
+.mail-subject{font-weight:700;border-bottom:1px solid #eee;padding-bottom:8px}
+.mail-greeting{font-weight:700;font-size:17px}
+.mail-button{display:inline-block;background:#b00020;color:#fff;border-radius:6px;padding:10px 16px}
+@media (max-width:699px){
+.email-page{padding:16px}
+.email-preview{order:-1;position:static;max-height:none;overflow-y:visible}
+.email-preview-idle{display:none}
 }

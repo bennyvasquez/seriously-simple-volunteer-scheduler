@@ -8,11 +8,12 @@ use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /** Sent to a person on a shift whose time or title was changed. Takes a collection so it can carry several shifts, with one line each. Each item is `['shift' => Shift (with its new values and area), 'was' => the old time range such as "6 to 9pm", 'wasTitle' => the old title or null]`. */
 class ShiftChangedNotification extends Notification
 {
-    /** @var list<string> One line per shift. */
+    /** @var list<string|HtmlString> One line per shift. */
     public array $lines;
 
     public string $subject;
@@ -41,7 +42,7 @@ class ShiftChangedNotification extends Notification
     }
 
     /** @param  array{shift: Shift, was: string, wasTitle: ?string}  $change */
-    public static function line(array $change): string
+    public static function line(array $change): string|HtmlString
     {
         $shift = $change['shift'];
         $timezone = Organization::current()->timezone;
@@ -50,19 +51,19 @@ class ShiftChangedNotification extends Notification
         $line = EmailText::line('shift_changed.changed', ['area' => $shift->area->name, 'date' => $start->format('l, F j')]);
 
         if ($now !== $change['was']) {
-            $line .= ' '.EmailText::line('shift_changed.time', ['now' => $now, 'was' => $change['was']]);
+            $line = EmailText::join($line, ' ', EmailText::line('shift_changed.time', ['now' => $now, 'was' => $change['was']]));
         }
 
-        return $line.self::titleSentence($shift, $change['wasTitle']);
+        return EmailText::join($line, self::titleSentence($shift, $change['wasTitle']));
     }
 
     /** " It's now for Open house.", " It's no longer for Open house.", or an empty string when the title didn't change. */
-    public static function titleSentence(Shift $shift, ?string $wasTitle): string
+    public static function titleSentence(Shift $shift, ?string $wasTitle): string|HtmlString
     {
         if ($shift->title === $wasTitle) {
             return '';
         }
 
-        return ' '.($shift->title !== null ? EmailText::line('shift_changed.title_now', ['title' => $shift->title]) : EmailText::line('shift_changed.title_removed', ['was_title' => $wasTitle]));
+        return EmailText::join(' ', $shift->title !== null ? EmailText::line('shift_changed.title_now', ['title' => $shift->title]) : EmailText::line('shift_changed.title_removed', ['was_title' => $wasTitle]));
     }
 }

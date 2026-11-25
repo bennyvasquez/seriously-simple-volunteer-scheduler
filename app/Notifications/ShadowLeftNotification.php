@@ -51,7 +51,7 @@ class ShadowLeftNotification extends Notification
             ->line(EmailText::choice('shadow_left.intro', $count, ['shadow' => $name]));
 
         foreach ($this->shifts as $shift) {
-            $mail->line(EmailText::line('shadow_left.shift_link', ['area' => $shift['area'], 'when' => $shift['when'], 'url' => $shift['url']]));
+            $mail->line(EmailText::line('shadow_left.shift_link', ['shift_link' => EmailText::link($shift['area'].', '.$shift['when'], $shift['url'])]));
         }
 
         return $this->withNote($mail)->line(EmailText::line('shadow_left.outro'));
@@ -59,6 +59,6 @@ class ShadowLeftNotification extends Notification
 
     private function withNote(MailMessage $mail): MailMessage
     {
-        return $this->note === null || $this->note === '' ? $mail : $mail->line(PlainText::line(EmailText::line('shadow_left.note', ['shadow' => $this->shadowFirstName, 'note' => $this->note])));
+        return $this->note === null || $this->note === '' ? $mail : $mail->line(EmailText::plainTextLine('shadow_left.note', ['shadow' => $this->shadowFirstName, 'note' => $this->note]));
     }
 }

@@ -3,14 +3,17 @@
 namespace Tests\Feature;
 
 use App\Actions\Accounts\GrantRole;
+use App\Actions\Emails\SaveEmailWording;
 use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Actions\Scheduling\PutOnShift;
+use App\Emails\EmailCatalog;
 use App\Enums\AssignmentType;
 use App\Enums\Role;
 use App\Enums\ShadowSpotNotice;
 use App\Models\Area;
+use App\Models\EmailWording;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
@@ -23,6 +26,7 @@ use App\Notifications\EmailChangeConfirmationNotification;
 use App\Notifications\EmailChangedNotification;
 use App\Notifications\EmailText;
 use App\Notifications\InvitationNotification;
+use App\Notifications\LaravelMailLines;
 use App\Notifications\LoginLinkNotification;
 use App\Notifications\MadeRegularNotification;
 use App\Notifications\MovedBackNotification;
@@ -49,8 +53,18 @@ use App\Notifications\TwoFactorCodeNotification;
 use App\Notifications\TwoFactorResetNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Mail\Markdown;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Lang;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
+use Illuminate\Translation\Translator;
 use InvalidArgumentException;
+use LogicException;
+use RuntimeException;
 use Tests\TestCase;
 
 class EmailTextTest extends TestCase
@@ -69,6 +83,9 @@ class EmailTextTest extends TestCase
             'emails.test_email.braces' => 'Keep { this }, {That}, {} and {a-b} as they are.',
             'emails.test_email.count.one' => '{names} is shadowing.',
             'emails.test_email.count.other' => '{names} are shadowing.',
+            'emails.test_email.with_link' => 'Take {shift_link} at {area}.',
+            'emails.test_email.subject' => 'Your {area} shift',
+            'emails.test_email.note' => '{first_name} left a note: {note}',
         ], 'en');
     }
 
@@ -281,7 +298,7 @@ class EmailTextTest extends TestCase
         // Every email class has an example: a new one fails here until it's added to the list above.
         $classes = collect(File::files(app_path('Notifications')))
             ->map(fn ($file) => 'App\\Notifications\\'.$file->getBasename('.php'))
-            ->reject(fn (string $class) => in_array($class, [PlainText::class, EmailText::class], true))
+            ->reject(fn (string $class) => in_array($class, [PlainText::class, EmailText::class, LaravelMailLines::class], true))
             ->sort()->values()->all();
         $covered = collect($examples)->map(fn (array $example) => $example[0]::class)->unique()->sort()->values()->all();
         $this->assertSame($classes, $covered, 'Every email class needs an example in emailExamples().');
@@ -293,6 +310,50 @@ class EmailTextTest extends TestCase
                 $this->assertNotSame('', $text, "{$label}: the {$part} is empty.");
                 $this->assertDoesNotMatchRegularExpression('/\{[a-z][a-z0-9_]*\}/', $text, "{$label}: the {$part} has a variable left unfilled.");
                 $this->assertDoesNotMatchRegularExpression('/\bemails\.[a-z][a-z0-9_]*\./', $text, "{$label}: the {$part} shows a wording key instead of wording.");
+            }
+        }
+    }
+
+    /**
+     * The editor's catalog (App\Emails\EmailCatalog) has to list every line an email really renders, so a new or renamed line can't be missing from the editor. Each example's mail is built (toMail), and every wording line read while it's built has to be one of the catalog lines of that email (its own, or another email's lines its versions add, such as the back on lines in a cancelled email). Lines read in a notification's constructor, such as most subjects, aren't recorded here: the whole wording file is checked against the catalog in EmailCatalogTest.
+     */
+    public function test_every_line_an_email_renders_is_in_the_catalog(): void
+    {
+        app('translator')->setLoaded([]);
+        $examples = $this->emailExamples();
+
+        $recorder = new class(app('translator')->getLoader(), 'en') extends Translator
+        {
+            /** @var list<string> */
+            public array $read = [];
+
+            public function get($key, array $replace = [], $locale = null, $fallback = true)
+            {
+                $line = parent::get($key, $replace, $locale, $fallback);
+
+                if (is_string($key) && str_starts_with($key, 'emails.') && is_string($line) && $line !== $key) {
+                    $this->read[] = substr($key, strlen('emails.'));
+                }
+
+                return $line;
+            }
+        };
+        $recorder->setFallback('en');
+        $this->app->instance('translator', $recorder);
+        Lang::clearResolvedInstance('translator');
+
+        foreach ($examples as $label => [$notification, $user]) {
+            $recorder->read = [];
+            $notification->toMail($user);
+            $read = array_unique($recorder->read);
+            $this->assertNotEmpty($read, "{$label}: no wording lines were recorded, so this check isn't looking at anything.");
+
+            $email = EmailCatalog::find(Str::snake(Str::beforeLast(class_basename($notification), 'Notification')));
+            $this->assertNotNull($email, "{$label}: its email isn't in the catalog.");
+            $listed = [...$email->lineKeys(), ...array_merge(...array_column($email->versions, 'lines'))];
+
+            foreach ($read as $key) {
+                $this->assertContains($key, $listed, "{$label}: it renders [{$key}], which the catalog doesn't list for this email.");
             }
         }
     }
@@ -314,5 +375,388 @@ class EmailTextTest extends TestCase
         $this->assertStringContainsString("Regards,<br>\nExample Makers", $html);
         $this->assertStringNotContainsString('SSVS', $html);
         $this->assertStringNotContainsString('SSVS', (string) $email->getTextBody());
+    }
+
+    /** Stores edited lines straight in the table, the way SaveEmailWording leaves them, and forgets the request's copy. @param array<string, string> $lines */
+    private function edit(array $lines): void
+    {
+        DB::table('email_wordings')->insert(collect($lines)->map(fn (string $text, string $key) => ['key' => $key, 'text' => $text, 'updated_by' => null, 'created_at' => now(), 'updated_at' => now()])->values()->all());
+        EmailWording::forgetCache();
+    }
+
+    public function test_a_default_line_is_still_a_plain_string(): void
+    {
+        $this->assertIsString(EmailText::line('test_email.hello', ['first_name' => '<b>Jordan</b>', 'area' => '**Front desk**']));
+        $this->assertSame('Hi <b>Jordan</b>, see you at **Front desk**.', EmailText::line('test_email.hello', ['first_name' => '<b>Jordan</b>', 'area' => '**Front desk**']));
+    }
+
+    public function test_an_edited_line_escapes_its_own_text_and_fills_in_values_as_before(): void
+    {
+        $this->edit(['test_email.hello' => "  <b>Hey</b>   *there* {first_name},\n[see](https://example.org) you at {area} & #1! "]);
+
+        $line = EmailText::line('test_email.hello', ['first_name' => '<i>Jordan</i>', 'area' => '**Front desk**']);
+
+        // The typed text becomes entities, Markdown punctuation included, with its spaces and line breaks made single spaces. A value is escaped the way Blade escapes it, so Markdown in a value reads as it does in a default line.
+        $this->assertInstanceOf(HtmlString::class, $line);
+        $this->assertSame('&lt;b&gt;Hey&lt;/b&gt; &#42;there&#42; &lt;i&gt;Jordan&lt;/i&gt;, &#91;see&#93;(https://example.org) you at **Front desk** &amp; &#35;1&#33;', $line->toHtml());
+    }
+
+    public function test_an_edited_line_that_starts_like_a_list_or_a_rule_stays_text(): void
+    {
+        foreach (['- one {area}' => '&#45; one', '+ one {area}' => '&#43; one', '1. one {area}' => '1&#46; one', '2) one {area}' => '2&#41; one', '--- {area}' => '&#45;--', '=== {area}' => '&#61;==', '> {area}' => '&gt; '] as $edit => $start) {
+            EmailWording::query()->delete();
+            $this->edit(['test_email.hello' => $edit]);
+
+            $this->assertStringStartsWith($start, EmailText::line('test_email.hello', ['first_name' => 'Jordan', 'area' => 'Front desk'])->toHtml(), $edit);
+        }
+    }
+
+    public function test_an_edit_that_starts_like_markdown_stays_one_paragraph(): void
+    {
+        $vars = ['first_name' => 'Jordan', 'area' => 'Front desk', 'note' => 'See you.'];
+        $paragraph = fn (HtmlString $line) => preg_match('#^<p>[^<]*</p>$#', trim((string) Markdown::parse($line->toHtml()))) === 1;
+
+        foreach (['- item', '1. item', '+ item', '---', '# heading', '2) item', '=== item', '> quote'] as $start) {
+            EmailWording::query()->delete();
+            $this->edit(['test_email.hello' => $start.' {first_name} {area}', 'test_email.note' => $start.' {first_name}: {note}']);
+
+            $this->assertTrue($paragraph(EmailText::line('test_email.hello', $vars)), "{$start} on an ordinary line");
+            $this->assertTrue($paragraph(EmailText::plainTextLine('test_email.note', $vars)), "{$start} on a note line");
+
+            // An edit that starts with a value that's empty, or only spaces, is covered too.
+            EmailWording::query()->delete();
+            $this->edit(['test_email.hello' => '{first_name}'.$start.' {area}', 'test_email.note' => '{first_name}'.$start.' {note}']);
+            foreach (['', '   '] as $empty) {
+                $this->assertTrue($paragraph(EmailText::line('test_email.hello', ['first_name' => $empty] + $vars)), "{$start} after an empty value");
+                $this->assertTrue($paragraph(EmailText::plainTextLine('test_email.note', ['first_name' => $empty] + $vars)), "{$start} after an empty value on a note line");
+            }
+        }
+    }
+
+    public function test_a_link_variable_goes_in_as_the_code_built_it(): void
+    {
+        $this->edit(['test_email.with_link' => 'Press {shift_link} <b>now</b>, {area}.']);
+
+        $line = EmailText::line('test_email.with_link', ['shift_link' => EmailText::link('Front desk, Thursday', 'https://example.org/shifts/1?a=1'), 'area' => '[Front desk](https://example.org)']);
+
+        $this->assertSame('Press [Front desk, Thursday](https://example.org/shifts/1?a=1) &lt;b&gt;now&lt;/b&gt;, [Front desk](https://example.org).', $line->toHtml());
+    }
+
+    public function test_a_link_variable_that_is_a_plain_string_is_a_code_bug_in_an_edited_line(): void
+    {
+        $this->edit(['test_email.with_link' => 'Press {shift_link} now, {area}.']);
+
+        $this->expectException(LogicException::class);
+
+        EmailText::line('test_email.with_link', ['shift_link' => '<script>alert(1)</script>', 'area' => 'Front desk']);
+    }
+
+    public function test_a_link_must_point_to_http_or_https(): void
+    {
+        $this->assertSame('[A](http://example.org/1)', EmailText::link('A', 'http://example.org/1')->toHtml());
+
+        foreach (['javascript:alert(1)', 'data:text/html,hi', '//example.org/1', '/shifts/1', 'mailto:a@example.org'] as $url) {
+            try {
+                EmailText::link('A', $url);
+                $this->fail("A link to [{$url}] should have been refused.");
+            } catch (LogicException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function test_a_link_the_code_builds_escapes_the_text_a_person_typed(): void
+    {
+        $link = EmailText::link('A]b*c<d&e, Thursday', 'https://example.org/shifts/1');
+
+        $this->assertSame('[A&#93;b&#42;c&lt;d&amp;e, Thursday](https://example.org/shifts/1)', $link->toHtml());
+        $this->assertSame('[Emails page](https://example.org/emails)', EmailText::link(new HtmlString('Emails page'), 'https://example.org/emails')->toHtml());
+        // The default line and an edit both put it in as it is, so it isn't escaped twice.
+        $this->assertSame('Take [A&#93;](https://example.org/1) at Front desk.', EmailText::line('test_email.with_link', ['shift_link' => EmailText::link('A]', 'https://example.org/1'), 'area' => 'Front desk'])->toHtml());
+        $this->edit(['test_email.with_link' => '{area}: {shift_link}']);
+        $this->assertSame('Front desk: [A&#93;](https://example.org/1)', EmailText::line('test_email.with_link', ['shift_link' => EmailText::link('A]', 'https://example.org/1'), 'area' => 'Front desk'])->toHtml());
+    }
+
+    public function test_an_edited_subject_is_plain_text_on_one_line(): void
+    {
+        $this->edit(['test_email.subject' => "Your <b>{area}</b>\n& *shift*"]);
+
+        $subject = EmailText::line('test_email.subject', ['area' => 'Front & back']);
+
+        $this->assertSame('Your <b>Front & back</b> & *shift*', $subject);
+    }
+
+    public function test_a_subject_given_an_edited_line_as_a_value_has_no_entities(): void
+    {
+        $this->edit(['test_email.hello' => 'Hi & {first_name}']);
+        $hello = EmailText::line('test_email.hello', ['first_name' => 'Jo', 'area' => 'x']);
+
+        $this->assertSame('Your Hi & Jo shift', EmailText::line('test_email.subject', ['area' => $hello]));
+    }
+
+    public function test_an_edited_line_given_as_a_value_is_not_escaped_twice(): void
+    {
+        $this->edit(['test_email.plain' => 'Edited <b>&</b> *line*']);
+        $inner = EmailText::line('test_email.plain');
+
+        // In a default line, the default's own text is escaped the way Blade would have escaped the whole line.
+        $outer = EmailText::line('test_email.hello', ['first_name' => 'Jo & "Sam"', 'area' => $inner]);
+        $this->assertSame('Hi Jo &amp; &quot;Sam&quot;, see you at Edited &lt;b&gt;&amp;&lt;/b&gt; &#42;line&#42;.', $outer->toHtml());
+
+        // And in an edited line.
+        $this->edit(['test_email.count.one' => '{names}!']);
+        $this->assertSame('Edited &lt;b&gt;&amp;&lt;/b&gt; &#42;line&#42;&#33;', EmailText::choice('test_email.count', 1, ['names' => $inner])->toHtml());
+    }
+
+    public function test_a_line_with_typed_text_escapes_its_values_too_edited_or_not(): void
+    {
+        $vars = ['first_name' => '**Jo**', 'area' => '[x](https://example.org) <b>'];
+        $this->assertSame('Hi &#42;&#42;Jo&#42;&#42;, see you at &#91;x&#93;(https://example.org) &lt;b&gt;.', EmailText::plainTextLine('test_email.hello', $vars)->toHtml());
+
+        $this->edit(['test_email.hello' => '*Note* from {first_name}: {area}']);
+        $this->assertSame('&#42;Note&#42; from &#42;&#42;Jo&#42;&#42;: &#91;x&#93;(https://example.org) &lt;b&gt;', EmailText::plainTextLine('test_email.hello', $vars)->toHtml());
+    }
+
+    public function test_join_escapes_plain_parts_only_when_a_part_is_html(): void
+    {
+        $this->assertSame('One & two. <b>Three</b>', EmailText::join('One & two.', ' ', '<b>Three</b>'));
+        $this->assertSame('', EmailText::join());
+
+        $joined = EmailText::join('One & two.', ' ', new HtmlString('&#42;three&#42;'));
+        $this->assertInstanceOf(HtmlString::class, $joined);
+        $this->assertSame('One &amp; two. &#42;three&#42;', $joined->toHtml());
+    }
+
+    public function test_allowed_variables_are_the_default_lines(): void
+    {
+        $this->assertSame(['first_name', 'area'], EmailText::allowedVariables('test_email.hello'));
+        $this->assertSame([], EmailText::allowedVariables('test_email.plain'));
+        $this->assertSame([], EmailText::allowedVariables('test_email.braces'));
+        $this->assertSame(['names'], EmailText::allowedVariables('test_email.count.other'));
+    }
+
+    public function test_edited_text_reaches_the_email_as_plain_text(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $sam = User::factory()->create(['name' => 'Sam Example', 'email' => 'sam@example.org']);
+        $typed = '<script>alert(1)</script> [Click here](https://example.org) **bold** <a href="https://example.org">x</a> https://example.org/bare & _under_ `code` ![img](https://example.org/i.png)';
+        $this->edit([
+            'login_link.intro' => $typed,
+            'login_link.subject' => '<b>Log in</b> & **now**',
+            'login_link.action' => '**Log** <i>in</i>',
+        ]);
+
+        $mail = $this->sentMail(new LoginLinkNotification('https://example.org/login/example-token'), $sam);
+
+        $this->assertSame('<b>Log in</b> & **now**', $mail['subject']);
+
+        foreach (['<script', '<a href="https://example.org"', '<a href="https://example.org/bare', '<strong>', '<em>', '<code>', '<img', '<i>'] as $markup) {
+            $this->assertStringNotContainsString($markup, $mail['html'], $markup);
+        }
+        $this->assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt; [Click here](https://example.org) **bold** &lt;a href=', $mail['html']);
+        $this->assertStringContainsString('**Log** &lt;i&gt;in&lt;/i&gt;', $mail['html']);
+        // The button still goes where the code sends it.
+        $this->assertStringContainsString('href="https://example.org/login/example-token"', $mail['html']);
+
+        $this->assertStringContainsString($typed, $mail['text']);
+        $this->assertStringContainsString('**Log** <i>in</i>', $mail['text']);
+        $this->assertStringNotContainsString('&lt;', $mail['text']);
+        $this->assertStringNotContainsString('&#', $mail['text']);
+    }
+
+    public function test_every_line_edited_renders_escaped_once_in_every_email(): void
+    {
+        app('translator')->setLoaded([]);
+        $typed = 'Edited <b>*x*</b> & [y](https://example.org)';
+        $keys = array_keys(array_filter(Arr::dot(Lang::get('emails', [], 'en')), 'is_string'));
+        $this->edit(collect($keys)->mapWithKeys(fn (string $key) => [$key => $typed.' '.implode(' ', array_map(fn (string $name) => '{'.$name.'}', EmailText::allowedVariables($key)))])->all());
+        $examples = $this->emailExamples();
+
+        foreach ($examples as $label => [$notification, $user]) {
+            $mail = $this->sentMail($notification, $user);
+
+            $this->assertStringStartsWith($typed, $mail['subject'], "{$label}: subject");
+            $this->assertStringContainsString('Edited &lt;b&gt;*x*&lt;/b&gt; &amp; [y](https://example.org)', $mail['html'], "{$label}: html");
+            $this->assertStringContainsString($typed, $mail['text'], "{$label}: text");
+
+            foreach (['<b>', '<a href="https://example.org"', '<em>x', '&amp;#', '&amp;lt;', '&amp;amp;', '&amp;quot;'] as $wrong) {
+                $this->assertStringNotContainsString($wrong, $mail['html'], "{$label}: html has {$wrong}");
+            }
+            foreach (['&lt;', '&gt;', '&amp;', '&#'] as $wrong) {
+                $this->assertStringNotContainsString($wrong, $mail['text'], "{$label}: text has {$wrong}");
+                $this->assertStringNotContainsString($wrong, $mail['subject'], "{$label}: subject has {$wrong}");
+            }
+            $this->assertDoesNotMatchRegularExpression('/\{[a-z][a-z0-9_]*\}/', $mail['html'].$mail['text'].$mail['subject'], "{$label}: a variable was left unfilled.");
+        }
+    }
+
+    /** The login link email has no greeting and one button, so it shows all four lines Laravel adds. @return array{subject: string, html: string, text: string} */
+    private function loginLinkMail(): array
+    {
+        $sam = User::query()->firstWhere('email', 'sam@example.org') ?? User::factory()->create(['name' => 'Sam Example', 'email' => 'sam@example.org']);
+
+        return $this->sentMail(new LoginLinkNotification('https://example.org/login/example-token'), $sam);
+    }
+
+    public function test_the_every_email_defaults_are_laravels_own_lines(): void
+    {
+        app('translator')->setLoaded([]);
+
+        $this->assertSame('Hello!', EmailText::defaultText('every_email.heading'));
+        $this->assertSame('Regards,', EmailText::defaultText('every_email.sign_off'));
+        $this->assertSame('All rights reserved.', EmailText::defaultText('every_email.footer'));
+        foreach (LaravelMailLines::KEYS as $laravel => $key) {
+            $this->assertSame($laravel, str_replace('{button}', ':actionText', EmailText::defaultText($key)), $key);
+        }
+
+        // Unedited, an email reads exactly as Laravel writes it.
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $mail = $this->loginLinkMail();
+        $this->assertStringContainsString('Hello!</h1>', $mail['html']);
+        $this->assertStringContainsString("Regards,<br>\nExample Makers", $mail['html']);
+        $this->assertStringContainsString('If you\'re having trouble clicking the "Log in" button, copy and paste the URL below'."\n".'into your web browser:', $mail['html']);
+        $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['html']);
+    }
+
+    public function test_editing_the_sign_off_changes_it_in_a_sent_email_with_the_name_still_under_it(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $this->edit(['every_email.sign_off' => 'Thanks for all you do, <b>truly</b> [x](https://example.org) *team*,']);
+
+        $mail = $this->loginLinkMail();
+
+        $this->assertStringContainsString('Thanks for all you do, &lt;b&gt;truly&lt;/b&gt; [x](https://example.org) *team*,<br>'."\n".'Example Makers', $mail['html']);
+        $this->assertStringNotContainsString('Regards,', $mail['html']);
+        $this->assertStringNotContainsString('<b>truly', $mail['html']);
+        $this->assertStringNotContainsString('<em>', $mail['html']);
+        $this->assertStringNotContainsString('<a href="https://example.org"', $mail['html']);
+        // The plain-text part takes the <br> out, as it always has.
+        $this->assertStringContainsString("Thanks for all you do, <b>truly</b> [x](https://example.org) *team*,\nExample Makers", $mail['text']);
+        $this->assertStringNotContainsString('Regards,', $mail['text']);
+    }
+
+    public function test_the_edited_button_line_keeps_the_buttons_name_and_address(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $this->edit(['every_email.button_trouble' => 'Can\'t press "{button}"? Copy this address: (not :actionText or :ACTIONTEXT)']);
+
+        $mail = $this->loginLinkMail();
+
+        // A typed :actionText stays as typed rather than becoming the button's name.
+        $this->assertStringContainsString('Can\'t press "Log in"? Copy this address: (not :actionText or :ACTIONTEXT)', $mail['html']);
+        $this->assertStringContainsString('href="https://example.org/login/example-token"', $mail['html']);
+        $this->assertStringContainsString('[https://example.org/login/example-token](https://example.org/login/example-token)', $mail['text']);
+        $this->assertStringContainsString('Can\'t press "Log in"? Copy this address: (not :actionText or :ACTIONTEXT)', $mail['text']);
+        $this->assertStringNotContainsString('having trouble', $mail['html'].$mail['text']);
+    }
+
+    public function test_editing_the_heading_and_footer_changes_them_as_plain_text(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $this->edit(['every_email.heading' => 'Hi <i>there</i> *friend*!', 'every_email.footer' => 'Thanks for volunteering & see you soon!']);
+
+        $mail = $this->loginLinkMail();
+
+        $this->assertStringContainsString('Hi &lt;i&gt;there&lt;/i&gt; *friend*!</h1>', $mail['html']);
+        $this->assertStringContainsString('Example Makers. Thanks for volunteering &amp; see you soon!', $mail['html']);
+        $this->assertStringNotContainsString('Hello!', $mail['html']);
+        $this->assertStringNotContainsString('All rights reserved.', $mail['html']);
+        $this->assertStringContainsString('Hi <i>there</i> *friend*!', $mail['text']);
+        $this->assertStringContainsString('Example Makers. Thanks for volunteering & see you soon!', $mail['text']);
+    }
+
+    public function test_a_stored_footer_with_formatting_marks_sends_the_default_and_is_reported(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        Exceptions::fake();
+        // The footer goes through Laravel's own escaping, so it can't hold the marks Markdown reads; the editor refuses them, and a row put in by hand is ignored.
+        $this->edit(['every_email.footer' => 'Pay [here](//example.org)']);
+
+        $mail = $this->loginLinkMail();
+
+        $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['html']);
+        $this->assertStringNotContainsString('Pay', $mail['html'].$mail['text']);
+        Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'every_email.footer'));
+    }
+
+    public function test_putting_a_line_back_reaches_the_next_email(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $coordinator = User::factory()->create(['email' => 'chris@example.org']);
+        app(SaveEmailWording::class)->handle($coordinator, ['every_email.sign_off' => 'Cheers,', 'every_email.heading' => 'Hi!']);
+
+        $this->assertStringContainsString("Cheers,<br>\nExample Makers", $this->loginLinkMail()['html']);
+
+        app(SaveEmailWording::class)->handle($coordinator, ['every_email.sign_off' => null, 'every_email.heading' => null]);
+
+        $mail = $this->loginLinkMail();
+        $this->assertStringContainsString("Regards,<br>\nExample Makers", $mail['html']);
+        $this->assertStringContainsString('Hello!</h1>', $mail['html']);
+        $this->assertStringNotContainsString('Cheers', $mail['html'].$mail['text']);
+    }
+
+    public function test_the_lines_laravel_adds_are_left_alone_outside_those_four(): void
+    {
+        app('translator')->setLoaded([]);
+        $this->edit(['every_email.sign_off' => 'Cheers,']);
+
+        $this->assertSame('Not a line we know', __('Not a line we know'));
+        $this->assertSame('Cheers,', (string) __('Regards,'));
+    }
+
+    /** @return list<string> Footers that spell out a web address or a link with entities, which the plain-text part would decode. */
+    private static function entityFooters(): array
+    {
+        return ['https&#58;//evil.example/x', '&#91;x&#93;(https&#58;&#47;&#47;evil.example)', 'www&#46;evil.example'];
+    }
+
+    public function test_a_stored_footer_that_spells_out_an_address_with_entities_sends_the_default(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+
+        foreach (self::entityFooters() as $typed) {
+            DB::table('email_wordings')->delete();
+            $this->edit(['every_email.footer' => $typed]);
+            Exceptions::fake();
+
+            $mail = $this->loginLinkMail();
+
+            $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['html'], $typed);
+            $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['text'], $typed);
+            $this->assertStringNotContainsString('evil.example', $mail['html'].$mail['text'], $typed);
+            Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'every_email.footer'));
+        }
+    }
+
+    public function test_a_stored_footer_gets_every_check_a_save_runs(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+
+        foreach (['See https://example.org', 'Hi {first_name}', 'Thanks &amp; bye'] as $typed) {
+            DB::table('email_wordings')->delete();
+            $this->edit(['every_email.footer' => $typed]);
+            Exceptions::fake();
+
+            $this->assertStringContainsString('Example Makers. All rights reserved.', $this->loginLinkMail()['html'], $typed);
+            Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'every_email.footer'));
+        }
+    }
+
+    public function test_the_lines_laravel_adds_are_only_used_in_emails(): void
+    {
+        // An edit of these comes back escaped for Laravel's mail views, so a screen showing one with {{ }} would show entities.
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            foreach (array_keys(LaravelMailLines::KEYS) as $key) {
+                $this->assertStringNotContainsString("'".strtok($key, "\n")."'", $file->getContents(), "{$file->getRelativePathname()} uses Laravel's mail line [{$key}].");
+            }
+        }
     }
 }

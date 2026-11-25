@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Arr;
+use Illuminate\Support\HtmlString;
 
 /**
  * The urgent email (wireframe 49): a released shift starts in less than 24 hours and nobody has taken it. Sent to the area's active leads and everyone with the coordinator role (decision 12). `$reason` says why this person gets it: "a shift lead for Front desk" or "a coordinator". When one action escalates several shifts, merge() folds them into one email per person.
@@ -72,7 +73,7 @@ class CoverUrgentNotification extends Notification
             ->line(EmailText::line('cover_urgent.unclaimed.other'));
 
         foreach ($this->shifts as $shift) {
-            $mail->line(EmailText::line('cover_urgent.shift_link_line', ['area' => $shift['area'], 'when' => $shift['when'], 'url' => $shift['url'], 'needs' => self::needs($shift), 'released' => self::released($shift)]));
+            $mail->line(EmailText::line('cover_urgent.shift_link_line', ['shift_link' => EmailText::link($shift['area'].', '.$shift['when'], $shift['url']), 'needs' => self::needs($shift), 'released' => self::released($shift)]));
         }
 
         return $mail
@@ -80,15 +81,15 @@ class CoverUrgentNotification extends Notification
             ->line($reason);
     }
 
-    private static function needs(array $shift): string
+    private static function needs(array $shift): string|HtmlString
     {
         return EmailText::choice('cover_urgent.needs', $shift['openPlaces'], ['count' => $shift['openPlaces']]);
     }
 
-    private static function released(array $shift): string
+    private static function released(array $shift): string|HtmlString
     {
         $count = $shift['notifiedCount'];
 
-        return EmailText::line('cover_urgent.released', ['releaser' => $shift['releaser'], 'released_on' => $shift['releasedOn']]).' '.EmailText::choice($shift['resent'] ? 'cover_urgent.emailed_again' : 'cover_urgent.emailed', $count, ['count' => $count]);
+        return EmailText::join(EmailText::line('cover_urgent.released', ['releaser' => $shift['releaser'], 'released_on' => $shift['releasedOn']]), ' ', EmailText::choice($shift['resent'] ? 'cover_urgent.emailed_again' : 'cover_urgent.emailed', $count, ['count' => $count]));
     }
 }

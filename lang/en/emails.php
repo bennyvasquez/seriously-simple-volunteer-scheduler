@@ -198,8 +198,8 @@ return [
             // The first line when it was several shifts, above the list. {shadow} is the shadow's first name and last initial.
             'other' => '{shadow} can\'t make these shadow shifts. We\'ve taken them off, so they won\'t be there and the shadow spots are open again:',
         ],
-        // One link per shift in the list, when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the shift.
-        'shift_link' => '[{area}, {when}]({url})',
+        // One line per shift in the list, when it was several shifts. {shift_link} is a link to the shift, with the area's name and the date and time as its text, such as "Front desk, Thursday, October 22, 6:30 to 9:30pm". The link is built in code, so it can move but can't be left out.
+        'shift_link' => '{shift_link}',
         // Shown when the shadow left a note. {shadow} is the shadow's first name and last initial. {note} is what they typed.
         'note' => 'Note from {shadow}: {note}',
         // The label on the button that opens the shift, when it was one shift. No variables.
@@ -312,9 +312,9 @@ return [
         // The second line when it was one shift and other volunteers were asked to cover it. No variables.
         'asked_one' => 'We\'ve asked other volunteers to cover it, and we\'ll email you when someone does.',
         'shadows_told' => [
-            // Shown when it was one shift and one shadow was going to shadow it. {names} is that shadow's first name.
+            // Shown when it was one shift and one shadow was going to shadow it. {names} is that shadow's short name (such as Casey M.).
             'one' => '{names} was going to shadow you, so we\'ve told them too.',
-            // Shown when it was one shift and several shadows were. {names} is their first names joined in code, such as Casey and Jo.
+            // Shown when it was one shift and several shadows were. {names} is their short names joined in code, such as Casey M. and Jo K..
             'other' => '{names} were going to shadow you, so we\'ve told them too.',
         ],
         // Shown when it was one shift and they stay the regular for it. {weekday} is the day of the weekly slot, such as Thursday. {date} is the day, such as Thursday, October 22.
@@ -340,15 +340,15 @@ return [
         // Shown instead of that line when some shifts in the list had nobody else asked. No variables.
         'asked_rest' => 'We\'ve asked other volunteers to cover the rest, and we\'ll email you when someone does.',
         'shadows_told_on_dates' => [
-            // Shown when it was several shifts and one shadow was going to shadow some of them. {names} is that shadow's first name. {dates} is the days joined in code, such as Thursday, October 22 and Thursday, October 29.
+            // Shown when it was several shifts and one shadow was going to shadow some of them. {names} is that shadow's short name (such as Casey M.). {dates} is the days joined in code, such as Thursday, October 22 and Thursday, October 29.
             'one' => '{names} was going to shadow you on {dates}, so we\'ve told them too.',
-            // Shown when several shadows were going to shadow the same shifts. {names} is their first names joined in code, such as Casey and Jo. {dates} is the days joined in code.
+            // Shown when several shadows were going to shadow the same shifts. {names} is their short names joined in code, such as Casey M. and Jo K.. {dates} is the days joined in code.
             'other' => '{names} were going to shadow you on {dates}, so we\'ve told them too.',
         ],
         'shadows_told_every_date' => [
-            // Shown instead of that line when one shadow was going to shadow every shift in the list. {names} is that shadow's first name.
+            // Shown instead of that line when one shadow was going to shadow every shift in the list. {names} is that shadow's short name (such as Casey M.).
             'one' => '{names} was going to shadow you on these dates, so we\'ve told them too.',
-            // Shown when several shadows were going to shadow every shift in the list. {names} is their first names joined in code, such as Casey and Jo.
+            // Shown when several shadows were going to shadow every shift in the list. {names} is their short names joined in code, such as Casey M. and Jo K..
             'other' => '{names} were going to shadow you on these dates, so we\'ve told them too.',
         ],
         // Shown when it was several shifts and they stay the regular for one weekday. {weekday} is the day of the weekly slot, such as Thursday.
@@ -362,7 +362,7 @@ return [
         'greeting' => 'Hi {first_name},',
         // The subject of the "Still open" email, sent 72 hours before the shift. {area} is the area's name. {date} is the day, such as Thursday, October 22.
         'subject_still_open' => 'Still open: {area} on {date}',
-        // The first line of the "Still open" email. {releaser} is the first name of the person who released the shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
+        // The first line of the "Still open" email. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who released the shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
         'still_open' => 'Nobody has taken {releaser}\'s {area} shift yet. It\'s {when}.',
         'subject_gave_up' => [
             // The subject when someone gave up their weekly slot and one date needs covering. {area} is the area's name. {date} is the day, such as Thursday, October 22.
@@ -370,7 +370,7 @@ return [
             // The subject when several dates need covering. {area} is the area's name. {weekdays} is the weekday in plural, such as Thursdays.
             'other' => 'Can you cover {area} on some {weekdays}?',
         ],
-        // The first line when someone gave up their weekly slot, above the dates. {releaser} is the first name of the person giving it up. {weekday} is the day of the slot, such as Thursday. {area} is the area's name.
+        // The first line when someone gave up their weekly slot, above the dates. {releaser} is the short name (first name and last initial, such as Sam E.) of the person giving it up. {weekday} is the day of the slot, such as Thursday. {area} is the area's name.
         'gave_up' => '{releaser} is giving up their weekly {weekday} {area} slot. These dates need someone:',
         'subject' => [
             // The subject when one shift needs covering. {area} is the area's name. {date} is the day, such as Thursday, October 22.
@@ -379,16 +379,16 @@ return [
             'other' => 'Can you cover {area} on {count} dates?',
         ],
         'cant_make' => [
-            // The first line when it was one shift. {releaser} is the first name of the person who can't make it. {area} is the area's name.
+            // The first line when it was one shift. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who can't make it. {area} is the area's name.
             'one' => '{releaser} can\'t make their {area} shift. Can you take it?',
-            // The first line when it was several shifts. {releaser} is the first name of the person who can't make them. {area} is the area's name.
+            // The first line when it was several shifts. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who can't make them. {area} is the area's name.
             'other' => '{releaser} can\'t make their {area} shifts. Can you take one?',
         ],
         // The line for the shift when it was one shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
         'shift_item' => '{area}, {when}',
-        // One link per shift when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the page to take the shift.
-        'shift_link' => '[{area}, {when}]({url})',
-        // Shown when the person who released the shift left a note. {releaser} is their first name. {note} is what they typed.
+        // One line per shift when it was several shifts. {shift_link} is a link to the page to take the shift, with the area's name and the date and time as its text, such as "Front desk, Thursday, October 22, 6:30 to 9:30pm". The link is built in code, so it can move but can't be left out.
+        'shift_link' => '{shift_link}',
+        // Shown when the person who released the shift left a note. {releaser} is their short name (such as Sam E.). {note} is what they typed.
         'note' => 'Note from {releaser}: {note}',
         // The label on the button that opens the page to take the shift, when it was one shift. No variables.
         'action' => 'Take this shift',
@@ -398,8 +398,10 @@ return [
         'first_person_several' => 'Pick a date to take it. The first person to take each date gets it. You\'ll log in first if you aren\'t already.',
         // Why they got the email. {organization} is the name of the organization.
         'reason' => 'You\'re getting this because you volunteer with {organization} and cover request emails are on for you.',
-        // The last line, a link to turn these emails off. {url} is the address of the Emails page.
-        'stop' => '[Stop getting cover requests]({url})',
+        // The last line. {stop_link} is a link to the Emails page where these emails are turned off, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
+        'stop' => '{stop_link}',
+        // The text of that link. No variables.
+        'stop_label' => 'Stop getting cover requests',
     ],
 
     'cover_urgent' => [
@@ -417,15 +419,15 @@ return [
         ],
         // The second line when it was one shift. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm. {needs} is how many more people it needs, from the needs lines below.
         'shift_line' => '{area}, {when}. {needs}',
-        // One line per shift when it was several shifts. {area} is the area's name. {when} is the date and time. {url} is the address of the shift. {needs} is how many more people it needs, from the needs lines below. {released} is who released it and who was emailed, from the released lines below.
-        'shift_link_line' => '[{area}, {when}]({url}). {needs} {released}',
+        // One line per shift when it was several shifts. {shift_link} is a link to the shift, with the area's name and the date and time as its text, built in code so it can move but can't be left out. {needs} is how many more people it needs, from the needs lines below. {released} is who released it and who was emailed, from the released lines below.
+        'shift_link_line' => '{shift_link}. {needs} {released}',
         'needs' => [
             // How many more people a shift needs, when it's one. {count} is 1.
             'one' => 'Needs {count} more person.',
             // How many more people a shift needs, when it's none or several. {count} is how many.
             'other' => 'Needs {count} more people.',
         ],
-        // The first part of who released it. {releaser} is the first name of the person who released the shift. {released_on} is the day they released it, such as Thursday, October 15.
+        // The first part of who released it. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who released the shift. {released_on} is the day they released it, such as Thursday, October 15.
         'released' => '{releaser} released it on {released_on}.',
         'emailed' => [
             // The second part, when one volunteer was emailed. {count} is 1.
@@ -460,9 +462,9 @@ return [
                 'other' => 'Your shadow shifts on {count} dates are on hold',
             ],
             'intro' => [
-                // The first line when it was one shift. {releaser} is the first name of the person who can't make it. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+                // The first line when it was one shift. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who can't make it. {area} is the area's name. {date} is the day, such as Thursday, October 22.
                 'one' => '{releaser} can\'t make their {area} shift on {date}, so right now there\'s nobody for you to shadow.',
-                // The first line when it was several shifts, above the list. {releaser} is the first name of the person who can't make them.
+                // The first line when it was several shifts, above the list. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who can't make them.
                 'other' => '{releaser} can\'t make these shifts, so right now there\'s nobody for you to shadow on them:',
             ],
             'outro' => [
@@ -494,7 +496,7 @@ return [
                 'other' => 'Your shadow shifts tomorrow still have nobody to shadow',
             ],
             'intro' => [
-                // The first line when it was one shift. {releaser} is the first name of the person who released it. {area} is the area's name. {date} is the day, such as Thursday, October 22.
+                // The first line when it was one shift. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who released it. {area} is the area's name. {date} is the day, such as Thursday, October 22.
                 'one' => 'Nobody has taken {releaser}\'s {area} shift on {date} yet. If someone does, we\'ll email you.',
                 // The first line when it was several shifts, above the list. No variables.
                 'other' => 'Nobody has taken these shifts yet. If someone does, we\'ll email you.',
@@ -522,12 +524,12 @@ return [
         'regular' => 'You\'re now the {how} regular for {area}, starting {date}.',
         // The line giving the time. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm. {area} is the area's name.
         'when_area' => '{when}, {area}.',
-        // Shown when the person who released the shift left a note. {releaser} is their first name. {note} is what they typed.
+        // Shown when the person who released the shift left a note. {releaser} is their short name (such as Sam E.). {note} is what they typed.
         'note' => 'Note from {releaser}: {note}',
         'shadowing' => [
-            // Shown when one shadow is on the shift. {names} is that person's first name.
+            // Shown when one shadow is on the shift. {names} is that person's short name (such as Casey M.).
             'one' => '{names} is shadowing.',
-            // Shown when several shadows are. {names} is their first names joined in code, such as Casey and Jo.
+            // Shown when several shadows are. {names} is their short names joined in code, such as Casey M. and Jo K..
             'other' => '{names} are shadowing.',
         ],
         // Shown when they became the regular but some dates were left out because they're on another shift then. {dates} is the days joined in code with "or", such as Thursday, October 29 or Thursday, November 5.
@@ -541,7 +543,7 @@ return [
         'subject_covered' => 'Covered: {area} on {date}',
         // The first line when the person who released the shift took it back. {taker} is their first name and last initial. {area} is the area's name. {when} is the date and time, such as Thursday, October 22, 6:30 to 9:30pm.
         'took_back' => '{taker} took back their {area} shift on {when}.',
-        // The first line when someone covered a released shift. {taker} is the first name and last initial of the person who took it. {releaser} is the first name of the person who released it. {area} is the area's name. {when} is the date and time.
+        // The first line when someone covered a released shift. {taker} is the first name and last initial of the person who took it. {releaser} is the short name (first name and last initial, such as Sam E.) of the person who released it. {area} is the area's name. {when} is the date and time.
         'covering' => '{taker} is covering {releaser}\'s {area} shift on {when}.',
         // Shown when they became the regular. {taker} is their first name and last initial. {how} is how often, such as Thursday or every other Thursday. {date} is the first day, such as Thursday, October 22.
         'regular' => '{taker} is now the {how} regular from {date}.',
@@ -555,17 +557,17 @@ return [
 
     'shift_covered' => [
         'subject' => [
-            // The subject when someone is covering one of their shifts. {taker} is the first name of the person covering. {date} is the day, such as Thursday, October 22.
+            // The subject when someone is covering one of their shifts. {taker} is the short name (such as Jordan P.) of the person covering. {date} is the day, such as Thursday, October 22.
             'one' => '{taker} is covering your {date} shift',
-            // The subject when someone is covering several. {taker} is the first name of the person covering. {count} is how many.
+            // The subject when someone is covering several. {taker} is the short name (such as Jordan P.) of the person covering. {count} is how many.
             'other' => '{taker} is covering {count} of your shifts',
         ],
         // The greeting at the top. {first_name} is the first name of the person who released the shifts.
         'greeting' => 'Hi {first_name},',
         'body' => [
-            // The only line when it was one shift. {taker} is the first name of the person covering. {area} is the area's name. {date} is the day.
+            // The only line when it was one shift. {taker} is the short name (such as Jordan P.) of the person covering. {area} is the area's name. {date} is the day.
             'one' => '{taker} took your {area} shift on {date}. You don\'t need to do anything.',
-            // The first line when it was several shifts, above the list of dates. {taker} is the first name of the person covering. {area} is the area's name.
+            // The first line when it was several shifts, above the list of dates. {taker} is the short name (such as Jordan P.) of the person covering. {area} is the area's name.
             'other' => '{taker} took your {area} shifts on these dates. You don\'t need to do anything.',
         ],
         // The list of dates in the several-shifts email is built in code, one line each, such as Thursday, October 22.
@@ -623,8 +625,8 @@ return [
         'subject' => 'No answer yet: {area}, {date}',
         // The first line. No variables.
         'intro' => 'The time of this shift changed, and these people haven\'t said whether the new time works:',
-        // The shift's line, with the day in bold above it and the names below it (each line ends in two spaces so they stay on separate lines). {date} is the day, such as Thursday, October 22. {shift_line} is the area, the new time and the old time, built from the shift_line wording. {names} is the first names and last initials of the people who haven't answered, joined in code with commas.
-        'shift' => "**{date}**  \n{shift_line}  \n{names}",
+        // The shift's line. {date_bold} is the day in bold, such as Thursday, October 22, made in code. {shift_line} is the area, the new time and the old time, built from the shift_line wording. {names} is the first names and last initials of the people who haven't answered, joined in code with commas.
+        'shift' => '{date_bold} {shift_line} {names}',
         // The area, the new time and the old time, used inside the shift lines above. {area} is the area's name. {now} is the new time, such as 6:30 to 9:30pm. {was} is the old time.
         'shift_line' => '{area}, {now} (was {was})',
         // The line after the shift. No variables. The 48 hours is fixed.
@@ -684,8 +686,22 @@ return [
         'login' => 'You\'ll log in first if you aren\'t already.',
         // The label on the button that lets the person off the shift. No variables.
         'release' => 'Can\'t make it',
-        // The last line. {emails_url} is the link to the Emails page. The words in the square brackets are the link's text.
-        'turn_off' => 'You can turn these reminders off on the [Emails page]({emails_url}).',
+        // The last line. {emails_page_link} is a link to the Emails page, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
+        'turn_off' => 'You can turn these reminders off on the {emails_page_link}.',
+        // The text of that link. No variables.
+        'emails_page_label' => 'Emails page',
+    ],
+
+    // The four lines Laravel's mail layout adds to every email. They're applied when an email is sent (App\Notifications\LaravelMailLines), and each default is Laravel's own line exactly, so an email reads the same until someone edits one.
+    'every_email' => [
+        // The heading of an email that has no greeting of its own. No variables.
+        'heading' => 'Hello!',
+        // The sign-off at the end of every email, with the organization's name under it. No variables.
+        'sign_off' => 'Regards,',
+        // The line under the button in every email that has one. {button} is the button's label. The button's address always follows this line, so it can't be moved or left out.
+        'button_trouble' => "If you're having trouble clicking the \"{button}\" button, copy and paste the URL below\ninto your web browser:",
+        // The end of the footer, after the year and the organization's name. No variables. It can't use [ ] * _ ` ~ | \ < or >, because the footer isn't escaped the way other lines are.
+        'footer' => 'All rights reserved.',
     ],
 
 ];

@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
+use App\Notifications\LaravelMailLines;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Illuminate\Translation\Translator;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Dusk\DuskServiceProvider;
 use Laravel\Fortify\Events\RecoveryCodeReplaced;
@@ -54,6 +56,9 @@ class AppServiceProvider extends ServiceProvider
             Mail::alwaysFrom((string) config('mail.from.address'), $name);
         });
 
+        // The four lines Laravel's mail layout adds ("Hello!", "Regards,", the line under each button and "All rights reserved.") read the organization's edits, if any, when an email is rendered. Nothing is copied from Laravel's views.
+        $this->callAfterResolving('translator', fn (Translator $translator) => LaravelMailLines::register($translator));
+
         // Long enough to resist guessing; no breached-password lookup, because that calls an outside service on every change.
         Password::defaults(fn () => Password::min(10));
 
@@ -61,6 +66,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('view-schedule', fn (User $user) => $user->isActive());
         Gate::define('view-change-log', fn (User $user) => $user->isActive() && $user->isCoordinator());
         Gate::define('manage-shadowing', fn (User $user) => $user->isActive() && $user->isCoordinator());
+        // Changing the wording of the emails reaches every volunteer's inbox, so it's for active coordinators and admins, who sign in with two-factor (spec section 6).
+        Gate::define('manage-emails', fn (User $user) => $user->isActive() && $user->isCoordinator());
         // Only admins change organization settings (spec section 6).
         Gate::define('manage-settings', fn (User $user) => $user->isActive() && $user->hasRole(Role::Admin));
 
@@ -68,6 +75,8 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('login-link-use', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
         RateLimiter::for('email-change', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change|'.$request->user()?->id));
         RateLimiter::for('email-change-identity', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change-identity|'.$request->user()?->id));
+        // Saving, resetting and previewing email wording, per person, so a stolen session can't hammer the editor.
+        RateLimiter::for('email-editor', fn (Request $request) => Limit::perMinute(30)->by('email-editor|'.$request->user()?->id));
         RateLimiter::for('two-factor-email', fn (Request $request) => Limit::perMinutes(10, 3)->by('two-factor-email|'.$request->session()->get('login.id')));
 
         // A query-builder update, so signing in fires no model events and writes no change log entry. Login also fires when a remember-me cookie signs someone back in.

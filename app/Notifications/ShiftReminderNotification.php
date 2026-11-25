@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 use IntlTimeZone;
 
 /**
@@ -18,7 +19,7 @@ class ShiftReminderNotification extends Notification
 {
     public string $subject;
 
-    public string $intro;
+    public string|HtmlString $intro;
 
     public string $releaseUrl;
 
@@ -54,7 +55,7 @@ class ShiftReminderNotification extends Notification
         $this->intro = EmailText::line('shift_reminder.intro.'.$role.'.'.$when, ['area' => $area, 'date' => $date, 'time' => $time, 'timezone' => self::timezoneName($timezone)]);
 
         if ($shift->title !== null && $shift->title !== '') {
-            $this->intro .= "\n\n".$shift->title;
+            $this->intro = EmailText::join($this->intro, "\n\n", $shift->title);
         }
 
         $this->nobodyToShadow = $assignment->type === AssignmentType::Shadow && $shift->filledCount() === 0;
@@ -98,7 +99,7 @@ class ShiftReminderNotification extends Notification
             'loginNote' => EmailText::line('shift_reminder.login'),
             'releaseLabel' => EmailText::line('shift_reminder.release'),
             'releaseUrl' => $this->showRelease ? $this->releaseUrl : null,
-            'turnOff' => EmailText::line('shift_reminder.turn_off', ['emails_url' => $this->emailsUrl]),
+            'turnOff' => EmailText::line('shift_reminder.turn_off', ['emails_page_link' => EmailText::link(EmailText::line('shift_reminder.emails_page_label'), $this->emailsUrl)]),
         ]);
     }
 }

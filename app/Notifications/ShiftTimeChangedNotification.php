@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /**
  * Sent to a person on shifts whose time changed (screen 56). One email covers every shift one edit moved for that person, and asks whether the new time still works, with two buttons: "Still works for me" (the answer page for the batch) and "I can't make the new time" ("Can't make it" for the earliest shift). Both need a login, and "I can't make the new time" opens the answer page, which offers the release link for the earliest shift that hasn't started, so it still works a week later. When the earliest shift starts within the heads-up window (SendChangeHeadsUps::HOURS) the email leaves out "your shift lead will check with you", since no heads-up goes out then. A change made by the system, with no one to name, says the area's schedule changed. Items are `['shift' => Shift (new values, area loaded), 'was_starts_at' => CarbonImmutable, 'was_ends_at' => CarbonImmutable, 'was_title' => ?string (optional: when the shift's title changed too, its line says so), 'back_on' => bool (optional: the shift was cancelled and came back at a new time, which the intro says)]`. withTitleChanges() adds lines, after the question and buttons, for the person's other shifts in the same edit whose title alone changed, worded like ShiftChangedNotification's lines, so each person still gets one email.
@@ -18,12 +19,12 @@ class ShiftTimeChangedNotification extends Notification
 {
     public string $subject;
 
-    public string $intro;
+    public string|HtmlString $intro;
 
-    /** @var list<string> */
+    /** @var list<string|HtmlString> */
     public array $lines;
 
-    /** @var list<string> Lines for shifts whose title alone changed. */
+    /** @var list<string|HtmlString> Lines for shifts whose title alone changed. */
     public array $titleLines = [];
 
     /** @var list<int> The ids of the shifts the email asks about. */
@@ -113,7 +114,7 @@ class ShiftTimeChangedNotification extends Notification
     /**
      * Adds lines after the question and buttons, so one email carries everything the person is told about an edit (their other shifts' title changes, shifts that are back on without a time change, shifts a closure cancelled).
      *
-     * @param  list<string>  $lines
+     * @param  list<string|HtmlString>  $lines
      */
     public function withMoreLines(array $lines): static
     {
@@ -138,7 +139,7 @@ class ShiftTimeChangedNotification extends Notification
             'stillWorksUrl' => $this->stillWorksUrl,
             'cantLabel' => EmailText::line('shift_time_changed.cant'),
             'cantUrl' => $this->cantUrl,
-            'loginNote' => EmailText::line('shift_time_changed.login').($this->leadChecks ? ' '.EmailText::line('shift_time_changed.lead_checks') : ''),
+            'loginNote' => $this->leadChecks ? EmailText::join(EmailText::line('shift_time_changed.login'), ' ', EmailText::line('shift_time_changed.lead_checks')) : EmailText::line('shift_time_changed.login'),
         ]);
     }
 }

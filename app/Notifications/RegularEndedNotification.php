@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /** Sent to someone whose time as a regular on a weekly slot was ended. Lists only the future shifts they were removed from that weren't cancelled; nobody is told about past shifts. When the last date has passed, or was before the regular's start (`$beforeStart`), it says they're no longer the regular instead of naming the date. */
 class RegularEndedNotification extends Notification
@@ -21,7 +22,7 @@ class RegularEndedNotification extends Notification
 
     public bool $datePassed;
 
-    /** @var list<string> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
+    /** @var list<string|HtmlString> One "Front desk shift on Thursday, October 22, 6:30 to 9:30pm" per shift. */
     public array $shifts;
 
     /** @param  Collection<int, Shift>  $futureShifts */

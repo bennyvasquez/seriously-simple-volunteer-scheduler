@@ -8,6 +8,7 @@ use App\Models\WeeklySlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 
 /** Sent to someone a coordinator or lead made a regular on a weekly slot. */
 class MadeRegularNotification extends Notification
@@ -16,7 +17,8 @@ class MadeRegularNotification extends Notification
 
     public string $slot;
 
-    public string $how;
+    /** "every" or "every other", from the wording file or the organization's edit. */
+    public string|HtmlString $how;
 
     public string $startingOn;
 

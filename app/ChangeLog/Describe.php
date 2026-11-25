@@ -3,6 +3,7 @@
 namespace App\ChangeLog;
 
 use App\Calendar\PersonSearch;
+use App\Emails\EmailCatalog;
 use App\Enums\Role;
 use App\Models\Area;
 use App\Models\AreaClosure;
@@ -93,6 +94,8 @@ final class Describe
             'closure.created' => self::closureWords($entry->subject),
             'closure.updated' => self::closureChanged($entry, $areas),
             'closure.removed' => self::closureRemoved($entry, $areas),
+            'email_wording.changed' => 'Changed '.self::emailLine($details),
+            'email_wording.reset' => 'Put '.self::emailLine($details).' back to the default',
             default => str_starts_with($entry->action, 'user.')
                 ? 'Changed '.$possessive.' account'
                 : ucfirst(str_replace(['.', '_'], ' ', $entry->action)),
@@ -123,6 +126,22 @@ final class Describe
         }
 
         return null;
+    }
+
+    /**
+     * The text before and after, for an entry that changed a piece of wording (an email line), shown on the change log exactly as it was typed. Null for every other entry.
+     *
+     * @return array{before: string, after: string}|null
+     */
+    public static function textChange(ChangeLogEntry $entry): ?array
+    {
+        $text = ($entry->changes ?? [])['text'] ?? null;
+
+        if (! str_starts_with($entry->action, 'email_wording.') || ! is_string($text['old'] ?? null) || ! is_string($text['new'] ?? null)) {
+            return null;
+        }
+
+        return ['before' => $text['old'], 'after' => $text['new']];
     }
 
     /** The person an entry is about, as this viewer may see them. */
@@ -333,6 +352,12 @@ final class Describe
         $to = CarbonImmutable::parse($last)->format('M j');
 
         return $from === $to ? $from : $from.' to '.$to;
+    }
+
+    /** "the shift reminder's opening", from the line's key in the entry's details, named the way the email editor names it. */
+    private static function emailLine(array $details): string
+    {
+        return is_string($details['key'] ?? null) ? EmailCatalog::lineName($details['key']) : 'a line of an email';
     }
 
     private static function closureWords(mixed $closure): string
