@@ -738,6 +738,32 @@ class ShiftDetailsTest extends TestCase
             ->assertDontSee('Time changed on')->assertDontSee('Confirmed the new time')->assertDontSee('Hasn\'t answered yet', false);
     }
 
+    public function test_leads_of_other_areas_dont_see_answers(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 2);
+        $sam = $this->onShift($shift, 'Sam Example');
+        $robin = $this->onShift($shift, 'Robin Example');
+        $this->notice($shift, $sam, ['confirmed_at' => now()]);
+        $this->notice($shift, $robin);
+        $outsideLead = $this->coordinator(Role::AreaLead, $this->hostedEvents);
+
+        $this->actingAs($outsideLead)->get(route('calendar.shift', $shift))->assertOk()
+            ->assertDontSee('Confirmed the new time')->assertDontSee('Hasn\'t answered yet', false);
+    }
+
+    public function test_leads_of_the_shifts_area_see_answers(): void
+    {
+        $shift = $this->shiftOn('2026-10-22', '18:30', '21:30', peopleNeeded: 2);
+        $sam = $this->onShift($shift, 'Sam Example');
+        $robin = $this->onShift($shift, 'Robin Example');
+        $this->notice($shift, $sam, ['confirmed_at' => now()]);
+        $this->notice($shift, $robin);
+        $lead = $this->coordinator(Role::AreaLead, $this->frontDesk);
+
+        $this->actingAs($lead)->get(route('calendar.shift', $shift))->assertOk()
+            ->assertSee('Confirmed the new time')->assertSee('Hasn\'t answered yet', false);
+    }
+
     public function test_the_answers_add_one_query_not_one_per_person(): void
     {
         $coordinator = $this->coordinator();

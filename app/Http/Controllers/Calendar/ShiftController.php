@@ -95,7 +95,10 @@ class ShiftController extends Controller
 
         // One query for every notice on this shift: the heading uses the newest of them, and each row the person's newest one that hasn't ended.
         $notices = ChangeNotice::query()->where('shift_id', $shift->id)->orderByDesc('id')->get();
-        $answers = $notices->whereNull('ended_at')->unique('user_id')->mapWithKeys(fn (ChangeNotice $notice) => [$notice->user_id => $notice->confirmed_at === null ? 'waiting' : 'confirmed']);
+        // Who answered is only for the people who manage this shift's area (spec section 6), so everyone else gets none.
+        $answers = Gate::forUser($user)->allows('manageSchedule', $shift->area)
+            ? $notices->whereNull('ended_at')->unique('user_id')->mapWithKeys(fn (ChangeNotice $notice) => [$notice->user_id => $notice->confirmed_at === null ? 'waiting' : 'confirmed'])
+            : collect();
 
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
