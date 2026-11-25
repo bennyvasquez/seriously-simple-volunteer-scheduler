@@ -2,6 +2,7 @@
 
 namespace App\Import;
 
+use App\Support\EmailAddress;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -57,7 +58,7 @@ class HelloClubExport
 
                 $rows->push(new ImportRow(
                     name: trim((string) ($record[$columns['Full name']] ?? '')),
-                    email: Str::lower(trim((string) ($record[$columns['Email']] ?? ''))),
+                    email: EmailAddress::normalize((string) ($record[$columns['Email']] ?? '')),
                     memberId: trim((string) ($record[$columns['Profile ID']] ?? '')),
                     tags: $tags,
                     line: $line,

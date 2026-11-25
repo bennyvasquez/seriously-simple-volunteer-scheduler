@@ -98,6 +98,52 @@ class EmailAddressSpellingTest extends TestCase
         $this->post(route('login-link.request'), ['email' => 'vICTIM@example.org'])->assertStatus(429);
     }
 
+    /** The limiters build their keys from the normalized address themselves (the throttle middleware runs before the normalizing one). */
+    public function test_spellings_of_one_address_share_the_password_login_limit(): void
+    {
+        foreach (['victim@example.org', 'Victim@example.org', ' VICTIM@example.org ', 'victim@Example.org', "\tvictim@EXAMPLE.org"] as $spelling) {
+            $this->post(route('login.store'), ['email' => $spelling, 'password' => 'wrong password here'])->assertSessionHasErrors('email');
+        }
+
+        $this->post(route('login.store'), ['email' => '  vICTIM@example.org', 'password' => self::PASSWORD])->assertStatus(429);
+        $this->assertGuest();
+    }
+
+    public function test_an_address_pasted_with_a_non_breaking_space_or_zero_width_character_at_an_end_signs_in(): void
+    {
+        foreach (["victim@example.org\u{00A0}", "\u{00A0}victim@example.org", "victim@example.org\u{200B}", "\u{FEFF}Victim@Example.org\u{200B} "] as $pasted) {
+            $this->post(route('login.store'), ['email' => $pasted, 'password' => self::PASSWORD]);
+            $this->assertAuthenticatedAs($this->victim);
+            auth()->logout();
+            $this->flushSession();
+            $this->travel(61)->seconds();
+        }
+    }
+
+    public function test_a_zero_width_character_inside_an_address_is_still_refused(): void
+    {
+        $this->post(route('login.store'), ['email' => "vic\u{200B}tim@example.org\u{200B}", 'password' => self::PASSWORD])
+            ->assertSessionHasErrors(['email' => EmailAddress::REFUSAL]);
+
+        $this->assertGuest();
+        $this->assertSame('vic'."\u{200B}".'tim@example.org', EmailAddress::normalize("vic\u{200B}tim@example.org\u{00A0}"));
+    }
+
+    public function test_import_trims_a_non_breaking_space_or_zero_width_character_at_the_end_of_an_address(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'ssvs');
+        file_put_contents($path, "Full name,Email,Profile ID\nVictor Example,\"newbie@example.org\u{00A0}\u{200B}\",v1\nIn Middle,\"in\u{200B}side@example.org\",v2\n");
+
+        try {
+            $preview = app(ImportPeople::class)->preview(HelloClubExport::read($path), null);
+        } finally {
+            unlink($path);
+        }
+
+        $this->assertSame(['newbie@example.org'], $preview->add->map(fn ($item) => $item->row->email)->all());
+        $this->assertCount(1, $preview->problems);
+    }
+
     public function test_the_change_log_email_filter_is_untouched(): void
     {
         $coordinator = User::factory()->cleared()->create();
