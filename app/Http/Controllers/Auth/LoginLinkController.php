@@ -19,6 +19,9 @@ use Illuminate\View\View;
 
 class LoginLinkController extends Controller
 {
+    /** How many minutes after signing in with an emailed link a first password can still be added. */
+    public const RECENT_MINUTES = 15;
+
     /** Emails a login link. The answer is the same whether or not the address has an account. */
     public function request(Request $request, IssueLoginLink $issueLoginLink): RedirectResponse
     {
@@ -99,6 +102,7 @@ class LoginLinkController extends Controller
 
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
+        $request->session()->put('auth.link_login_at', now()->getTimestamp());
 
         return redirect()->intended(config('fortify.home'));
     }

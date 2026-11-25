@@ -60,7 +60,8 @@ class AccountPageTest extends TestCase
     {
         $volunteer = User::factory()->withoutPassword()->create();
 
-        $this->actingAs($volunteer)->post(route('account.password.set'), ['password' => 'a long enough phrase', 'password_confirmation' => 'a long enough phrase'])
+        $this->actingAs($volunteer)->withSession(['auth.link_login_at' => now()->getTimestamp()])
+            ->post(route('account.password.set'), ['password' => 'a long enough phrase', 'password_confirmation' => 'a long enough phrase'])
             ->assertRedirect(route('account.show'))->assertSessionHas('status', 'Your password is saved.');
     }
 

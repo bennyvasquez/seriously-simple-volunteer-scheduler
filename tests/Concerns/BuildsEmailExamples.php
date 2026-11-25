@@ -26,6 +26,7 @@ use App\Notifications\LoginLinkNotification;
 use App\Notifications\MadeRegularNotification;
 use App\Notifications\MovedBackNotification;
 use App\Notifications\NoAnswerLeadNotification;
+use App\Notifications\PasswordAddedNotification;
 use App\Notifications\PasswordChangedNotification;
 use App\Notifications\PutOnShiftNotification;
 use App\Notifications\RegularEndedNotification;
@@ -112,6 +113,7 @@ trait BuildsEmailExamples
             'invitation by a coordinator' => [new InvitationNotification($url, $name('Chris C.')), $sam],
             'two factor reset' => [new TwoFactorResetNotification($coordinator), $sam],
             'two factor attempts' => [new TwoFactorAttemptsNotification, $sam],
+            'password added' => [new PasswordAddedNotification, $sam],
             'password changed' => [new PasswordChangedNotification, $sam],
             'put on shift' => [new PutOnShiftNotification($first), $sam],
             'cleared' => [new ClearedNotification($coordinator, Organization::current()), $sam],

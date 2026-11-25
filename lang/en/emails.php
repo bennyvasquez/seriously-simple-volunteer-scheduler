@@ -90,6 +90,21 @@ return [
         'reset_label' => 'Change your password',
     ],
 
+    'password_added' => [
+        // The subject of the email sent after a first password is added to someone's account. No variables.
+        'subject' => 'A password was added to your account',
+        // The greeting at the top. {first_name} is the person's first name.
+        'greeting' => 'Hi {first_name},',
+        // The first line. No variables.
+        'added' => 'A password was just added to your account, so you can now sign in with it as well as with an emailed link.',
+        // The second line. No variables.
+        'advice' => 'If you didn\'t do this, reset your password now and let a coordinator know.',
+        // The last line. {reset_link} is a link to the page for resetting a password, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
+        'reset' => '{reset_link}',
+        // The text of that link. No variables.
+        'reset_label' => 'Reset your password',
+    ],
+
     'password_changed' => [
         // The subject of the email sent after someone's password changes. No variables.
         'subject' => 'Your password was changed',
