@@ -156,8 +156,10 @@ class AccountPageTest extends TestCase
         $lead = $this->leadWithTwoFactor();
 
         $this->actingAs($lead)->withSession(['status' => 'recovery-codes-generated'])->get(route('account.show'))
-            ->assertSee('if (! navigator.clipboard)', false)
+            ->assertSee('<script src="'.asset('js/recovery-codes.js').'" defer></script>', false)
             ->assertSee('Couldn\'t copy. Select the codes and copy them instead.', false)
-            ->assertDontSee('<script>'."\n".'const copy', false);
+            ->assertDontSee('<script>', false);
+
+        $this->assertStringContainsString('if (! navigator.clipboard)', file_get_contents(public_path('js/recovery-codes.js')));
     }
 }

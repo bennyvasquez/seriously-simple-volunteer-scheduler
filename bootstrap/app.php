@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureAccountIsSecure;
 use App\Http\Middleware\HideRateLimitHeaders;
 use App\Http\Middleware\NormalizeEmailAddress;
 use App\Http\Middleware\RecordLastSeen;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\TrustConfiguredProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -30,6 +31,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Which proxies are trusted to report the visitor's address, scheme and host comes from the TRUSTED_PROXIES setting, none by default (see TrustConfiguredProxies). Laravel's own middleware is swapped for it because the configuration isn't loaded yet when this callback runs.
         $middleware->replace(TrustProxies::class, TrustConfiguredProxies::class);
+
+        // On every answer, not only the web group's, so the error page for an address with no page gets the security headers too.
+        $middleware->append(SecurityHeaders::class);
 
         $middleware->web(append: [
             EnsureAccountIsSecure::class,

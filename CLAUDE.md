@@ -27,7 +27,7 @@ The Seriously Simple Volunteer Scheduler (SSVS) helps a small organization run i
 - The volunteer's experience comes first. Anything that confuses a volunteer isn't done.
 - Never put real volunteers' names, contact details or schedules in this repository, including tests and examples. Use example names and example.org addresses.
 - Never commit secrets. Configuration examples use placeholders.
-- Screens use resources/views/layouts/app.blade.php and public/css/app.css. No Node, no build step, no outside fonts or scripts, and every screen works with JavaScript off.
+- Screens use resources/views/layouts/app.blade.php and public/css/app.css. No Node, no build step, no outside fonts or scripts, and every screen works with JavaScript off. No inline scripts, event handler attributes (`onchange=`) or `<style>` elements, because the Content-Security-Policy header blocks them: scripts go in files under public/js, loaded with `<script src defer>`. A style attribute is only for a computed value that a class can't hold (the calendar grid's positions).
 - Writing, in code comments, copy, docs and commit messages: no em dashes or en dashes; never hard-wrap prose (one line per paragraph); plain language with contractions; define acronyms on first use.
 - Any change to behavior, setup or decisions updates the spec (and this file, if a convention changes) in the same pull request.
 - Any change to who can do what (a policy, a gate, a role or clearance check, or who gets an email because of their role) updates the "What each role can do" tables in spec section 6 in the same pull request. Those tables describe what's built; anything promised but not built goes in the list under them.

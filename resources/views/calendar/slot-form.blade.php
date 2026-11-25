@@ -51,7 +51,7 @@
 @else
 <div class="field">
 <label for="area">Area</label>
-<select name="area" id="area" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @error('area') aria-invalid="true" @enderror>
+<select name="area" id="area" data-refreshes-form @error('area') aria-invalid="true" @enderror>
 @foreach ($manageable as $area)
 <option value="{{ $area->id }}" @selected((int) $values['area'] === $area->id)>{{ $area->name }}</option>
 @endforeach
@@ -63,7 +63,7 @@
 <div class="slot-grid">
 <div class="field">
 <label for="weekday">Day</label>
-<select name="weekday" id="weekday" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()">
+<select name="weekday" id="weekday" data-refreshes-form>
 @foreach ($weekdays as $number => $name)
 <option value="{{ $number }}" @selected((string) $values['weekday'] === (string) $number)>{{ $name }}</option>
 @endforeach
@@ -81,8 +81,8 @@
 
 <fieldset class="choices">
 <legend>How often</legend>
-<label class="check"><input type="radio" name="frequency" value="weekly" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @checked($values['frequency'] !== 'every_other_week')><span>Every week</span></label>
-<label class="check"><input type="radio" name="frequency" value="every_other_week" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @checked($values['frequency'] === 'every_other_week')><span>Every other week<br><span class="muted">Starting the week of the first date below, which has to be on the day picked above.</span></span></label>
+<label class="check"><input type="radio" name="frequency" value="weekly" data-refreshes-form @checked($values['frequency'] !== 'every_other_week')><span>Every week</span></label>
+<label class="check"><input type="radio" name="frequency" value="every_other_week" data-refreshes-form @checked($values['frequency'] === 'every_other_week')><span>Every other week<br><span class="muted">Starting the week of the first date below, which has to be on the day picked above.</span></span></label>
 @error('frequency')<span class="field-error">{{ $message }}</span>@enderror
 </fieldset>
 
@@ -124,3 +124,7 @@
 </section>
 @endif
 @endsection
+
+@push('scripts')
+<script src="{{ asset('js/refresh-form.js') }}" defer></script>
+@endpush

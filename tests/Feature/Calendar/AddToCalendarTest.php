@@ -444,7 +444,8 @@ class AddToCalendarTest extends TestCase
         $this->assertStringContainsString('<button type="submit" class="btn btn-primary" name="refresh" value="">Save</button>', $html);
         $this->assertMatchesRegularExpression('/<button type="submit" class="btn" name="refresh" value="" formaction="[^"]*more=1[^"]*">More options<\/button>/', $html);
         // The hidden input is found by its tag: once buttons share the name, form.elements.refresh is a list, not the input.
-        $this->assertStringContainsString("this.form.querySelector('input[name=refresh]').value='1'", $html);
+        $this->assertStringContainsString('<select name="repeats" id="repeats" data-refreshes-form>', $html);
+        $this->assertStringContainsString("form.querySelector('input[name=refresh]')", file_get_contents(public_path('js/refresh-form.js')));
         $this->assertStringNotContainsString('elements.refresh', $html);
 
         // A restored form sends the hidden refresh and then the button's empty one, and PHP keeps the last; the panel then saves.
@@ -467,8 +468,8 @@ class AddToCalendarTest extends TestCase
 
         $this->assertStringContainsString('<button type="submit" class="btn btn-primary" name="refresh" value="">Save the slot</button>', $html);
         // Typing a time or date one digit at a time would reload the page mid-entry, so only selects and radios reload it.
-        $this->assertDoesNotMatchRegularExpression('/<input type="(time|date)"[^>]*onchange/', $html);
-        $this->assertMatchesRegularExpression('/<select name="weekday"[^>]*onchange/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<input type="(time|date)"[^>]*data-refreshes-form/', $html);
+        $this->assertMatchesRegularExpression('/<select name="weekday"[^>]*data-refreshes-form/', $html);
         // The preview button is always there, not only with JavaScript off.
         $this->assertStringContainsString('<button type="submit" class="btn" name="refresh" value="1">Update the preview</button>', $html);
         $this->assertStringNotContainsString('<noscript>', $html);
