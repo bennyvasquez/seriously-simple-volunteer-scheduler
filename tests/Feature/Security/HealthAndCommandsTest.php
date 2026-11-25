@@ -6,17 +6,24 @@ use App\Actions\Accounts\CreatePerson;
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Accounts\RequestEmailChange;
 use App\Enums\Role;
+use App\Http\Middleware\SecurityHeaders;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\EmailAddress;
 use DomainException;
+use Illuminate\Database\Console\Migrations\FreshCommand;
+use Illuminate\Database\Console\Migrations\RefreshCommand;
+use Illuminate\Database\Console\Migrations\ResetCommand;
 use Illuminate\Database\Console\WipeCommand;
+use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 use ReflectionProperty;
+use RuntimeException;
 use Tests\Concerns\InteractsWithTwoFactor;
 use Tests\TestCase;
 
@@ -53,6 +60,32 @@ class HealthAndCommandsTest extends TestCase
         }
     }
 
+    public function test_up_answers_500_when_a_health_listener_throws(): void
+    {
+        Event::listen(DiagnosingHealth::class, fn () => throw new RuntimeException('Database is down.'));
+
+        $response = $this->get('/up');
+
+        $response->assertStatus(500);
+        $this->assertStringNotContainsString('Database is down', $response->getContent());
+    }
+
+    public function test_up_carries_the_content_security_policy(): void
+    {
+        $this->get('/up')->assertHeader('Content-Security-Policy', SecurityHeaders::POLICY);
+    }
+
+    public function test_an_email_change_form_with_a_zero_width_address_shows_a_validation_error(): void
+    {
+        $user = User::factory()->create(['email' => 'sam@example.org']);
+
+        $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()])
+            ->from(route('account.email.edit'))
+            ->post(route('account.email.update'), ['email' => "sam\u{200B}.new@example.org"])
+            ->assertRedirect(route('account.email.edit'))
+            ->assertSessionHasErrors(['email' => EmailAddress::REFUSAL]);
+    }
+
     public function test_up_sets_no_session_cookie(): void
     {
         $response = $this->get('/up');
@@ -67,10 +100,19 @@ class HealthAndCommandsTest extends TestCase
         (new AppServiceProvider($this->app))->boot();
     }
 
+    /** Stops the test before any real command runs if a command isn't blocked, so a regression can't wipe the test database. */
+    private function assertEveryDestructiveCommandIsBlocked(): void
+    {
+        foreach ([FreshCommand::class, RefreshCommand::class, ResetCommand::class, WipeCommand::class] as $class) {
+            $this->assertTrue((new ReflectionProperty($class, 'prohibitedFromRunning'))->getValue(), "{$class} isn't blocked.");
+        }
+    }
+
     public function test_migrate_fresh_refuses_in_production_even_with_force(): void
     {
         $person = User::factory()->create();
         $this->bootAs('production');
+        $this->assertEveryDestructiveCommandIsBlocked();
 
         $this->assertNotSame(0, Artisan::call('migrate:fresh', ['--force' => true]));
         $this->assertDatabaseHas('users', ['id' => $person->id]);
@@ -80,6 +122,7 @@ class HealthAndCommandsTest extends TestCase
     {
         $person = User::factory()->create();
         $this->bootAs('production');
+        $this->assertEveryDestructiveCommandIsBlocked();
 
         foreach (['db:wipe', 'migrate:refresh', 'migrate:reset'] as $command) {
             $this->assertNotSame(0, Artisan::call($command, ['--force' => true]), $command);
