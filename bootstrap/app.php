@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Middleware\EnsureAccountIsSecure;
+use App\Http\Middleware\HideRateLimitHeaders;
 use App\Http\Middleware\NormalizeEmailAddress;
 use App\Http\Middleware\RecordLastSeen;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Session\TokenMismatchException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
@@ -29,6 +31,9 @@ return Application::configure(basePath: dirname(__DIR__))
             NormalizeEmailAddress::class,
             RecordLastSeen::class,
         ]);
+
+        // Listed before the throttle so it wraps it and sees the final answer, rate limit headers included (HideRateLimitHeaders).
+        $middleware->prependToPriorityList(before: ThrottleRequests::class, prepend: HideRateLimitHeaders::class);
 
         // A form posted after the session ended reaches a guest in one of two ways (#80). Browsers that send Sec-Fetch-Site pass the token check, so the post arrives as a guest and the sign-in check redirects here: a post with no session, so say so (but not for log out, which is meant to end the session, or for the "Forgot your password?" button, which logs out too). Without that header the token check fails and the render callback below redirects to the page as a GET, which sends the guest here a second time: keep the message alive through that redirect.
         $middleware->redirectGuestsTo(function (Request $request) use ($expiredFormMessage) {

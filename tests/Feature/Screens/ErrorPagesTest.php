@@ -36,7 +36,8 @@ class ErrorPagesTest extends TestCase
         $response = $this->post(route('login-link.request'), ['email' => 'sam@example.org'])->assertStatus(429)
             ->assertSee('Too many tries')
             ->assertSee('Wait 10 minutes, then try again.');
-        $this->assertNotNull($response->headers->get('Retry-After'));
+        // The sign-in requests carry no rate limit headers (HideRateLimitHeaders); the page reads the wait from the limit itself.
+        $this->assertNull($response->headers->get('Retry-After'));
     }
 
     public function test_too_many_tries_without_a_wait_still_says_what_to_do(): void

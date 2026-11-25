@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Security;
 
+use App\Http\Middleware\HideRateLimitHeaders;
 use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\User;
 use App\Notifications\LoginLinkNotification;
+use App\Support\EmailAddress;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -222,6 +226,117 @@ class SignInLimitsTest extends TestCase
         foreach ($timebox->calls as $call) {
             $this->assertSame(['duration' => 750000, 'early' => true], $call);
         }
+    }
+
+    public function test_the_tenth_and_eleventh_login_link_answers_look_the_same(): void
+    {
+        User::factory()->withoutPassword()->create(['email' => 'victim@example.org']);
+
+        foreach (range(1, 9) as $i) {
+            $this->fromIp('10.0.0.'.$i)->from(route('login'))->post(route('login-link.request'), ['email' => 'victim@example.org']);
+        }
+
+        $tenth = $this->fromIp('10.0.0.10')->from(route('login'))->post(route('login-link.request'), ['email' => 'victim@example.org']);
+        $tenthStatus = session('status');
+        $eleventh = $this->fromIp('10.0.0.11')->from(route('login'))->post(route('login-link.request'), ['email' => 'victim@example.org']);
+
+        $this->assertSameAnswer($tenth, $eleventh);
+        $this->assertSame($tenthStatus, session('status'));
+        Notification::assertSentTimes(LoginLinkNotification::class, 10);
+    }
+
+    public function test_the_tenth_and_eleventh_reset_link_answers_look_the_same(): void
+    {
+        User::factory()->create(['email' => 'victim@example.org', 'password' => Hash::make(self::PASSWORD)]);
+
+        foreach (range(1, 9) as $i) {
+            $this->travel(2)->minutes();
+            $this->fromIp('10.0.0.'.$i)->from(route('password.request'))->post(route('password.email'), ['email' => 'victim@example.org']);
+        }
+
+        $this->travel(2)->minutes();
+        $tenth = $this->fromIp('10.0.0.10')->from(route('password.request'))->post(route('password.email'), ['email' => 'victim@example.org']);
+        $tenthStatus = session('status');
+        $this->travel(2)->minutes();
+        $eleventh = $this->fromIp('10.0.0.11')->from(route('password.request'))->post(route('password.email'), ['email' => 'victim@example.org']);
+
+        $this->assertSameAnswer($tenth, $eleventh);
+        $this->assertSame($tenthStatus, session('status'));
+        Notification::assertSentTimes(ResetPassword::class, 10);
+    }
+
+    public function test_the_capped_reset_link_answer_takes_the_fixed_time(): void
+    {
+        foreach (range(1, 10) as $i) {
+            $this->fromIp('10.0.0.'.$i)->post(route('password.email'), ['email' => 'nobody@example.org']);
+        }
+
+        $timebox = $this->recordingTimebox();
+
+        $this->fromIp('10.0.0.11')->from(route('password.request'))->post(route('password.email'), ['email' => 'nobody@example.org'])
+            ->assertRedirect(route('password.request'))
+            ->assertSessionHas('status', NeutralPasswordResetLinkResponse::MESSAGE);
+
+        $this->assertSame([['duration' => 750000, 'early' => false]], $timebox->calls);
+    }
+
+    public function test_sign_in_answers_carry_no_rate_limit_headers(): void
+    {
+        User::factory()->create(['email' => 'volunteer@example.org', 'password' => Hash::make(self::PASSWORD)]);
+
+        $answers = [
+            $this->post(route('login.store'), ['email' => 'volunteer@example.org', 'password' => 'wrong password']),
+            $this->post(route('login-link.request'), ['email' => 'volunteer@example.org']),
+            $this->post(route('password.email'), ['email' => 'volunteer@example.org']),
+        ];
+
+        foreach (range(1, 4) as $i) {
+            $answers[] = $this->post(route('login.store'), ['email' => 'volunteer@example.org', 'password' => 'wrong password']);
+        }
+        $answers[] = $this->post(route('login.store'), ['email' => 'volunteer@example.org', 'password' => 'wrong password'])->assertStatus(429);
+
+        foreach ($answers as $answer) {
+            foreach (HideRateLimitHeaders::HEADERS as $header) {
+                $this->assertFalse($answer->headers->has($header), $header);
+            }
+        }
+    }
+
+    public function test_a_blank_or_unusable_address_gets_its_usual_message_however_often_it_is_sent(): void
+    {
+        foreach (range(1, 12) as $i) {
+            $this->fromIp('10.0.0.'.$i)->post(route('login-link.request'), ['email' => ''])->assertSessionHasErrors('email');
+            $this->fromIp('10.0.0.'.$i)->post(route('login-link.request'), ['email' => 'nöbody@example.org'])->assertSessionHasErrors(['email' => EmailAddress::REFUSAL]);
+            $this->fromIp('10.0.1.'.$i)->post(route('password.email'), ['email' => ''])->assertSessionHasErrors('email');
+            $this->fromIp('10.0.2.'.$i)->post(route('password.email'), ['email' => 'nöbody@example.org'])->assertSessionHasErrors(['email' => EmailAddress::REFUSAL]);
+        }
+    }
+
+    public function test_the_header_middleware_wraps_the_throttle(): void
+    {
+        // Making the HTTP kernel gives the router its middleware groups and priority list, which resolveMiddleware() expands and sorts the way a request does.
+        $this->app->make(Kernel::class);
+        $router = app('router');
+
+        foreach (['login.store', 'login-link.request', 'password.email'] as $name) {
+            $route = $router->getRoutes()->getByName($name);
+            $middleware = $router->resolveMiddleware($route->gatherMiddleware(), $route->excludedMiddleware());
+            $hide = array_search(HideRateLimitHeaders::class, $middleware, true);
+            $throttle = collect($middleware)->search(fn ($one) => str_starts_with($one, ThrottleRequests::class));
+
+            $this->assertIsInt($hide, $name);
+            $this->assertIsInt($throttle, $name);
+            $this->assertLessThan($throttle, $hide, $name);
+        }
+    }
+
+    private function assertSameAnswer(TestResponse $normal, TestResponse $capped): void
+    {
+        $this->assertSame($normal->getStatusCode(), $capped->getStatusCode());
+        $this->assertSame($normal->headers->get('Location'), $capped->headers->get('Location'));
+
+        $names = fn (TestResponse $response) => collect(array_keys($response->headers->all()))->sort()->values()->all();
+        $this->assertSame($names($normal), $names($capped));
     }
 
     /** @return object{calls: array} */
