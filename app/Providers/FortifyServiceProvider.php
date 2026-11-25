@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Http\Responses\FailedTwoFactorLoginResponse;
 use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\User;
+use App\Support\EmailAddress;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -45,7 +46,7 @@ class FortifyServiceProvider extends ServiceProvider
             // A new password attempt cancels any pending login started earlier in this session (including an email-link one). If the attempt fails, nothing stays pending, so a failed attempt can't leave a link-started login in a state that allows an emailed code.
             $request->session()->forget(['login.id', 'login.remember', 'login.via', 'login.email_code_sent']);
 
-            $user = User::query()->where('email', Str::lower($request->input(Fortify::username())))->first();
+            $user = User::query()->where('email', EmailAddress::normalize((string) $request->input(Fortify::username())))->first();
 
             $usable = $user !== null && $user->canSignIn() && $user->password !== null;
 
@@ -84,7 +85,8 @@ class FortifyServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
+            $username = $request->input(Fortify::username());
+            $throttleKey = EmailAddress::normalize(is_string($username) ? $username : '').'|'.$request->ip();
 
             return Limit::perMinute(5)->by($throttleKey);
         });

@@ -8,6 +8,7 @@ use App\Import\ImportRow;
 use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use App\Support\EmailAddress;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
@@ -175,6 +176,10 @@ class ImportPeople
 
         if ($row->email === '') {
             return 'No email address';
+        }
+
+        if (! EmailAddress::isPlain($row->email)) {
+            return 'The email address has characters other than plain letters, numbers and symbols';
         }
 
         if (Validator::make(['email' => $row->email], ['email' => ['email', 'max:255']])->fails()) {

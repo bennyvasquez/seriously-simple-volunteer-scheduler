@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureAccountIsSecure;
+use App\Http\Middleware\NormalizeEmailAddress;
 use App\Http\Middleware\RecordLastSeen;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(append: [
             EnsureAccountIsSecure::class,
+            NormalizeEmailAddress::class,
             RecordLastSeen::class,
         ]);
 

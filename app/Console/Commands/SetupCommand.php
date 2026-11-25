@@ -10,11 +10,11 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\InvitationNotification;
+use App\Support\EmailAddress;
 use DateTimeZone;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Throwable;
 
@@ -40,14 +40,14 @@ class SetupCommand extends Command
             'organization' => $this->option('organization') ?? $this->ask('What is the organization called?'),
             'timezone' => $this->option('timezone') ?? $this->anticipate('Which time zone is it in? (for example America/Detroit)', DateTimeZone::listIdentifiers()),
             'admin_name' => $this->option('admin-name') ?? $this->ask('Your name, as volunteers will see it'),
-            'admin_email' => $this->option('admin-email') ?? $this->ask('Your email address'),
+            'admin_email' => EmailAddress::normalize((string) ($this->option('admin-email') ?? $this->ask('Your email address'))),
         ];
 
         $validator = Validator::make($answers, [
             'organization' => ['required', 'string', 'max:255'],
             'timezone' => ['required', Rule::in(DateTimeZone::listIdentifiers())],
             'admin_name' => ['required', 'string', 'max:255'],
-            'admin_email' => ['required', 'email', 'max:255'],
+            'admin_email' => ['required', 'email', 'max:255', fn ($attribute, $value, $fail) => EmailAddress::isPlain($value) ? null : $fail(EmailAddress::REFUSAL)],
         ], [
             'timezone.in' => 'That isn\'t a time zone this server knows. Use a name like America/Detroit.',
         ]);
@@ -68,7 +68,7 @@ class SetupCommand extends Command
 
             $admin = new User([
                 'name' => $answers['admin_name'],
-                'email' => Str::lower($answers['admin_email']),
+                'email' => $answers['admin_email'],
                 'password' => null,
             ]);
             // Issuing the invitation link below is what invites the admin.
