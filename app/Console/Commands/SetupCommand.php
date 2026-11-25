@@ -41,7 +41,7 @@ class SetupCommand extends Command
         $answers = [
             'organization' => $this->option('organization') ?? $this->ask('What is the organization called?'),
             'timezone' => $this->option('timezone') ?? $this->anticipate('Which time zone is it in? (for example America/Detroit)', DateTimeZone::listIdentifiers()),
-            'admin_name' => $this->option('admin-name') ?? $this->ask('Your name, as volunteers will see it'),
+            'admin_name' => PersonName::clean((string) ($this->option('admin-name') ?? $this->ask('Your name, as volunteers will see it'))),
             'admin_email' => EmailAddress::normalize((string) ($this->option('admin-email') ?? $this->ask('Your email address'))),
         ];
 

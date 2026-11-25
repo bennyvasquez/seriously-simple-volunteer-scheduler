@@ -152,4 +152,21 @@ class NoWebAddressesTest extends TestCase
         $this->assertSame([PersonName::REFUSAL], $preview->problems->pluck('reason')->all());
         $this->assertSame(['avery@example.org'], $preview->add->map(fn ($item) => $item->row->email)->values()->all());
     }
+
+    public function test_import_adds_a_name_with_a_stray_tab_cleaned(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'ssvs');
+        file_put_contents($path, "Full name,Email,Profile ID\nSam\tExample,sam@example.org,a3\n");
+
+        try {
+            $import = app(ImportPeople::class);
+            $preview = $import->preview(HelloClubExport::read($path), null);
+            $this->assertCount(0, $preview->problems);
+            $this->assertSame(1, $import->apply($this->coordinator, $preview, null));
+        } finally {
+            unlink($path);
+        }
+
+        $this->assertSame('Sam Example', User::query()->where('email', 'sam@example.org')->value('name'));
+    }
 }
