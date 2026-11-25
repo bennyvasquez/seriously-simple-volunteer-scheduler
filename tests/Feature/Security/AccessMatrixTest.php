@@ -232,8 +232,6 @@ class AccessMatrixTest extends TestCase
     private const IGNORED = [
         // Dusk's routes log anyone in as anyone. They're registered only under APP_ENV=testing for the browser tests (DuskRoutesTest), never on a real server.
         'dusk.login', 'dusk.logout', 'dusk.user',
-        // Laravel's local disk serving routes, turned off in a later security batch.
-        'storage.local', 'storage.local.upload',
     ];
 
     /**

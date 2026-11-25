@@ -326,6 +326,7 @@ Who an area lead can see comes from real working connections: a shift in their a
 - **Chat webhook addresses are treated as secrets.** Anyone with one can post into that channel.
 - **Integrations get the least access they need:** read-only member sync where the provider allows it, and a Google service account that can only write to the organization's scheduling calendars.
 - **Outgoing messages never include phone numbers or email addresses** of other volunteers.
+- **Search engines are asked not to index SSVS, and it serves no stored files.** robots.txt disallows everything, every response carries `X-Robots-Tag: noindex, nofollow`, and Laravel's file download and upload routes are turned off.
 
 ### Running the server
 
