@@ -58,9 +58,9 @@ class ChangeLogController extends Controller
             $query->ofAction(...self::KINDS[$filters['kind']][1]);
         }
 
-        // One email's history goes by the line keys in details, not the row: putting a line back deletes its row, and a later edit makes a new one.
+        // One email's history goes by the line keys in details (every line the email's page lists, including another email's lines shown there), not the row: putting a line back deletes its row, and a later edit makes a new one.
         if ($filters['email'] !== '') {
-            $query->ofAction(...self::KINDS['emails'][1])->where('details->key', 'like', addcslashes($filters['email'], '%_\\').'.%');
+            $query->ofAction(...self::KINDS['emails'][1])->whereIn('details->key', EmailCatalog::find($filters['email'])->pageKeys());
         }
 
         $query->between($filters['fromAt'], $filters['toAt']);

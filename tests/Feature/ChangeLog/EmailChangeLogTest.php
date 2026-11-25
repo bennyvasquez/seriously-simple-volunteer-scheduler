@@ -120,6 +120,23 @@ class EmailChangeLogTest extends TestCase
         $response->assertSee('<option value="shift_reminder" selected>Shift reminder</option>', false);
     }
 
+    public function test_an_emails_history_includes_the_other_emails_lines_its_page_lists(): void
+    {
+        // The cancelled email's page lists the shift_restored lines, so their edits show in its history. They also show under shift_restored's own.
+        $this->save(['shift_restored.body.one' => 'Good news: your shift is back on.']);
+        $this->save(['shift_cancelled.body.one' => 'Sorry: your shift was cancelled.']);
+        $this->save(['login_link.intro' => 'Tap the button to log in now.']);
+
+        $cancelled = $this->actingAs($this->coordinator)->get(route('change-log.index', ['email' => 'shift_cancelled']))->assertOk();
+        $cancelled->assertSee('Good news');
+        $cancelled->assertSee('Sorry: your shift');
+        $cancelled->assertDontSee('log in now');
+
+        $restored = $this->actingAs($this->coordinator)->get(route('change-log.index', ['email' => 'shift_restored']))->assertOk();
+        $restored->assertSee('Good news');
+        $restored->assertDontSee('Sorry: your shift');
+    }
+
     public function test_a_filter_for_an_email_that_isnt_in_the_catalog_is_ignored(): void
     {
         $this->save(['login_link.intro' => 'Tap the button to log in now.']);

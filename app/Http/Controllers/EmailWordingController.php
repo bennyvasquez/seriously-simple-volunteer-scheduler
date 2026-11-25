@@ -87,13 +87,23 @@ class EmailWordingController extends Controller
         $catalog = $this->find($email);
         abort_unless(in_array($line, $this->editableKeys($catalog), true), 404);
         [$lines, $loaded] = $this->input($request, $catalog);
+        $expected = array_key_exists($line, $loaded) ? [$line => $loaded[$line]] : [];
         unset($lines[$line], $loaded[$line]);
         $back = redirect()->route('emails.edit', $catalog->key)->withInput(['lines' => $lines, 'loaded' => $loaded]);
 
         try {
-            $save->handle($request->user(), [$line => null]);
+            // The text the line loaded with goes along, so a line someone else saved meanwhile isn't deleted by a reset from a stale page.
+            $save->handle($request->user(), [$line => null], $expected);
         } catch (ValidationException $e) {
-            return $back->withErrors($this->lineErrors($e));
+            // A line someone else saved shows their version, in the box and as the text it loaded with, so the person can decide again.
+            $edits = EmailWording::edits();
+            foreach ($e->errors() as $key => $messages) {
+                if ($messages[0] === SaveEmailWording::STALE) {
+                    $lines[$key] = $loaded[$key] = $edits[$key] ?? EmailText::defaultText($key);
+                }
+            }
+
+            return $back->withInput(['lines' => $lines, 'loaded' => $loaded])->withErrors($this->lineErrors($e));
         }
 
         return $back->with('status', 'That line is back to the default wording.');

@@ -63,6 +63,7 @@ use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Translation\Translator;
 use InvalidArgumentException;
+use LogicException;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -436,9 +437,32 @@ class EmailTextTest extends TestCase
     {
         $this->edit(['test_email.with_link' => 'Press {shift_link} <b>now</b>, {area}.']);
 
-        $line = EmailText::line('test_email.with_link', ['shift_link' => '[Front desk, Thursday](https://example.org/shifts/1?a=1)', 'area' => '[Front desk](https://example.org)']);
+        $line = EmailText::line('test_email.with_link', ['shift_link' => EmailText::link('Front desk, Thursday', 'https://example.org/shifts/1?a=1'), 'area' => '[Front desk](https://example.org)']);
 
         $this->assertSame('Press [Front desk, Thursday](https://example.org/shifts/1?a=1) &lt;b&gt;now&lt;/b&gt;, [Front desk](https://example.org).', $line->toHtml());
+    }
+
+    public function test_a_link_variable_that_is_a_plain_string_is_a_code_bug_in_an_edited_line(): void
+    {
+        $this->edit(['test_email.with_link' => 'Press {shift_link} now, {area}.']);
+
+        $this->expectException(LogicException::class);
+
+        EmailText::line('test_email.with_link', ['shift_link' => '<script>alert(1)</script>', 'area' => 'Front desk']);
+    }
+
+    public function test_a_link_must_point_to_http_or_https(): void
+    {
+        $this->assertSame('[A](http://example.org/1)', EmailText::link('A', 'http://example.org/1')->toHtml());
+
+        foreach (['javascript:alert(1)', 'data:text/html,hi', '//example.org/1', '/shifts/1', 'mailto:a@example.org'] as $url) {
+            try {
+                EmailText::link('A', $url);
+                $this->fail("A link to [{$url}] should have been refused.");
+            } catch (LogicException) {
+                $this->addToAssertionCount(1);
+            }
+        }
     }
 
     public function test_a_link_the_code_builds_escapes_the_text_a_person_typed(): void

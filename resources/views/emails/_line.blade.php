@@ -16,5 +16,5 @@ $describedBy = trim(($line['when'] ? $line['id'].'-when ' : '').($line['edited']
 @if ($line['edited'])<span class="field-hint" id="{{ $line['id'] }}-default">Default: “{{ $line['default'] }}”</span>@endif
 </div>
 <input type="hidden" name="loaded[{{ $line['key'] }}]" value="{{ $line['loaded'] }}">
-@if ($line['edited'])<button type="submit" formaction="{{ route('emails.reset', [$email->key, $line['key']]) }}" name="_method" value="DELETE" class="link">Back to the default</button>@endif
+@if ($line['edited'])<button type="submit" formaction="{{ route('emails.reset', [$email->key, $line['key']]) }}" name="_method" value="DELETE" class="link">Back to the default<span class="vh"> for {{ $line['label'] }}</span></button>@endif
 </div>

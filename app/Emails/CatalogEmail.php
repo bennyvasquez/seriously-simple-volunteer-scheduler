@@ -24,6 +24,12 @@ final readonly class CatalogEmail
         public array $versions,
     ) {}
 
+    /** @return list<string> Every line key the email's page lists: its own lines and the lines of other emails that a version adds. */
+    public function pageKeys(): array
+    {
+        return array_values(array_unique(array_merge($this->lineKeys(), ...array_column($this->versions, 'lines'))));
+    }
+
     /** @return list<string> */
     public function lineKeys(): array
     {

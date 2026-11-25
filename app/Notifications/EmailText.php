@@ -7,6 +7,7 @@ use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\HtmlString;
 use InvalidArgumentException;
+use LogicException;
 use RuntimeException;
 
 /**
@@ -75,10 +76,14 @@ final class EmailText
     }
 
     /**
-     * A Markdown link the code builds, for a variable whose name ends in `_link`: `[text](url)`. The text is a plain string (escaped here for HTML and Markdown, so a name with `]`, `*` or `<` in it reads as typed and can't break out of the link) or an HtmlString that's already escaped (an edited line). The address is the code's own and goes in as it is. It's an HtmlString so the line it's filled into isn't escaped a second time, in the default or in an edit.
+     * A Markdown link the code builds, for a variable whose name ends in `_link`: `[text](url)`. The text is a plain string (escaped here for HTML and Markdown, so a name with `]`, `*` or `<` in it reads as typed and can't break out of the link) or an HtmlString that's already escaped (an edited line). The address is the code's own and goes in as it is; one that doesn't start with http:// or https:// throws, and so does a `_link` variable that isn't from here (a plain string) in an edited line. It's an HtmlString so the line it's filled into isn't escaped a second time, in the default or in an edit.
      */
     public static function link(string|HtmlString $text, string $url): HtmlString
     {
+        if (! preg_match('#^https?://#i', $url)) {
+            throw new LogicException('A link in an email has to start with http:// or https://.');
+        }
+
         return new HtmlString('['.($text instanceof Htmlable ? $text->toHtml() : PlainText::escape($text)).']('.$url.')');
     }
 
@@ -237,7 +242,7 @@ final class EmailText
                 $value = $vars[$part];
                 $text .= match (true) {
                     $value instanceof Htmlable => $value->toHtml(),
-                    str_ends_with($part, '_link') => (string) $value,
+                    str_ends_with($part, '_link') => throw new LogicException("The link variable {{$part}} has to come from EmailText::link(), so an edited line can't carry HTML."),
                     default => e((string) $value),
                 };
             }

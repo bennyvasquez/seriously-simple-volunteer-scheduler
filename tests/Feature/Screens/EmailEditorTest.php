@@ -301,7 +301,7 @@ class EmailEditorTest extends TestCase
         $response->assertSee('Default: “You&#039;re on {area} {date}, {time} ({timezone}).”', false);
         $response->assertSee('Back to the default');
         $response->assertSee(route('emails.reset', ['shift_reminder', self::OPENING]), false);
-        $this->assertSame(1, substr_count($response->getContent(), '>Back to the default<'));
+        $this->assertSame(1, substr_count($response->getContent(), '>Back to the default<span class="vh"> for '));
         // Phrases used inside other lines have their own heading.
         $response->assertSeeInOrder(['Used inside other lines', 'Words that link to the Emails page'], false);
         // The words in braces, with examples.
@@ -402,6 +402,25 @@ class EmailEditorTest extends TestCase
         $response->assertSee('value="Their version."', false);
         $response->assertSee('<input type="hidden" name="loaded[login_link.intro]" value="Their version.">', false);
         $response->assertSee('My outro.');
+    }
+
+    public function test_back_to_the_default_from_a_stale_page_is_refused_with_their_version(): void
+    {
+        // The page loaded with one edit; then someone else saved a newer one.
+        app(SaveEmailWording::class)->handle($this->admin, ['login_link.intro' => 'Tap to log in.']);
+        $loaded = $this->loaded(['login_link.intro', 'login_link.outro']);
+        app(SaveEmailWording::class)->handle($this->admin, ['login_link.intro' => 'Their newer version.']);
+
+        $this->actingAs($this->coordinator)->delete(route('emails.reset', ['login_link', 'login_link.intro']), [
+            'lines' => ['login_link.outro' => 'My outro.'],
+            'loaded' => $loaded,
+        ])->assertRedirect(route('emails.edit', 'login_link'))
+            ->assertSessionHasErrors(['lines.login_link.intro' => 'Someone else changed this line while you were editing. Here\'s their version; make your change again.']);
+
+        $this->assertDatabaseHas('email_wordings', ['key' => 'login_link.intro', 'text' => 'Their newer version.']);
+        $this->assertSame(0, ChangeLogEntry::query()->where('action', 'email_wording.reset')->count());
+
+        $this->actingAs($this->coordinator)->get(route('emails.edit', 'login_link'))->assertSee('value="Their newer version."', false);
     }
 
     public function test_back_to_the_default_puts_one_line_back(): void
