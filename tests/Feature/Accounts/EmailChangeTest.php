@@ -436,10 +436,8 @@ class EmailChangeTest extends TestCase
         $sam = User::factory()->create(['email' => 'sam@example.org', 'remember_token' => 'old-token']);
         $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
         $name = Auth::guard('web')->getRecallerName();
-        $oldCookie = app('encrypter')->encrypt(
-            CookieValuePrefix::create($name, app('encrypter')->getKey()).$sam->id.'|old-token|'.Auth::guard('web')->hashPasswordForCookie($sam->password),
-            false,
-        );
+        // The test client encrypts the cookie value itself, so this is the plain "id|token|hash" the browser would hold.
+        $oldCookie = $sam->id.'|old-token|'.Auth::guard('web')->hashPasswordForCookie($sam->password);
 
         $response = $this->actingAs($sam)->withCookie($name, $oldCookie)
             ->post(route('account.email.confirm', $token))->assertOk()->assertSee('Your email address is now sam.new@example.org');
@@ -465,6 +463,21 @@ class EmailChangeTest extends TestCase
 
         $this->actingAs($sam)->post(route('account.email.confirm', $token))->assertOk()
             ->assertCookieMissing(Auth::guard('web')->getRecallerName());
+    }
+
+    public function test_another_persons_leftover_remember_cookie_is_not_turned_into_one_for_the_person_confirming(): void
+    {
+        Notification::fake();
+        $sam = User::factory()->create(['email' => 'sam@example.org', 'remember_token' => 'old-token']);
+        $dana = User::factory()->create(['name' => 'Dana Example1', 'email' => 'dana@example.org', 'remember_token' => 'dana-token']);
+        $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
+        $name = Auth::guard('web')->getRecallerName();
+        $danasCookie = $dana->id.'|dana-token|'.Auth::guard('web')->hashPasswordForCookie($dana->password);
+
+        $this->actingAs($sam)->withCookie($name, $danasCookie)
+            ->post(route('account.email.confirm', $token))->assertOk()
+            ->assertSee('Your email address is now sam.new@example.org')
+            ->assertCookieMissing($name);
     }
 
     public function test_someone_elses_remembered_device_gets_no_remember_cookie_for_them(): void

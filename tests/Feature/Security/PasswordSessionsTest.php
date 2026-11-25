@@ -4,7 +4,6 @@ namespace Tests\Feature\Security;
 
 use App\Models\ChangeLogEntry;
 use App\Models\User;
-use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -51,10 +50,8 @@ class PasswordSessionsTest extends TestCase
     {
         $user = User::factory()->create(['password' => Hash::make('correct horse battery'), 'remember_token' => 'old-token']);
         $name = Auth::guard('web')->getRecallerName();
-        $recaller = fn (string $token, string $passwordHash) => app('encrypter')->encrypt(
-            CookieValuePrefix::create($name, app('encrypter')->getKey()).$user->id.'|'.$token.'|'.Auth::guard('web')->hashPasswordForCookie($passwordHash),
-            false,
-        );
+        // The test client encrypts the cookie value itself, so this is the plain "id|token|hash" the browser would hold.
+        $recaller = fn (string $token, string $passwordHash) => $user->id.'|'.$token.'|'.Auth::guard('web')->hashPasswordForCookie($passwordHash);
         $oldCookie = $recaller('old-token', $user->password);
 
         $response = $this->actingAs($user)->withCookie($name, $oldCookie)
@@ -72,6 +69,19 @@ class PasswordSessionsTest extends TestCase
         $this->flushSession();
         $this->app['auth']->shouldUse('web');
         $this->withCookie($name, $oldCookie)->get(route('account.show'))->assertRedirect(route('login'));
+    }
+
+    public function test_another_persons_leftover_remember_cookie_is_not_turned_into_one_for_the_person_changing_their_password(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct horse battery'), 'remember_token' => 'old-token']);
+        $other = User::factory()->create(['name' => 'Dana Example1', 'email' => 'dana@example.org', 'remember_token' => 'other-token']);
+        $name = Auth::guard('web')->getRecallerName();
+        $othersCookie = $other->id.'|other-token|'.Auth::guard('web')->hashPasswordForCookie($other->password);
+
+        $this->actingAs($user)->withCookie($name, $othersCookie)
+            ->put(route('user-password.update'), ['current_password' => 'correct horse battery', 'password' => 'a brand new password', 'password_confirmation' => 'a brand new password'])
+            ->assertSessionHasNoErrors()
+            ->assertCookieMissing($name);
     }
 
     public function test_a_device_that_was_not_remembered_is_not_given_a_remember_cookie(): void

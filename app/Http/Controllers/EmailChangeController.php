@@ -11,6 +11,7 @@ use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\ConfirmItsYouNotification;
 use App\Support\Input;
+use App\Support\RememberedDevice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -146,7 +147,7 @@ class EmailChangeController extends Controller
         // Keep this device signed in only when it's the person's own session.
         $sessionId = $link !== null && $link->user->is($request->user()) ? $request->session()->getId() : null;
         $guard = Auth::guard('web');
-        $wasRemembered = $sessionId !== null && ($guard->viaRemember() || $request->cookies->has($guard->getRecallerName()));
+        $wasRemembered = $sessionId !== null && RememberedDevice::belongsTo($request, $link->user);
 
         if ($link === null || ! $confirmEmailChange->handle($token, $sessionId)) {
             return view('account.email', ['step' => 'expired']);
