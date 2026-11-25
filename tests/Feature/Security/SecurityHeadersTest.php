@@ -7,7 +7,9 @@ use App\Enums\Role;
 use App\Http\Middleware\SecurityHeaders;
 use App\Models\Organization;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Tests\Concerns\InteractsWithTwoFactor;
@@ -131,8 +133,14 @@ class SecurityHeadersTest extends TestCase
     {
         Route::get('/_test/broken', fn () => abort(500));
         Route::get('/_test/down', fn () => abort(503));
+        $queries = [];
+        DB::listen(function (QueryExecuted $query) use (&$queries) {
+            $queries[] = $query->sql;
+        });
 
         $this->get('/_test/broken')->assertStatus(500)->assertSee('Something went wrong on our side.');
         $this->get('/_test/down')->assertStatus(503)->assertSee('SSVS is being updated.');
+
+        $this->assertSame([], $queries);
     }
 }
