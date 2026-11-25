@@ -28,8 +28,6 @@ use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
 {
-    private static ?string $dummyHash = null;
-
     public function register(): void
     {
         // Asking for a password reset answers the same way for every address (spec: no response reveals whether an account exists).
@@ -55,7 +53,7 @@ class FortifyServiceProvider extends ServiceProvider
 
             $usable = $user !== null && $user->canSignIn() && $user->password !== null;
 
-            // Every path does one hash check, so the work done doesn't depend on whether the address has a usable account. The timebox around this callback evens out what's left.
+            // Every path does one hash check, so the work done doesn't depend on whether the address has a usable account. The hash for the other paths is made once and kept in the cache, so making it adds time only on the first such login after the cache is cleared, and the timebox around this callback evens that out along with what's left.
             $matches = Hash::check((string) $request->input('password'), $usable ? $user->password : self::dummyHash());
 
             if (! $usable || ! $matches) {
@@ -96,11 +94,11 @@ class FortifyServiceProvider extends ServiceProvider
             $username = $request->input(Fortify::username());
             $address = EmailAddress::normalize(is_string($username) ? $username : '');
 
-            return [
+            return array_filter([
                 Limit::perMinute(5)->by($address.'|'.$request->ip()),
-                // A login that worked has signed the person in or left a login waiting for their two-factor code. The password callback clears any waiting login before it checks, so a waiting one here is this request's.
-                Limit::perHour(20)->by('login-address|'.$address)->after(fn () => ! Auth::guard(config('fortify.guard'))->check() && ! $request->session()->has('login.id')),
-            ];
+                // A login that worked has signed the person in or left a login waiting for their two-factor code. The password callback clears any waiting login before it checks, so a waiting one here is this request's. A blank address or one that isn't plain has no hourly limit (the form refuses it anyway), so those attempts don't all share one count, the same as the login link and reset link limits.
+                $address === '' || ! EmailAddress::isPlain($address) ? null : Limit::perHour(20)->by('login-address|'.$address)->after(fn () => ! Auth::guard(config('fortify.guard'))->check() && ! $request->session()->has('login.id')),
+            ]);
         });
 
         // The app code, recovery code and emailed code routes share these limits. The hourly and daily ones, and ten wrong codes in a day, also tell the person, once a day, that someone is trying codes on their account. There may be no pending login (the id is null); the limits still apply, but there's no one to tell.
@@ -120,9 +118,15 @@ class FortifyServiceProvider extends ServiceProvider
         });
     }
 
-    /** A hash nobody's password matches, computed once, used to keep login timing the same when there's no usable account. */
+    /** The cache key for the hash below. It names the hashing driver and the bcrypt cost, so changing either makes a new hash that costs the same to check as a real password. */
+    public static function dummyHashKey(): string
+    {
+        return 'auth.dummy-hash.'.config('hashing.driver').'.'.config('hashing.bcrypt.rounds');
+    }
+
+    /** A hash of a random value nobody knows, checked when there's no usable account so the login does the same work either way. It's made once and kept in the cache, not made again for each request. */
     private static function dummyHash(): string
     {
-        return self::$dummyHash ??= Hash::make(Str::random(40));
+        return Cache::rememberForever(self::dummyHashKey(), fn () => Hash::make(Str::random(40)));
     }
 }

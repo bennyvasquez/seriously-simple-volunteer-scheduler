@@ -6,12 +6,15 @@ use App\Http\Middleware\HideRateLimitHeaders;
 use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\User;
 use App\Notifications\LoginLinkNotification;
+use App\Providers\FortifyServiceProvider;
 use App\Support\EmailAddress;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Contracts\Hashing\Hasher;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
@@ -212,6 +215,77 @@ class SignInLimitsTest extends TestCase
             $this->login($email, 'wrong password', '192.0.2.1')->assertSessionHasErrors('email');
 
             $this->assertSame([['duration' => 750000, 'early' => false]], $timebox->calls, $email);
+        }
+    }
+
+    /** Swaps in a hasher that counts the hashes it makes and checks, passing each call on to the real one. */
+    private function countingHasher(): object
+    {
+        $hasher = new class(app('hash')) implements Hasher
+        {
+            public int $made = 0;
+
+            public int $checked = 0;
+
+            public function __construct(private Hasher $real) {}
+
+            public function info($hashedValue)
+            {
+                return $this->real->info($hashedValue);
+            }
+
+            public function make($value, array $options = [])
+            {
+                $this->made++;
+
+                return $this->real->make($value, $options);
+            }
+
+            public function check($value, $hashedValue, array $options = [])
+            {
+                $this->checked++;
+
+                return $this->real->check($value, $hashedValue, $options);
+            }
+
+            public function needsRehash($hashedValue, array $options = [])
+            {
+                return $this->real->needsRehash($hashedValue, $options);
+            }
+
+            public function __call($method, $parameters)
+            {
+                return $this->real->{$method}(...$parameters);
+            }
+        };
+        $this->swap('hash', $hasher);
+
+        return $hasher;
+    }
+
+    public function test_the_hash_for_unknown_addresses_is_made_once_and_kept(): void
+    {
+        $hasher = $this->countingHasher();
+
+        // A cold cache: the first failed login for an unknown address makes the hash, at most once.
+        $this->login('nobody@example.org', 'wrong password', '192.0.2.1')->assertSessionHasErrors('email');
+        $this->assertLessThanOrEqual(1, $hasher->made);
+        $this->assertTrue(Cache::has(FortifyServiceProvider::dummyHashKey()));
+
+        // Once it's kept, no later request makes one, whatever process answers it, and each still does one check.
+        $hasher->made = $hasher->checked = 0;
+        foreach (['nobody@example.org', 'someone.else@example.org'] as $i => $email) {
+            $this->login($email, 'wrong password', '192.0.2.'.($i + 2))->assertSessionHasErrors('email');
+        }
+        $this->assertSame(0, $hasher->made);
+        $this->assertSame(2, $hasher->checked);
+    }
+
+    public function test_blank_and_unusable_addresses_share_no_address_limit(): void
+    {
+        foreach (range(1, 22) as $i) {
+            $this->login('', 'wrong password', '10.0.0.'.$i)->assertSessionHasErrors('email');
+            $this->login('nöbody@example.org', 'wrong password', '10.0.1.'.$i)->assertSessionHasErrors('email');
         }
     }
 
