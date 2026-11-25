@@ -5,8 +5,10 @@ namespace App\Actions\Accounts;
 use App\Enums\LoginLinkPurpose;
 use App\Models\User;
 use App\Notifications\EmailChangeConfirmationNotification;
+use App\Support\EmailAddress;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Starts an email address change (spec section 13): emails a link to the new address, and nothing changes until it's opened. An address another account uses quietly does nothing, so the screen never reveals who has an account. The form refuses the person's own address before this runs; the check here stays as a backstop.
@@ -18,6 +20,11 @@ class RequestEmailChange
     public function handle(User $user, string $newEmail): void
     {
         $newEmail = Str::lower($newEmail);
+
+        // A backstop for the form, which refuses it first. Whether the address is plain says nothing about who has an account.
+        if (! EmailAddress::isPlain($newEmail)) {
+            throw ValidationException::withMessages(['email' => EmailAddress::REFUSAL]);
+        }
 
         // After the response is sent: the answer and how long it takes must not depend on whether the address has an account, and a mail server failure must not show up only for free addresses.
         defer(function () use ($user, $newEmail) {

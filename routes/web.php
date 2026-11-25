@@ -26,21 +26,29 @@ use App\Http\Controllers\Volunteer\HomeController;
 use App\Http\Controllers\Volunteer\ReleaseController;
 use App\Http\Controllers\Volunteer\ShadowController;
 use App\Http\Controllers\Volunteer\TakeController;
+use App\Http\Middleware\HideRateLimitHeaders;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
+use Laravel\Fortify\Http\Controllers\ConfirmablePasswordController;
 use Laravel\Fortify\Http\Controllers\NewPasswordController;
+use Laravel\Fortify\Http\Controllers\PasswordController;
+use Laravel\Fortify\Http\Controllers\PasswordResetLinkController;
 
 Route::get('/', [HomeController::class, 'home'])->middleware('auth')->name('home');
 
 Route::middleware('guest')->group(function () {
-    Route::post('/login-link', [LoginLinkController::class, 'request'])->middleware('throttle:login-link')->name('login-link.request');
+    // HideRateLimitHeaders comes before the throttle on the three sign-in requests, so their answers carry no rate limit headers.
+    Route::post('/login-link', [LoginLinkController::class, 'request'])->middleware([HideRateLimitHeaders::class, 'throttle:login-link'])->name('login-link.request');
     Route::get('/login-link/{token}', [LoginLinkController::class, 'show'])->name('login-link.show');
     Route::post('/login-link/{token}', [LoginLinkController::class, 'consume'])->middleware('throttle:login-link-use')->name('login-link.consume');
     Route::post('/two-factor-challenge/email', [TwoFactorEmailCodeController::class, 'send'])->middleware('throttle:two-factor-email')->name('two-factor.email.send');
     Route::post('/two-factor-challenge/email/verify', [TwoFactorEmailCodeController::class, 'verify'])->middleware('throttle:two-factor')->name('two-factor.email.verify');
-    // Fortify registers this route without a limit. Declaring it again here, with the same name and controller, replaces that one and adds the limit.
+    // Fortify registers these routes itself, the first two without a limit. Declaring them again here, with the same names and controllers, replaces those, adds the limits and hides the rate limit headers on the sign-in requests.
     Route::post('/reset-password', [NewPasswordController::class, 'store'])->middleware('throttle:password-reset')->name('password.update');
+    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])->middleware([HideRateLimitHeaders::class, 'throttle:password-reset-link'])->name('password.email');
+    Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware([HideRateLimitHeaders::class, 'throttle:login'])->name('login.store');
 });
 
 Route::middleware('auth')->group(function () {
@@ -62,6 +70,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/account', [AccountController::class, 'show'])->name('account.show');
     Route::get('/account/security', [AccountController::class, 'security'])->name('account.security');
     Route::post('/account/password', [InitialPasswordController::class, 'store'])->name('account.password.set');
+    // Fortify registers these two without a limit; declared again here, with the same names and controllers, to add one.
+    Route::post('/user/confirm-password', [ConfirmablePasswordController::class, 'store'])->middleware('throttle:password-confirm')->name('password.confirm.store');
+    Route::put('/user/password', [PasswordController::class, 'update'])->middleware('throttle:password-change')->name('user-password.update');
     Route::get('/account/email', [EmailChangeController::class, 'edit'])->name('account.email.edit');
     Route::post('/account/email', [EmailChangeController::class, 'update'])->middleware('throttle:email-change')->name('account.email.update');
     Route::post('/account/email/identity', [EmailChangeController::class, 'sendIdentityLink'])->middleware('throttle:email-change-identity')->name('account.email.identity.send');

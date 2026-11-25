@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Auth;
 use App\Actions\Fortify\PasswordValidationRules;
 use App\Http\Controllers\Controller;
 use App\Models\ChangeLogEntry;
+use App\Notifications\PasswordAddedNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
 
 /**
@@ -31,6 +33,13 @@ class InitialPasswordController extends Controller
             return redirect()->route('account.show')->with('status', 'You already have a password. You can change it below.');
         }
 
+        // Adding a first password needs proof that the person controls the inbox: an emailed-link sign-in in the last few minutes. People in two-factor setup are exempt, because setup is how they get their first password.
+        if (! $user->requiresTwoFactor() && ! LoginLinkController::signedInByLinkRecently($request)) {
+            throw ValidationException::withMessages([
+                'password' => 'To add a password, sign in again with an emailed link, then add it within '.LoginLinkController::RECENT_MINUTES.' minutes.',
+            ]);
+        }
+
         $request->validate(['password' => $this->passwordRules()]);
 
         DB::transaction(function () use ($user, $request) {
@@ -41,10 +50,12 @@ class InitialPasswordController extends Controller
             ChangeLogEntry::record($user, 'user.password_set', $user, changes: $changes);
         });
 
-        // Enabling two-factor sits behind password confirmation, and they just typed the password, so skip asking again.
-        $request->session()->passwordConfirmed();
+        defer(fn () => $user->notify(new PasswordAddedNotification));
 
         if ($user->requiresTwoFactor()) {
+            // Enabling two-factor sits behind password confirmation, and they just typed the password, so skip asking again. Everyone else confirms later in the usual way.
+            $request->session()->passwordConfirmed();
+
             app(EnableTwoFactorAuthentication::class)($user);
         }
 

@@ -33,6 +33,11 @@ abstract class DuskTestCase extends BaseTestCase
         if (! static::runningInSail() && ! static::driverUrl()) {
             static::startChromeDriver(['--port=9515']);
         }
+
+        // Console logs from earlier runs would be read as this run's. Each test's own logs are checked in tearDown().
+        foreach (glob(__DIR__.'/Browser/console/*') ?: [] as $log) {
+            @unlink($log);
+        }
     }
 
     protected function setUp(): void
@@ -58,6 +63,27 @@ abstract class DuskTestCase extends BaseTestCase
             }
         } finally {
             parent::tearDown();
+        }
+
+        $this->assertNoContentSecurityPolicyViolations();
+    }
+
+    /**
+     * Dusk saves the browser console of any test that logged something to tests/Browser/console, in files named after the test. A page that breaks the Content-Security-Policy header (an inline script or style, a file from another site) logs a line saying so, and the page misbehaves quietly, so every test checks its own logs for it, and one violation fails only the test that hit it.
+     */
+    private function assertNoContentSecurityPolicyViolations(): void
+    {
+        $directory = __DIR__.'/Browser/console';
+        $prefix = $this->getCallerName().'-';
+
+        foreach (scandir($directory) ?: [] as $log) {
+            if (! str_starts_with($log, $prefix)) {
+                continue;
+            }
+
+            $text = (string) file_get_contents($directory.'/'.$log);
+            $this->assertStringNotContainsString('Content Security Policy', $text, $log.' has a Content-Security-Policy violation');
+            $this->assertStringNotContainsString('Content-Security-Policy', $text, $log.' has a Content-Security-Policy violation');
         }
     }
 

@@ -27,11 +27,37 @@ class AccountPageTest extends TestCase
         return $lead->fresh();
     }
 
-    public function test_a_volunteer_without_a_password_can_add_one(): void
+    public function test_a_volunteer_without_a_password_can_add_one_right_after_a_link_sign_in(): void
     {
         $volunteer = User::factory()->withoutPassword()->create();
 
-        $this->actingAs($volunteer)->get(route('account.show'))->assertOk()->assertSee('Add a password (optional)')->assertDontSee('Make new recovery codes');
+        $this->actingAs($volunteer)->withSession(['auth.link_login' => ['user' => $volunteer->id, 'at' => now()->subMinutes(14)->getTimestamp()]])
+            ->get(route('account.show'))->assertOk()
+            ->assertSee('Add a password (optional)')
+            ->assertSee('action="'.route('account.password.set').'"', false)
+            ->assertSee('Save password')
+            ->assertDontSee('Log out to get a new link')
+            ->assertDontSee('Make new recovery codes');
+    }
+
+    public function test_without_a_recent_link_sign_in_the_page_says_how_to_add_one_instead_of_showing_the_form(): void
+    {
+        $volunteer = User::factory()->withoutPassword()->create();
+        $sessions = [
+            'no link sign-in' => [],
+            'a link sign-in over 15 minutes ago' => ['auth.link_login' => ['user' => $volunteer->id, 'at' => now()->subMinutes(16)->getTimestamp()]],
+        ];
+
+        foreach ($sessions as $case => $session) {
+            $this->actingAs($volunteer)->withSession($session)
+                ->get(route('account.show'))->assertOk()
+                ->assertSee('Add a password (optional)')
+                ->assertSee('To keep your account safe, we only add a password within 15 minutes of you signing in with an emailed link.')
+                ->assertSee('Log out to get a new link')
+                ->assertDontSee('action="'.route('account.password.set').'"', false)
+                ->assertDontSee('Save password');
+            $this->flushSession();
+        }
     }
 
     public function test_the_page_has_its_own_heading_and_links_back_home(): void
@@ -49,6 +75,19 @@ class AccountPageTest extends TestCase
         $this->actingAs($volunteer)->get(route('account.show'))->assertSee('Change my password')->assertDontSee('Add a password')->assertDontSee('Make new recovery codes');
     }
 
+    public function test_changing_a_password_or_email_warns_that_other_devices_are_logged_out(): void
+    {
+        $volunteer = User::factory()->create();
+
+        $this->actingAs($volunteer)->get(route('account.show'))
+            ->assertSee('Changing your password logs you out on your other phones and computers. You stay logged in here.');
+        $this->actingAs($volunteer)->withSession(['auth.password_confirmed_at' => time()])->get(route('account.email.edit'))
+            ->assertSee('Opening it logs you out on every phone and computer except the one you open it on.');
+        auth()->logout();
+        $this->get(route('password.reset', ['token' => 'not-a-real-token', 'email' => 'sam@example.org']))
+            ->assertSee('any phone or computer that was logged in to your account is logged out', false);
+    }
+
     public function test_a_lead_sees_password_and_second_step(): void
     {
         $lead = $this->leadWithTwoFactor();
@@ -60,7 +99,8 @@ class AccountPageTest extends TestCase
     {
         $volunteer = User::factory()->withoutPassword()->create();
 
-        $this->actingAs($volunteer)->post(route('account.password.set'), ['password' => 'a long enough phrase', 'password_confirmation' => 'a long enough phrase'])
+        $this->actingAs($volunteer)->withSession(['auth.link_login' => ['user' => $volunteer->id, 'at' => now()->getTimestamp()]])
+            ->post(route('account.password.set'), ['password' => 'a long enough phrase', 'password_confirmation' => 'a long enough phrase'])
             ->assertRedirect(route('account.show'))->assertSessionHas('status', 'Your password is saved.');
     }
 
@@ -155,8 +195,10 @@ class AccountPageTest extends TestCase
         $lead = $this->leadWithTwoFactor();
 
         $this->actingAs($lead)->withSession(['status' => 'recovery-codes-generated'])->get(route('account.show'))
-            ->assertSee('if (! navigator.clipboard)', false)
+            ->assertSee('<script src="'.asset('js/recovery-codes.js').'" defer></script>', false)
             ->assertSee('Couldn\'t copy. Select the codes and copy them instead.', false)
-            ->assertDontSee('<script>'."\n".'const copy', false);
+            ->assertDontSee('<script>', false);
+
+        $this->assertStringContainsString('if (! navigator.clipboard)', file_get_contents(public_path('js/recovery-codes.js')));
     }
 }

@@ -19,6 +19,7 @@ class ShortNameUsageTest extends TestCase
         // The same shape for the greetings of the cleared, moved back and shadow signup emails.
         "->greeting(EmailText::line('cleared.greeting', ['first_name' => \$notifiable->firstName()]))",
         "->greeting(EmailText::line('moved_back.greeting', ['first_name' => \$notifiable->firstName()]))",
+        "->greeting(EmailText::line('password_added.greeting', ['first_name' => \$notifiable->firstName()]))",
         "->greeting(EmailText::line('two_factor_attempts.greeting', ['first_name' => \$notifiable->firstName()]))",
         "->greeting(EmailText::line('shadow_signed_up.greeting', ['first_name' => \$notifiable->firstName()]))",
         // The same shape for the greetings of the release and cover emails.

@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Notifications\ConfirmItsYouNotification;
 use App\Notifications\EmailChangeConfirmationNotification;
 use App\Notifications\EmailChangedNotification;
+use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -427,5 +428,55 @@ class EmailChangeTest extends TestCase
 
         $this->actingAs($sam)->post(route('account.email.confirm', $token))->assertOk()
             ->assertSee('href="'.route('account.show').'"', false)->assertSee('Back to login and security');
+    }
+
+    public function test_a_remembered_device_stays_remembered_after_confirming_and_other_cookies_stop_working(): void
+    {
+        Notification::fake();
+        $sam = User::factory()->create(['email' => 'sam@example.org', 'remember_token' => 'old-token']);
+        $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
+        $name = Auth::guard('web')->getRecallerName();
+        $oldCookie = app('encrypter')->encrypt(
+            CookieValuePrefix::create($name, app('encrypter')->getKey()).$sam->id.'|old-token|'.Auth::guard('web')->hashPasswordForCookie($sam->password),
+            false,
+        );
+
+        $response = $this->actingAs($sam)->withCookie($name, $oldCookie)
+            ->post(route('account.email.confirm', $token))->assertOk()->assertSee('Your email address is now sam.new@example.org');
+
+        $response->assertCookie($name);
+        $fresh = $sam->fresh();
+        $this->assertNotSame('old-token', $fresh->remember_token);
+        $this->assertStringContainsString('|'.$fresh->remember_token.'|', CookieValuePrefix::remove(app('encrypter')->decrypt($response->getCookie($name, false)->getValue(), false)));
+        $this->assertAuthenticatedAs($sam);
+
+        // The old cookie, from another device, no longer signs anyone in.
+        Auth::forgetGuards();
+        $this->flushSession();
+        $this->app['auth']->shouldUse('web');
+        $this->withCookie($name, $oldCookie)->get(route('account.show'))->assertRedirect(route('login'));
+    }
+
+    public function test_a_device_that_was_not_remembered_gets_no_remember_cookie_from_confirming(): void
+    {
+        Notification::fake();
+        $sam = User::factory()->create(['email' => 'sam@example.org']);
+        $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
+
+        $this->actingAs($sam)->post(route('account.email.confirm', $token))->assertOk()
+            ->assertCookieMissing(Auth::guard('web')->getRecallerName());
+    }
+
+    public function test_someone_elses_remembered_device_gets_no_remember_cookie_for_them(): void
+    {
+        Notification::fake();
+        $sam = User::factory()->create(['email' => 'sam@example.org']);
+        $robin = User::factory()->create(['email' => 'robin@example.org']);
+        $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
+        $name = Auth::guard('web')->getRecallerName();
+
+        $this->actingAs($robin)->withCookie($name, 'robins-cookie')
+            ->post(route('account.email.confirm', $token))->assertOk()
+            ->assertCookieMissing($name);
     }
 }

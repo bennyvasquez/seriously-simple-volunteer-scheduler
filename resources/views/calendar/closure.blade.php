@@ -27,7 +27,7 @@
 <fieldset class="choices" @error('area') aria-describedby="area-error" @enderror>
 <legend>Which areas</legend>
 @foreach ($areas as $area)
-<label class="check"><input type="checkbox" name="area[]" value="{{ $area->id }}" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()" @checked(in_array($area->id, $values['area'], true))><span>{{ $area->name }}</span></label>
+<label class="check"><input type="checkbox" name="area[]" value="{{ $area->id }}" data-refreshes-form @checked(in_array($area->id, $values['area'], true))><span>{{ $area->name }}</span></label>
 @endforeach
 @error('area')<span class="field-error" id="area-error">{{ $message }}</span>@enderror
 </fieldset>
@@ -123,3 +123,7 @@
 @endif
 <p class="muted">Coordinators and admins add closures. Area leads see them on the schedule.</p>
 @endsection
+
+@push('scripts')
+<script src="{{ asset('js/refresh-form.js') }}" defer></script>
+@endpush

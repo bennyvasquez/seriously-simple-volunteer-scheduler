@@ -1,0 +1,295 @@
+<?php
+
+namespace Tests\Feature\Security;
+
+use App\Actions\Accounts\GrantRole;
+use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\EndRegular;
+use App\Actions\Scheduling\GenerateShifts;
+use App\Calendar\PersonSearch;
+use App\Enums\Role;
+use App\Enums\SlotFrequency;
+use App\Models\Area;
+use App\Models\Assignment;
+use App\Models\Organization;
+use App\Models\SlotRegular;
+use App\Models\User;
+use App\Models\WeeklySlot;
+use Carbon\CarbonImmutable;
+use DomainException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\InteractsWithTwoFactor;
+use Tests\TestCase;
+
+class LeadVisibilityTest extends TestCase
+{
+    use InteractsWithTwoFactor, RefreshDatabase;
+
+    private Area $frontDesk;
+
+    private Area $woodshop;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withoutDefer();
+        // Wednesday, October 14, 2026, 9am in Detroit.
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 09:00', 'America/Detroit'));
+        Organization::factory()->create(['timezone' => 'America/Detroit', 'weeks_ahead' => 4]);
+        $this->frontDesk = Area::factory()->create(['name' => 'Front desk']);
+        $this->woodshop = Area::factory()->create(['name' => 'Woodshop']);
+    }
+
+    private function person(Role $role, ?Area $area = null): User
+    {
+        $user = User::factory()->create();
+        app(GrantRole::class)->handle(null, $user, $role, $area);
+        $this->enableTwoFactor($user);
+
+        return $user;
+    }
+
+    private function slot(Area $area): WeeklySlot
+    {
+        $slot = WeeklySlot::factory()->create(['area_id' => $area->id, 'weekday' => 5, 'start_time' => '15:30', 'end_time' => '18:30', 'people_needed' => 2]);
+        app(GenerateShifts::class)->handle(Organization::current());
+
+        return $slot;
+    }
+
+    private function names(array $search): array
+    {
+        return $search['matches']->pluck('name')->all();
+    }
+
+    public function test_a_lead_cannot_add_a_regular_starting_in_the_past(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+
+        $this->actingAs($lead)->post(route('calendar.slots.regulars.store', $slot), ['user' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-13'])
+            ->assertSessionHasErrors(['starts_on' => 'The first date can\'t be before today.']);
+        $this->assertSame(0, SlotRegular::query()->count());
+
+        try {
+            app(AddRegular::class)->handle($lead, $slot, $robin, '2026-10-13');
+            $this->fail('The action should refuse a start date before today.');
+        } catch (DomainException $e) {
+            $this->assertSame('The first date can\'t be before today.', $e->getMessage());
+        }
+
+        $this->assertSame(0, SlotRegular::query()->count());
+        $this->assertFalse($lead->canSee($robin));
+    }
+
+    public function test_a_lead_can_add_a_regular_starting_today(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+
+        $this->actingAs($lead)->post(route('calendar.slots.regulars.store', $slot), ['user' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-14'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, SlotRegular::query()->where('user_id', $robin->id)->count());
+        $this->assertTrue($lead->canSee($robin));
+    }
+
+    public function test_an_impossible_past_regular_doesnt_make_someone_visible(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+        $other = User::factory()->create();
+
+        // An end before the start never works a date.
+        SlotRegular::query()->create(['weekly_slot_id' => $slot->id, 'user_id' => $robin->id, 'starts_on' => '2026-10-01', 'ends_on' => '2026-09-01', 'frequency' => 'weekly']);
+        SlotRegular::query()->create(['weekly_slot_id' => $slot->id, 'user_id' => $other->id, 'starts_on' => '2026-10-01', 'ends_on' => '2026-10-01', 'frequency' => 'weekly']);
+
+        $this->assertFalse($lead->canSee($robin));
+        $this->assertTrue($lead->canSee($other));
+    }
+
+    public function test_a_regular_ended_before_its_first_slot_day_still_counts_while_its_end_isnt_before_its_start(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+        $sam = User::factory()->create();
+
+        // Both start on Wednesday, October 14; the slot runs on Fridays, so the first slot day is October 16.
+        $robinRegular = app(AddRegular::class)->handle($lead, $slot, $robin, '2026-10-14');
+        $samRegular = app(AddRegular::class)->handle($lead, $slot, $sam, '2026-10-14');
+
+        // Robin's last date is Thursday, October 15: the end isn't before the start, but no slot day falls between them, so the regular never works.
+        app(EndRegular::class)->handle($lead, $robinRegular, '2026-10-15');
+        // Sam's last date is before the start, which stores the day before the start: the end is before the start.
+        app(EndRegular::class)->handle($lead, $samRegular, '2026-10-01');
+
+        $this->assertSame('2026-10-15', $robinRegular->fresh()->ends_on->toDateString());
+        $this->assertSame('2026-10-13', $samRegular->fresh()->ends_on->toDateString());
+        $this->assertSame(0, Assignment::query()->whereIn('user_id', [$robin->id, $sam->id])->count());
+
+        // What's built (spec sections 6 and 13): a regular in the lead's areas counts when its end isn't before its start, whether or not a slot day falls in it.
+        $this->assertTrue($lead->canSee($robin));
+        $this->assertFalse($lead->canSee($sam));
+    }
+
+    public function test_a_lead_still_sees_people_who_work_their_areas(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $regular = User::factory()->create();
+        $elsewhere = User::factory()->create();
+        app(AddRegular::class)->handle(null, $this->slot($this->frontDesk), $regular, '2026-10-14');
+        app(AddRegular::class)->handle(null, $this->slot($this->woodshop), $elsewhere, '2026-10-14');
+
+        $this->assertTrue($lead->canSee($regular));
+        $this->assertTrue($lead->canSee($lead));
+        $this->assertFalse($lead->canSee($elsewhere));
+    }
+
+    public function test_a_lead_cant_learn_a_hidden_surname_from_search(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $robin = User::factory()->create(['name' => 'Robin Example']);
+        $visible = User::factory()->create(['name' => 'Robin Visible']);
+        app(AddRegular::class)->handle(null, $this->slot($this->frontDesk), $visible, '2026-10-14');
+
+        $this->assertSame(['Robin Example'], $this->names(PersonSearch::find($lead, 'Robin E', false, [$visible->id])));
+        $this->assertSame(['Robin Example'], $this->names(PersonSearch::find($lead, 'robin e.', false, [$visible->id])));
+        $this->assertSame(['Robin Example'], $this->names(PersonSearch::find($lead, 'rob', false, [$visible->id])));
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'Robin Ea', false)));
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'xample', false)));
+
+        // A person the lead can see still matches on any part of their name, and is shown in full.
+        $found = PersonSearch::find($lead, 'isibl', false)['matches'];
+        $this->assertSame(['Robin Visible'], $found->pluck('display_name')->all());
+        $this->assertSame(['Robin E.'], PersonSearch::find($lead, 'Robin E', false, [$visible->id])['matches']->pluck('display_name')->all());
+        $this->assertSame($robin->id, PersonSearch::find($lead, 'Robin E', false, [$visible->id])['matches']->sole()->id);
+    }
+
+    public function test_a_hidden_person_is_found_by_their_short_name_whatever_their_middle_names(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $ana = User::factory()->create(['name' => 'Ana de la Cruz']);
+        $robin = User::factory()->create(['name' => 'Robin Ann Example']);
+
+        $this->assertSame('Ana C.', $ana->shortName());
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'Ana C', false)));
+        $this->assertSame(['Ana C.'], PersonSearch::find($lead, 'ana c.', false)['matches']->pluck('display_name')->all());
+        $this->assertSame(['Robin Ann Example'], $this->names(PersonSearch::find($lead, 'Robin E', false)));
+        // The middle name isn't shown, so it doesn't match.
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'Robin A', false)));
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'de la', false)));
+    }
+
+    public function test_a_search_without_accents_finds_a_hidden_name_with_them(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        User::factory()->create(['name' => 'José Example']);
+
+        $this->assertSame(['José Example'], $this->names(PersonSearch::find($lead, 'jose e', false)));
+        $this->assertSame(['José Example'], $this->names(PersonSearch::find($lead, 'José E.', false)));
+    }
+
+    public function test_a_visible_person_still_matches_on_their_full_name(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $ana = User::factory()->create(['name' => 'Ana de la Cruz']);
+        app(AddRegular::class)->handle(null, $this->slot($this->frontDesk), $ana, '2026-10-14');
+
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'de la cruz', false)));
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'ana de', false)));
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'Ana C', false)));
+        // Every word has to match in order, not only the first.
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'Ana Smith', false)));
+    }
+
+    public function test_a_lead_who_leads_every_area_cant_search_by_email(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        app(GrantRole::class)->handle(null, $lead, Role::AreaLead, $this->woodshop);
+        $robin = User::factory()->create(['name' => 'Robin Example', 'email' => 'robin.secret@example.org']);
+
+        $this->assertFalse(PersonSearch::byEmail($lead));
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'robin.secret', PersonSearch::byEmail($lead))));
+    }
+
+    public function test_a_coordinator_still_searches_by_full_name_and_email(): void
+    {
+        $robin = User::factory()->create(['name' => 'Robin Example', 'email' => 'robin.secret@example.org']);
+
+        foreach ([Role::Coordinator, Role::Admin] as $role) {
+            $viewer = $this->person($role);
+
+            $this->assertTrue(PersonSearch::byEmail($viewer));
+            $this->assertSame(['Robin Example'], $this->names(PersonSearch::find($viewer, 'Robin Ex', true)));
+            $this->assertSame(['Robin Example'], $this->names(PersonSearch::find($viewer, 'robin.secret', true)));
+        }
+    }
+
+    public function test_a_regular_has_to_include_a_day_the_slot_runs(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+
+        // The slot runs on Fridays; Monday to Tuesday has none.
+        $this->actingAs($lead)->post(route('calendar.slots.regulars.store', $slot), ['user' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-19', 'ends_on' => '2026-10-20'])
+            ->assertSessionHasErrors(['slot' => 'Those dates don\'t include a day this slot runs. Pick dates that do.']);
+        $this->assertSame(0, SlotRegular::query()->count());
+        $this->assertFalse($lead->canSee($robin));
+
+        try {
+            app(AddRegular::class)->handle($lead, $slot, $robin, '2026-10-19', '2026-10-20');
+            $this->fail('The action should refuse dates with no day the slot runs.');
+        } catch (DomainException $e) {
+            $this->assertSame('Those dates don\'t include a day this slot runs. Pick dates that do.', $e->getMessage());
+        }
+
+        // A range that includes a Friday is fine.
+        app(AddRegular::class)->handle($lead, $slot, $robin, '2026-10-19', '2026-10-23');
+        $this->assertTrue($lead->canSee($robin));
+    }
+
+    public function test_an_every_other_week_range_covering_only_off_weeks_is_refused(): void
+    {
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+
+        // Anchored on October 16, so October 23 is an off week.
+        $this->expectException(DomainException::class);
+        app(AddRegular::class)->handle(null, $slot, $robin, '2026-10-22', '2026-10-24', SlotFrequency::EveryOtherWeek, '2026-10-16');
+    }
+
+    public function test_search_lists_visible_people_first_then_hidden_ones_by_short_name(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $visible = User::factory()->create(['name' => 'Robin Zimmer']);
+        app(AddRegular::class)->handle(null, $this->slot($this->frontDesk), $visible, '2026-10-14');
+        // Surnames in the opposite order to their short names' order of first initials.
+        User::factory()->create(['name' => 'Robin Zane']);
+        User::factory()->create(['name' => 'Robin Adams']);
+
+        $names = $this->names(PersonSearch::find($lead, 'robin', false));
+
+        $this->assertSame('Robin Zimmer', $names[0]);
+        // Hidden people sort by short name ("Robin A." then "Robin Z."), then by id.
+        $this->assertSame(['Robin Adams', 'Robin Zane'], array_slice($names, 1));
+    }
+
+    public function test_a_search_of_only_periods_is_too_short(): void
+    {
+        $viewer = $this->person(Role::Coordinator);
+        User::factory()->create(['name' => 'Al. Example']);
+
+        foreach (['..', 'a.', '. .'] as $query) {
+            $search = PersonSearch::find($viewer, $query, true);
+
+            $this->assertTrue($search['tooShort'], $query);
+            $this->assertSame([], $this->names($search));
+        }
+    }
+}

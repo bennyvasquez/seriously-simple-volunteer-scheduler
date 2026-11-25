@@ -31,7 +31,8 @@ class LoginScreensTest extends TestCase
         $this->assertStringContainsString('<button type="submit" class="btn btn-primary" id="send-link">Email me a link</button>', $html);
         $this->assertStringContainsString('formaction="'.route('login').'"', $html);
         // With it, "Email me a link" doesn't send a typed password along (issue #14).
-        $this->assertMatchesRegularExpression("/<script>.*submitter.*'send-link'.*password.*<\/script>/s", $html);
+        $this->assertStringContainsString('<script src="'.asset('js/login.js').'" defer></script>', $html);
+        $this->assertMatchesRegularExpression("/submitter.*'send-link'.*password/s", file_get_contents(public_path('js/login.js')));
     }
 
     public function test_enter_in_the_password_box_logs_in_with_the_password_when_javascript_runs(): void
@@ -40,7 +41,7 @@ class LoginScreensTest extends TestCase
 
         // Browsers submit with the form's first button, "Email me a link". With JavaScript, Enter in the password box presses the password button instead.
         $this->assertStringContainsString('id="password-login"', $html);
-        $this->assertMatchesRegularExpression("/<script>.*'Enter'.*password-login.*requestSubmit\(.*<\/script>/s", $html);
+        $this->assertMatchesRegularExpression("/'Enter'.*password-login.*requestSubmit\(/s", file_get_contents(public_path('js/login.js')));
     }
 
     public function test_asking_for_a_link_shows_check_your_email_with_the_address(): void

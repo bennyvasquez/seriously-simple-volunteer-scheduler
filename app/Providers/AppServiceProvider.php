@@ -3,12 +3,15 @@
 namespace App\Providers;
 
 use App\Enums\Role;
+use App\Http\Controllers\Auth\LoginLinkController;
+use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\LaravelMailLines;
 use App\Notifications\PlainText;
 use App\Support\EmailAddress;
+use Closure;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Support\Htmlable;
@@ -16,12 +19,14 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\Events\NotificationFailed;
 use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Notifications\Events\NotificationSent;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Timebox;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Dusk\DuskServiceProvider;
@@ -58,12 +63,33 @@ class AppServiceProvider extends ServiceProvider
         }
     }
 
+    /** The address a sign-in form was sent with, in its one spelling. The throttle middleware runs before the one that normalizes it, so the limits do it themselves. */
+    private static function typedAddress(Request $request): string
+    {
+        $address = $request->input('email');
+
+        return EmailAddress::normalize(is_string($address) ? $address : '');
+    }
+
+    /** Ten sign-in emails a day for one address, answering with $answer when reached. Null (no limit) for a blank address or one that isn't plain, which the form refuses anyway. */
+    private static function dailyAddressLimit(string $name, string $address, Closure $answer): ?Limit
+    {
+        if ($address === '' || ! EmailAddress::isPlain($address)) {
+            return null;
+        }
+
+        return Limit::perDay(10)->by($name.'|'.$address)->response($answer);
+    }
+
     /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
         $this->useSiteAddress();
+
+        // migrate:fresh, migrate:refresh, migrate:reset and db:wipe delete every table, so they refuse on a real server, with or without --force. They run only in the local and testing environments, the same rule as the example seeder.
+        DB::prohibitDestructiveCommands(! $this->app->environment('local', 'testing'));
 
         // Laravel's mail layout puts the app name in each email's header, under "Regards," and in the footer, and the sender's name comes from the mail settings. Before an email goes out, both become the organization's name from Settings, so volunteers see who's writing to them rather than "SSVS". The address stays the one in MAIL_FROM_ADDRESS.
         Event::listen(NotificationSending::class, function (NotificationSending $event) {
@@ -100,7 +126,26 @@ class AppServiceProvider extends ServiceProvider
         // Only admins change organization settings (spec section 6).
         Gate::define('manage-settings', fn (User $user) => $user->isActive() && $user->hasRole(Role::Admin));
 
-        RateLimiter::for('login-link', fn (Request $request) => Limit::perMinutes(10, 3)->by(EmailAddress::normalize(is_string($request->input('email')) ? $request->input('email') : '').'|'.$request->ip()));
+        // Three login links in 10 minutes for an address from one IP address, and ten a day for an address from anywhere. The daily limit counts requests from other people too, so reaching it answers exactly like a normal request and sends nothing: a different answer would tell the requester that someone else has been asking for that address. A blank or unusable address skips the daily limit and gets its usual validation message.
+        RateLimiter::for('login-link', function (Request $request) {
+            $address = self::typedAddress($request);
+
+            return array_filter([
+                Limit::perMinutes(10, 3)->by($address.'|'.$request->ip()),
+                self::dailyAddressLimit('login-link-day', $address, fn (Request $request) => LoginLinkController::sentResponse($request)),
+            ]);
+        });
+        // Five reset requests a minute from one IP address, and ten a day for an address from anywhere, with the daily limit answering like a normal request for the same reason as above. A normal request waits for the password broker's fixed time, so the answer from the daily limit waits the same time.
+        RateLimiter::for('password-reset-link', fn (Request $request) => array_filter([
+            Limit::perMinute(5)->by($request->ip()),
+            self::dailyAddressLimit('reset-link-day', self::typedAddress($request), fn (Request $request) => $this->app->make(Timebox::class)->call(
+                fn () => (new NeutralPasswordResetLinkResponse(''))->toResponse($request),
+                (int) config('auth.timebox_duration'),
+            )),
+        ]));
+        // Checking a signed-in person's password, to confirm it or to change it, five times in 10 minutes per person.
+        RateLimiter::for('password-confirm', fn (Request $request) => Limit::perMinutes(10, 5)->by('password-confirm|'.$request->user()?->id));
+        RateLimiter::for('password-change', fn (Request $request) => Limit::perMinutes(10, 5)->by('password-change|'.$request->user()?->id));
         RateLimiter::for('login-link-use', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
         RateLimiter::for('password-reset', fn (Request $request) => Limit::perMinute(10)->by('password-reset|'.$request->ip()));
         RateLimiter::for('email-change', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change|'.$request->user()?->id));

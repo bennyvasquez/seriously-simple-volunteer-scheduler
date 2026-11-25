@@ -618,6 +618,14 @@ final class EmailCatalog
                 'reset' => ['Last line, with the link to reset a password', null],
                 'reset_label' => ['Words that link to reset a password', null, true],
             ]),
+            self::email('password_added', 'Password added', self::ACCOUNTS, 'After a first password is added to someone\'s account. It goes to that person.', [
+                'subject' => ['Subject', null],
+                'greeting' => ['Greeting', null],
+                'added' => ['Opening', null],
+                'advice' => ['What to do', null],
+                'reset' => ['Last line, with the link to reset a password', null],
+                'reset_label' => ['Words that link to reset a password', null, true],
+            ]),
             self::email('password_changed', 'Password changed', self::ACCOUNTS, 'After someone\'s password changes. It goes to that person.', [
                 'subject' => ['Subject', null],
                 'intro' => ['Opening', null],

@@ -20,6 +20,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\ChangeNotice;
 use App\Models\Organization;
 use App\Models\Shift;
+use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
 use App\Notifications\PutOnShiftNotification;
@@ -645,7 +646,8 @@ class EditScheduleTest extends TestCase
     {
         $slot = $this->thursdaySlot('18:30', '21:30');
         $sam = User::factory()->create();
-        app(AddRegular::class)->handle(null, $slot, $sam, '2026-10-01', '2026-10-13');
+        // Already over before today, which AddRegular wouldn't add.
+        SlotRegular::query()->create(['weekly_slot_id' => $slot->id, 'user_id' => $sam->id, 'frequency' => SlotFrequency::Weekly, 'starts_on' => '2026-10-01', 'ends_on' => '2026-10-13']);
 
         app(UpdateWeeklySlot::class)->handle($this->coordinator(), $slot, ['weekday' => 5, 'is_rotation' => true] + $this->slotAttributes($slot));
 

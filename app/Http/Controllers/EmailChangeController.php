@@ -6,6 +6,7 @@ use App\Actions\Accounts\ConfirmEmailChange;
 use App\Actions\Accounts\IssueLoginLink;
 use App\Actions\Accounts\RequestEmailChange;
 use App\Enums\LoginLinkPurpose;
+use App\Http\Controllers\Auth\LoginLinkController;
 use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\ConfirmItsYouNotification;
@@ -83,6 +84,9 @@ class EmailChangeController extends Controller
         // Its own key, not Laravel's auth.password_confirmed_at: this link stands in for a password only on the email change screens, never on other password-protected routes.
         $request->session()->put(self::IDENTITY_CONFIRMED_AT, time());
 
+        // Opening this link proves control of the inbox just as a sign-in link does.
+        LoginLinkController::rememberLinkLogin($request, $link->user);
+
         return redirect()->route('account.email.edit');
     }
 
@@ -140,9 +144,16 @@ class EmailChangeController extends Controller
 
         // Keep this device signed in only when it's the person's own session.
         $sessionId = $link !== null && $link->user->is($request->user()) ? $request->session()->getId() : null;
+        $guard = Auth::guard('web');
+        $wasRemembered = $sessionId !== null && ($guard->viaRemember() || $request->cookies->has($guard->getRecallerName()));
 
         if ($link === null || ! $confirmEmailChange->handle($token, $sessionId)) {
             return view('account.email', ['step' => 'expired']);
+        }
+
+        // Signing out everywhere cycled the remember-me token, so a device of theirs that was remembered gets a new cookie and stays remembered, the same as after a password change. Other devices' cookies no longer match. Read fresh, so the cookie carries the new token.
+        if ($wasRemembered) {
+            $guard->login($link->user->fresh(), true);
         }
 
         // On a shared device where someone else is logged in, the page mustn't link to that person's account.

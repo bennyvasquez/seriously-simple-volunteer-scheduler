@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Http\Request;
+
 /**
  * One spelling per email address. Addresses are plain printable ASCII, lowercased and trimmed (spaces and invisible characters at both ends) wherever one is typed, so the database, the sign-in limits and the emails we send all see the same text for the same address.
  */
@@ -16,6 +18,14 @@ class EmailAddress
         $trimmed = preg_replace('/\A[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+\z/u', '', $address);
 
         return mb_strtolower($trimmed ?? trim($address));
+    }
+
+    /** The typed address to put back in the form, in its one spelling. It's normalized here too because a sign-in limit can answer before the middleware that normalizes it has run. */
+    public static function normalizeInput(Request $request): array
+    {
+        $input = $request->only('email');
+
+        return is_string($input['email'] ?? null) ? ['email' => self::normalize($input['email'])] : $input;
     }
 
     /** True when every byte is a printable ASCII character (no control characters, nothing past 126). A space counts as printable here, and the usual email rule refuses it. */

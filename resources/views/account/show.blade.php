@@ -21,12 +21,23 @@
 <section class="panel">
 <h2>Add a password (optional)</h2>
 <p class="muted">If you'd rather type a password than wait for an email, add one here. You can still use email links whenever you like.</p>
+@if ($canAddPassword)
 <form method="POST" action="{{ route('account.password.set') }}">
 @csrf
 <x-field name="password" type="password" label="New password" autocomplete="new-password" hint="At least 10 characters." />
 <x-field name="password_confirmation" type="password" label="Type it again" autocomplete="new-password" />
 <button type="submit" class="btn btn-primary">Save password</button>
 </form>
+@else
+@error('password')
+<p class="field-error" role="alert">{{ $message }}</p>
+@enderror
+<p>To keep your account safe, we only add a password within {{ \App\Http\Controllers\Auth\LoginLinkController::RECENT_MINUTES }} minutes of you signing in with an emailed link. Log out, ask for a new link on the login page, then come back to Login and security after you open it.</p>
+<form method="POST" action="{{ route('logout') }}">
+@csrf
+<button type="submit" class="btn">Log out to get a new link</button>
+</form>
+@endif
 </section>
 @else
 <section class="panel">
@@ -35,6 +46,7 @@
 <div>Password: set. Authenticator app: connected.</div>
 <h3>Change my password</h3>
 @endif
+<p class="muted">Changing your password logs you out on your other phones and computers. You stay logged in here.</p>
 <form method="POST" action="{{ route('user-password.update') }}">
 @csrf
 @method('PUT')

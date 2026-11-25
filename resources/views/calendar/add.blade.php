@@ -35,7 +35,7 @@
 </div>
 <div class="field">
 <label for="repeats">Repeats</label>
-<select name="repeats" id="repeats" onchange="this.form.querySelector('input[name=refresh]').value='1';this.form.submit()">
+<select name="repeats" id="repeats" data-refreshes-form>
 @foreach ($repeatOptions as $key => $label)
 <option value="{{ $key }}" @selected($values['repeats'] === $key)>{{ $label }}</option>
 @endforeach
@@ -69,3 +69,7 @@
 </form>
 </section>
 @endsection
+
+@push('scripts')
+<script src="{{ asset('js/refresh-form.js') }}" defer></script>
+@endpush

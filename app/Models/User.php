@@ -328,7 +328,10 @@ class User extends Authenticatable
             ->whereKey($this->id)
             ->when($areaIds->isNotEmpty(), fn (Builder $query) => $query
                 ->orWhereHas('assignments.shift', fn ($shift) => $shift->whereIn('area_id', $areaIds))
-                ->orWhereHas('regulars.weeklySlot', fn ($slot) => $slot->whereIn('area_id', $areaIds))));
+                // A regular whose end is before its start never works a date, so it doesn't count.
+                ->orWhereHas('regulars', fn ($regular) => $regular
+                    ->where(fn ($dated) => $dated->whereNull('ends_on')->orWhereColumn('ends_on', '>=', 'starts_on'))
+                    ->whereHas('weeklySlot', fn ($slot) => $slot->whereIn('area_id', $areaIds)))));
     }
 
     public function canSee(User $other): bool

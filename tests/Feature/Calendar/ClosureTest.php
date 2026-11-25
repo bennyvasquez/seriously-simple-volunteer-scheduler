@@ -287,8 +287,8 @@ class ClosureTest extends TestCase
     {
         $html = $this->actingAs($this->coordinator())->get(route('calendar.closures.create'))->assertOk()->getContent();
 
-        $this->assertDoesNotMatchRegularExpression('/<input type="date"[^>]*onchange/', $html);
-        $this->assertMatchesRegularExpression('/<input type="checkbox" name="area\[\]"[^>]*onchange/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<input type="date"[^>]*data-refreshes-form/', $html);
+        $this->assertMatchesRegularExpression('/<input type="checkbox" name="area\[\]"[^>]*data-refreshes-form/', $html);
         $this->assertStringContainsString('<button type="submit" class="btn" name="refresh" value="1">Check what this cancels</button>', $html);
         $this->assertStringNotContainsString('<noscript>', $html);
     }
