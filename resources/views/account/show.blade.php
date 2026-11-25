@@ -29,7 +29,10 @@
 <button type="submit" class="btn btn-primary">Save password</button>
 </form>
 @else
-<p>To keep your account safe, we only add a password within {{ \App\Http\Controllers\Auth\LoginLinkController::RECENT_MINUTES }} minutes of you signing in with an emailed link. Log out, ask for a new link on the login page, and come back here after you open it.</p>
+@error('password')
+<p class="field-error" role="alert">{{ $message }}</p>
+@enderror
+<p>To keep your account safe, we only add a password within {{ \App\Http\Controllers\Auth\LoginLinkController::RECENT_MINUTES }} minutes of you signing in with an emailed link. Log out, ask for a new link on the login page, then come back to Login and security after you open it.</p>
 <form method="POST" action="{{ route('logout') }}">
 @csrf
 <button type="submit" class="btn">Log out to get a new link</button>

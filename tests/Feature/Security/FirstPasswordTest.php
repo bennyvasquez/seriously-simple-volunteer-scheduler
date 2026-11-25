@@ -94,6 +94,24 @@ class FirstPasswordTest extends TestCase
         $this->assertFalse(ChangeLogEntry::query()->where('action', 'user.password_set')->exists());
     }
 
+    public function test_a_form_sent_too_late_shows_why_nothing_was_saved(): void
+    {
+        $user = User::factory()->withoutPassword()->create();
+
+        $this->signInByLink($user);
+        $this->get(route('account.show'))->assertSee('Save password');
+        $this->travel(16)->minutes();
+
+        $this->from(route('account.show'))->followingRedirects()
+            ->post(route('account.password.set'), ['password' => self::NEW_PASSWORD, 'password_confirmation' => self::NEW_PASSWORD])
+            ->assertOk()
+            ->assertSee(self::REFUSAL)
+            ->assertSee('Log out to get a new link')
+            ->assertDontSee('Save password');
+
+        $this->assertNull($user->fresh()->password);
+    }
+
     public function test_a_session_that_never_used_an_emailed_link_is_refused(): void
     {
         $user = User::factory()->withoutPassword()->create();
