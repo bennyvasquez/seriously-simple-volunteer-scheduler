@@ -22,7 +22,7 @@
 
 @section('content')
 <h1>Change my email address</h1>
-<p>We'll email a link to the new address. Your current address, {{ $user->email }}, keeps working until you open that link.</p>
+<p>We'll email a link to the new address. Your current address, {{ $user->email }}, keeps working until you open that link. Opening it logs you out on every phone and computer except the one you open it on.</p>
 <form method="POST" action="{{ route('account.email.update') }}">
 @csrf
 <x-field name="email" type="email" label="New email address" autocomplete="email" :value="old('email')" required />

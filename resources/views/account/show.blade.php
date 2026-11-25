@@ -46,6 +46,7 @@
 <div>Password: set. Authenticator app: connected.</div>
 <h3>Change my password</h3>
 @endif
+<p class="muted">Changing your password logs you out on your other phones and computers. You stay logged in here.</p>
 <form method="POST" action="{{ route('user-password.update') }}">
 @csrf
 @method('PUT')

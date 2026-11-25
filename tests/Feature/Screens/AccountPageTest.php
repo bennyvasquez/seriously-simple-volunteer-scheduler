@@ -75,6 +75,19 @@ class AccountPageTest extends TestCase
         $this->actingAs($volunteer)->get(route('account.show'))->assertSee('Change my password')->assertDontSee('Add a password')->assertDontSee('Make new recovery codes');
     }
 
+    public function test_changing_a_password_or_email_warns_that_other_devices_are_logged_out(): void
+    {
+        $volunteer = User::factory()->create();
+
+        $this->actingAs($volunteer)->get(route('account.show'))
+            ->assertSee('Changing your password logs you out on your other phones and computers. You stay logged in here.');
+        $this->actingAs($volunteer)->withSession(['auth.password_confirmed_at' => time()])->get(route('account.email.edit'))
+            ->assertSee('Opening it logs you out on every phone and computer except the one you open it on.');
+        auth()->logout();
+        $this->get(route('password.reset', ['token' => 'not-a-real-token', 'email' => 'sam@example.org']))
+            ->assertSee('any phone or computer that was logged in to your account is logged out', false);
+    }
+
     public function test_a_lead_sees_password_and_second_step(): void
     {
         $lead = $this->leadWithTwoFactor();
