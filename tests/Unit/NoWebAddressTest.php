@@ -29,7 +29,7 @@ class NoWebAddressTest extends TestCase
 
     public function test_look_alike_punctuation_counts_as_the_real_thing(): void
     {
-        foreach (["https\u{FF1A}//evil.example", "www\u{FF0E}evil.example", "www\u{3002}evil.example", "ww\u{3164}w.evil.example", "ww\u{115F}w.evil.example", "ww\u{FFA0}w.evil.example", "https\u{FF1A}\u{FF0F}\u{FF0F}evil.example"] as $text) {
+        foreach (["https\u{FF1A}//evil.example", "www\u{FF0E}evil.example", "www\u{3002}evil.example", "www\u{FF61}evil.example", "ww\u{3164}w.evil.example", "ww\u{115F}w.evil.example", "ww\u{FFA0}w.evil.example", "https\u{FF1A}\u{FF0F}\u{FF0F}evil.example"] as $text) {
             $this->assertTrue(NoWebAddress::check($text), $text);
         }
     }
