@@ -69,13 +69,21 @@ abstract class DuskTestCase extends BaseTestCase
     }
 
     /**
-     * Dusk saves the browser console of any test that logged something to tests/Browser/console. A page that breaks the Content-Security-Policy header (an inline script or style, a file from another site) logs a line saying so, and the page misbehaves quietly, so every test checks for it.
+     * Dusk saves the browser console of any test that logged something to tests/Browser/console, in files named after the test. A page that breaks the Content-Security-Policy header (an inline script or style, a file from another site) logs a line saying so, and the page misbehaves quietly, so every test checks its own logs for it, and one violation fails only the test that hit it.
      */
     private function assertNoContentSecurityPolicyViolations(): void
     {
-        foreach (glob(__DIR__.'/Browser/console/*') ?: [] as $log) {
-            $this->assertStringNotContainsString('Content Security Policy', (string) file_get_contents($log), basename($log).' has a Content-Security-Policy violation');
-            $this->assertStringNotContainsString('Content-Security-Policy', (string) file_get_contents($log), basename($log).' has a Content-Security-Policy violation');
+        $directory = __DIR__.'/Browser/console';
+        $prefix = $this->getCallerName().'-';
+
+        foreach (scandir($directory) ?: [] as $log) {
+            if (! str_starts_with($log, $prefix)) {
+                continue;
+            }
+
+            $text = (string) file_get_contents($directory.'/'.$log);
+            $this->assertStringNotContainsString('Content Security Policy', $text, $log.' has a Content-Security-Policy violation');
+            $this->assertStringNotContainsString('Content-Security-Policy', $text, $log.' has a Content-Security-Policy violation');
         }
     }
 

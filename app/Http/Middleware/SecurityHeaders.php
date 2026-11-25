@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class SecurityHeaders
 {
-    public const POLICY = "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
+    public const POLICY = "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
 
     public function handle(Request $request, Closure $next): Response
     {

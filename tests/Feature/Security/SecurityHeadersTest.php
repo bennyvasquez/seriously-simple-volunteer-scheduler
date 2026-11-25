@@ -83,6 +83,7 @@ class SecurityHeadersTest extends TestCase
 
             $this->assertDoesNotMatchRegularExpression('/<script(?![^>]*\ssrc=)/i', $text, $file->getRelativePathname().' has an inline script');
             $this->assertDoesNotMatchRegularExpression('/<style[\s>]/i', $text, $file->getRelativePathname().' has a style element');
+            $this->assertDoesNotMatchRegularExpression('/javascript\s*:/i', $text, $file->getRelativePathname().' has a javascript: address');
             $this->assertDoesNotMatchRegularExpression('/\son[a-z]+\s*=/i', $text, $file->getRelativePathname().' has an inline event handler');
         }
     }
@@ -111,5 +112,27 @@ class SecurityHeadersTest extends TestCase
 
         $this->assertStringContainsString('<svg', $svg);
         $this->assertDoesNotMatchRegularExpression('/style\s*=|<style/i', $svg);
+    }
+
+    public function test_the_server_error_and_maintenance_pages_use_the_stylesheet_and_no_inline_style(): void
+    {
+        foreach (['500', '503'] as $status) {
+            $html = view('errors.'.$status)->render();
+
+            $this->assertStringContainsString('<link rel="stylesheet" href="/css/app.css">', $html);
+            $this->assertDoesNotMatchRegularExpression('/\sstyle\s*=|<style|<script/i', $html);
+        }
+
+        $this->assertStringContainsString('Something went wrong on our side. Please try again in a few minutes.', view('errors.500')->render());
+        $this->assertStringContainsString('SSVS is being updated. Please try again in a few minutes.', view('errors.503')->render());
+    }
+
+    public function test_a_server_error_answers_with_the_error_page_without_touching_the_database(): void
+    {
+        Route::get('/_test/broken', fn () => abort(500));
+        Route::get('/_test/down', fn () => abort(503));
+
+        $this->get('/_test/broken')->assertStatus(500)->assertSee('Something went wrong on our side.');
+        $this->get('/_test/down')->assertStatus(503)->assertSee('SSVS is being updated.');
     }
 }
