@@ -37,22 +37,25 @@ final class PersonSearch
     {
         $query = trim($query);
 
-        if ($query === '' || mb_strlen($query) < self::MIN_LENGTH || ! $enabled) {
-            return ['query' => $query, 'tooShort' => $query !== '' && mb_strlen($query) < self::MIN_LENGTH, 'matches' => collect()];
+        // A trailing period doesn't count toward the length, so ".." and "a." are too short.
+        $needle = self::normalize($query);
+
+        if ($query === '' || mb_strlen($needle) < self::MIN_LENGTH || ! $enabled) {
+            return ['query' => $query, 'tooShort' => $query !== '' && mb_strlen($needle) < self::MIN_LENGTH, 'matches' => collect()];
         }
 
         // A trailing period is ignored, so "Robin E." finds the same people as "Robin E".
-        $like = '%'.addcslashes(rtrim($query, '.'), '%_\\').'%';
+        $like = '%'.addcslashes(rtrim($query, '. '), '%_\\').'%';
         $candidates = User::query()->whereNull('deactivated_at')
             ->whereNotIn('id', collect($excludeIds)->all())
             ->where(fn ($q) => $q->where('name', 'like', $like)->when($byEmail, fn ($q) => $q->orWhere('email', 'like', $like)))
             ->orderBy('name')->limit(self::CANDIDATES)->get(['id', 'name', 'email', 'cleared_at']);
 
         $visibleIds = $viewer->visiblePeople()->whereIn('users.id', $candidates->modelKeys())->pluck('users.id')->all();
-        $needle = self::normalize($query);
-
         $matches = $candidates
             ->filter(fn (User $match) => in_array($match->id, $visibleIds, true) || str_starts_with(self::normalize($match->shortName()), $needle))
+            // People the viewer can see come first in full-name order (the order they were read in); everyone else follows by short name, then id, so the order says nothing about a surname that isn't shown.
+            ->sortBy(fn (User $match) => in_array($match->id, $visibleIds, true) ? [0, '', 0] : [1, mb_strtolower($match->shortName()), $match->id], SORT_REGULAR)
             ->take(self::LIMIT)->values()
             ->each(function (User $match) use ($visibleIds) {
                 $match->setAttribute('show_email', in_array($match->id, $visibleIds, true));

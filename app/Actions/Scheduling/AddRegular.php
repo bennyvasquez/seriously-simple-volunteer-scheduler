@@ -36,7 +36,7 @@ use InvalidArgumentException;
  *
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on, and a `skipped_full` attribute listing the dates a self-claim left out because they already have the people they need (always empty otherwise).
  *
- * The first date can't be before today in the organization's time zone, so a regular is never added backwards. A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
+ * The first date can't be before today in the organization's time zone, and the dates have to include a day the slot runs, so a regular is never added backwards. A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
  *
  * A volunteer taking a slot for themselves (TakeShift, decision 15) passes `$selfClaim`: the actor has to be the person, the manager check is skipped, the person must be cleared for regular shifts (CoverEligibility::NOT_CLEARED, checked on the row read under the locks), the slot must have no regular on or after the start date ("You can take this date only."), and a generated shift that already has the people it needs (counting everyone on it, one-time places included) is left out, the way overlapping dates are, instead of asking to confirm. When that full date is the start date (the one being taken), ShiftAlreadyTaken is thrown instead. overDates() isn't consulted for a self-claim: it counts only regulars, a self-claim is refused whenever the slot has any regular from that date on, and people needed is at least 1, so it could never find a date. Its assignment.added entries carry `via` "take", and no "now a regular" email is sent, since TakeShift sends the person one email for the whole take. `$onPutOn` is called inside the transaction, after everything is logged, with the locked shifts the person was put on and every locked candidate shift, so TakeShift can check the date taken and fill its cover request in the same transaction.
  */
@@ -95,6 +95,10 @@ class AddRegular
         ]);
         $regular->weeklySlot()->associate($slot);
         $regular->ensureValid();
+
+        if (! $this->worksADate($slot, $regular)) {
+            throw new DomainException('Those dates don\'t include a day this slot runs. Pick dates that do.');
+        }
 
         $added = DB::transaction(function () use ($actor, $slot, $user, $regular, $startsOn, $endsOn, $overConfirmed, $selfClaim, $onPutOn, $turnedOff) {
             // The area then the slot, before reading the regulars: the order EndRegular and the other scheduling actions lock in.
@@ -229,6 +233,25 @@ class AddRegular
         }
 
         return $regular;
+    }
+
+    /** Whether the regular's dates include a day the slot runs (and their pattern includes), looking up to 28 days past the later of the first date and the slot's own start. */
+    private function worksADate(WeeklySlot $slot, SlotRegular $regular): bool
+    {
+        $start = CarbonImmutable::parse($regular->starts_on->toDateString(), 'UTC');
+        $last = CarbonImmutable::parse(max($start->toDateString(), $slot->valid_from->toDateString()), 'UTC')->addDays(28);
+
+        if ($regular->ends_on !== null && $regular->ends_on->toDateString() < $last->toDateString()) {
+            $last = CarbonImmutable::parse($regular->ends_on->toDateString(), 'UTC');
+        }
+
+        for ($day = $start; $day->lessThanOrEqualTo($last); $day = $day->addDay()) {
+            if ($slot->occursOn($day->toDateString()) && $regular->activeOn($day->toDateString())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

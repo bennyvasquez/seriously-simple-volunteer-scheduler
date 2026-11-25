@@ -66,12 +66,12 @@ class AddRegularScreenTest extends TestCase
         return $slot;
     }
 
-    private function addRegular(WeeklySlot $slot, string $name, string $every = 'weekly', string $from = '2026-10-09'): User
+    private function addRegular(WeeklySlot $slot, string $name, string $every = 'weekly', string $anchor = '2026-10-09'): User
     {
         $user = User::factory()->create(['name' => $name]);
 
         if ($every === 'other') {
-            app(AddRegular::class)->handle(null, $slot, $user, '2026-10-14', null, SlotFrequency::EveryOtherWeek, $from);
+            app(AddRegular::class)->handle(null, $slot, $user, '2026-10-14', null, SlotFrequency::EveryOtherWeek, $anchor);
         } else {
             app(AddRegular::class)->handle(null, $slot, $user, '2026-10-14');
         }
@@ -87,7 +87,7 @@ class AddRegularScreenTest extends TestCase
     public function test_the_screen_offers_the_alternate_weeks_of_an_existing_regular(): void
     {
         $slot = $this->fridaySlot(peopleNeeded: 2);
-        $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
+        $this->addRegular($slot, 'Carol', every: 'other', anchor: '2026-10-09');
 
         $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', $slot))
             ->assertOk()
@@ -162,7 +162,7 @@ class AddRegularScreenTest extends TestCase
     public function test_an_every_other_week_choice_becomes_the_anchor_date(): void
     {
         $slot = $this->fridaySlot(peopleNeeded: 2);
-        $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
+        $this->addRegular($slot, 'Carol', every: 'other', anchor: '2026-10-09');
         $avery = User::factory()->create(['name' => 'Avery Stone']);
 
         $this->postRegular($slot, $this->coordinator(), ['user' => $avery->id, 'frequency' => 'every_other_week', 'weeks' => '2026-10-16', 'starts_on' => '2026-10-14'])
@@ -203,7 +203,7 @@ class AddRegularScreenTest extends TestCase
         Organization::current()->update(['weeks_ahead' => 12]);
         $slot = $this->fridaySlot(peopleNeeded: 1);
         app(GenerateShifts::class)->handle(Organization::current());
-        $casey = $this->addRegular($slot, 'Casey', from: '2026-10-09');
+        $casey = $this->addRegular($slot, 'Casey', anchor: '2026-10-09');
         $robin = User::factory()->create(['name' => 'Robin Example']);
         $coordinator = $this->coordinator();
         $data = ['user' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23'];
@@ -237,7 +237,7 @@ class AddRegularScreenTest extends TestCase
     public function test_the_confirm_step_goes_back_without_saving_and_ignores_a_slot_with_room(): void
     {
         $slot = $this->fridaySlot(peopleNeeded: 2);
-        $this->addRegular($slot, 'Casey', from: '2026-10-09');
+        $this->addRegular($slot, 'Casey', anchor: '2026-10-09');
         $robin = User::factory()->create(['name' => 'Robin Example']);
 
         $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', ['slot' => $slot, 'person' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-23', 'over' => 1]))
@@ -347,7 +347,7 @@ class AddRegularScreenTest extends TestCase
     {
         Notification::fake();
         $slot = $this->fridaySlot(peopleNeeded: 2);
-        $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
+        $this->addRegular($slot, 'Carol', every: 'other', anchor: '2026-10-09');
         $avery = User::factory()->create(['name' => 'Avery Stone']);
 
         // Typed first date is Oct 16, but the same weeks as Carol start Oct 23.
@@ -375,13 +375,13 @@ class AddRegularScreenTest extends TestCase
 
         // Far in the past: Jan 2 is a Friday; Oct 16 is 41 weeks later.
         $far = $this->fridaySlot(peopleNeeded: 2);
-        $this->addRegular($far, 'Carol', every: 'other', from: '2026-01-02');
+        $this->addRegular($far, 'Carol', every: 'other', anchor: '2026-01-02');
         $this->actingAs($coordinator)->get(route('calendar.slots.regulars.create', $far))
             ->assertSee('value="2026-10-16"', false)->assertSee('value="2026-10-23"', false);
 
         // In the future: Nov 13 is in the same weeks as Oct 30 and Oct 16, so Oct 16 is the earliest.
         $future = $this->fridaySlot(peopleNeeded: 2);
-        $this->addRegular($future, 'Dana', every: 'other', from: '2026-11-13');
+        $this->addRegular($future, 'Dana', every: 'other', anchor: '2026-11-13');
         $response = $this->actingAs($coordinator)->get(route('calendar.slots.regulars.create', $future));
         $response->assertSee('Starting Fri Oct 16, then Oct 30, Nov 13')->assertSee('Starting Fri Oct 23, then Nov 6, Nov 20');
         $response->assertSeeInOrder(['The weeks Dana is off', 'Starting Fri Oct 23', 'The same weeks as Dana', 'Starting Fri Oct 16']);
@@ -391,7 +391,7 @@ class AddRegularScreenTest extends TestCase
     {
         // Wednesday slot, and today is Wednesday, October 14.
         $slot = $this->fridaySlot(peopleNeeded: 2, weekday: 3);
-        $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-14');
+        $this->addRegular($slot, 'Carol', every: 'other', anchor: '2026-10-14');
 
         $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', $slot))
             ->assertSeeInOrder(['The weeks Carol is off', 'Starting Wed Oct 21', 'The same weeks as Carol', 'Starting Wed Oct 14, then Oct 28, Nov 11']);
@@ -400,8 +400,8 @@ class AddRegularScreenTest extends TestCase
     public function test_regulars_on_the_same_weeks_share_one_choice(): void
     {
         $slot = $this->fridaySlot(peopleNeeded: 3);
-        $this->addRegular($slot, 'Carol', every: 'other', from: '2026-10-09');
-        $this->addRegular($slot, 'Dana', every: 'other', from: '2026-10-23');
+        $this->addRegular($slot, 'Carol', every: 'other', anchor: '2026-10-09');
+        $this->addRegular($slot, 'Dana', every: 'other', anchor: '2026-10-23');
 
         $response = $this->actingAs($this->coordinator())->get(route('calendar.slots.regulars.create', $slot))
             ->assertSee('The weeks Carol and Dana are off')->assertSee('The same weeks as Carol and Dana');

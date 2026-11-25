@@ -7,6 +7,7 @@ use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Calendar\PersonSearch;
 use App\Enums\Role;
+use App\Enums\SlotFrequency;
 use App\Models\Area;
 use App\Models\Organization;
 use App\Models\SlotRegular;
@@ -162,6 +163,69 @@ class LeadVisibilityTest extends TestCase
             $this->assertTrue(PersonSearch::byEmail($viewer));
             $this->assertSame(['Robin Example'], $this->names(PersonSearch::find($viewer, 'Robin Ex', true)));
             $this->assertSame(['Robin Example'], $this->names(PersonSearch::find($viewer, 'robin.secret', true)));
+        }
+    }
+
+    public function test_a_regular_has_to_include_a_day_the_slot_runs(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+
+        // The slot runs on Fridays; Monday to Tuesday has none.
+        $this->actingAs($lead)->post(route('calendar.slots.regulars.store', $slot), ['user' => $robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-19', 'ends_on' => '2026-10-20'])
+            ->assertSessionHasErrors(['slot' => 'Those dates don\'t include a day this slot runs. Pick dates that do.']);
+        $this->assertSame(0, SlotRegular::query()->count());
+        $this->assertFalse($lead->canSee($robin));
+
+        try {
+            app(AddRegular::class)->handle($lead, $slot, $robin, '2026-10-19', '2026-10-20');
+            $this->fail('The action should refuse dates with no day the slot runs.');
+        } catch (DomainException $e) {
+            $this->assertSame('Those dates don\'t include a day this slot runs. Pick dates that do.', $e->getMessage());
+        }
+
+        // A range that includes a Friday is fine.
+        app(AddRegular::class)->handle($lead, $slot, $robin, '2026-10-19', '2026-10-23');
+        $this->assertTrue($lead->canSee($robin));
+    }
+
+    public function test_an_every_other_week_range_covering_only_off_weeks_is_refused(): void
+    {
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+
+        // Anchored on October 16, so October 23 is an off week.
+        $this->expectException(DomainException::class);
+        app(AddRegular::class)->handle(null, $slot, $robin, '2026-10-22', '2026-10-24', SlotFrequency::EveryOtherWeek, '2026-10-16');
+    }
+
+    public function test_search_lists_visible_people_first_then_hidden_ones_by_short_name(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $visible = User::factory()->create(['name' => 'Robin Zimmer']);
+        app(AddRegular::class)->handle(null, $this->slot($this->frontDesk), $visible, '2026-10-14');
+        // Surnames in the opposite order to their short names' order of first initials.
+        User::factory()->create(['name' => 'Robin Zane']);
+        User::factory()->create(['name' => 'Robin Adams']);
+
+        $names = $this->names(PersonSearch::find($lead, 'robin', false));
+
+        $this->assertSame('Robin Zimmer', $names[0]);
+        // Hidden people sort by short name ("Robin A." then "Robin Z."), then by id.
+        $this->assertSame(['Robin Adams', 'Robin Zane'], array_slice($names, 1));
+    }
+
+    public function test_a_search_of_only_periods_is_too_short(): void
+    {
+        $viewer = $this->person(Role::Coordinator);
+        User::factory()->create(['name' => 'Al. Example']);
+
+        foreach (['..', 'a.', '. .'] as $query) {
+            $search = PersonSearch::find($viewer, $query, true);
+
+            $this->assertTrue($search['tooShort'], $query);
+            $this->assertSame([], $this->names($search));
         }
     }
 }

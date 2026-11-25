@@ -840,7 +840,8 @@ class ReleaseShiftsTest extends TestCase
         // The slot stops running before October 22, then runs again, bringing that date back with the regulars working it.
         app(UpdateWeeklySlot::class)->handle($this->coordinator, $slot, ['valid_until' => '2026-10-21'] + $attributes($slot));
         $this->assertNotNull($shift->fresh()->cancelled_at);
-        app(AddRegular::class)->handle($this->coordinator, $slot->fresh(), $this->robin, '2026-10-22', '2026-10-22');
+        // The slot doesn't run on that date right now, which AddRegular would refuse.
+        SlotRegular::query()->create(['weekly_slot_id' => $slot->id, 'user_id' => $this->robin->id, 'frequency' => 'weekly', 'starts_on' => '2026-10-22', 'ends_on' => '2026-10-22']);
         Notification::fake();
 
         app(UpdateWeeklySlot::class)->handle($this->coordinator, $slot->fresh(), ['valid_until' => null] + $attributes($slot->fresh()));
