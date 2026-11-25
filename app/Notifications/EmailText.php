@@ -13,7 +13,9 @@ use RuntimeException;
 /**
  * The wording of every email: the organization's edited line when there is one (App\Models\EmailWording), otherwise the default from lang/en/emails.php. A line holds {variable_name} placeholders (snake_case in braces) that the code fills in. A missing default key, or a placeholder in a default line left unfilled, throws in every environment, so a broken line shows up in tests and never reaches an inbox. Values are put in as given, in one pass, so a value that happens to contain {something} is never filled in a second time.
  *
- * A default line comes back as a plain string, exactly as before edits existed, and Blade escapes it in the email. An edited line comes back as an HtmlString, because someone typed it: its own text is escaped the way PlainText escapes a release note (HTML special characters and Markdown punctuation become entities, whitespace becomes single spaces), so it reads as typed and can't add a link, formatting or HTML. Each value goes through htmlspecialchars, which is what Blade does to a default line, so a value reads the same in an edited line as in a default one. A variable whose name ends in `_link` is built by the code (a Markdown link to a page of ours) and goes in as it is, so an edit can move or drop the link but never change where it points. A value that is already an HtmlString (an edited line passed into another line) goes in as it is too, so nothing is escaped twice; a default line given one comes back as an HtmlString, with its own text escaped the way Blade would have escaped it.
+ * Every value filled into a line (a person's name, an area name, a title, a reason, the organization's name) is escaped the way PlainText escapes a release note: HTML special characters and Markdown punctuation become entities, so the value reads exactly as typed in both parts of the email and can never become a link, an image or formatting, in a default line or an edited one. A variable whose name ends in `_link` is built by the code (EmailText::link(), a Markdown link to a page of ours) and a `_bold` one by EmailText::bold(); both are HtmlStrings and go in as they are, so an edit can move or drop a link but never change where it points. Any other value that's already an HtmlString (a line passed into another line) goes in as it is too, so nothing is escaped twice.
+ *
+ * A default line with variables is built as HTML: its own wording is escaped the way Blade would have escaped it (so a default can still use Markdown the code chose), and its values as above. It comes back as an HtmlString, except when its values needed nothing beyond HTML escaping (no Markdown punctuation, no line breaks, nothing to change at the start of the line): then Blade escaping the plain line is just as safe, and it comes back as the plain string it always was. A default line with no variables is always a plain string, and Blade escapes it in the email. An edited line always comes back as an HtmlString, because someone typed it: its own text is escaped the way PlainText escapes a release note, so it reads as typed and can't add a link, formatting or HTML. Either way the line is put on one line, and a line that would start like a Markdown list, rule or heading has that first mark made an entity, so a value at the start of a line stays a sentence.
  *
  * Subjects are the exception: a line whose key has a `subject` part ("login_link.subject", "cover_request.subject_still_open", "removed_from_shifts.subject.one") always comes back as a plain string with no entities, and an edited subject on one line, since a subject header is never HTML.
  *
@@ -58,11 +60,11 @@ final class EmailText
             $text .= $i % 2 === 0 ? $part : self::plain($vars[$part]);
         }
 
-        return new HtmlString(self::escapeStart(PlainText::line($text)->toHtml()));
+        return PlainText::line($text);
     }
 
     /**
-     * Joins pieces of one line, such as two sentences. When a piece is an HtmlString (an edited line), the result is one too, with the plain pieces escaped the way Blade would have escaped them; otherwise it's the plain string it always was.
+     * Joins pieces of one line, such as two sentences. When a piece is an HtmlString (an edited line), the result is one too, with the plain pieces escaped the way Blade would have escaped them; otherwise it's the plain string it always was. A plain piece only gets HTML escaping, never Markdown escaping, so plain pieces must be EmailText results or separators written in the code (" ", ".", "\n\n"). A raw value, such as a shift title or a name, has to be wrapped in PlainText::line() first.
      */
     public static function join(string|HtmlString ...$parts): string|HtmlString
     {
@@ -73,6 +75,12 @@ final class EmailText
         }
 
         return new HtmlString(implode('', array_map(fn ($part) => $part instanceof Htmlable ? $part->toHtml() : e($part), $parts)));
+    }
+
+    /** Bold text the code builds, for a variable whose name ends in `_bold`: `**text**`, with the text escaped for HTML and Markdown (or an HtmlString that's already escaped). */
+    public static function bold(string|HtmlString $text): HtmlString
+    {
+        return new HtmlString('**'.($text instanceof Htmlable ? $text->toHtml() : PlainText::escape($text)).'**');
     }
 
     /**
@@ -196,29 +204,37 @@ final class EmailText
     private static function fillDefault(string $key, string $line, array $vars): string|HtmlString
     {
         $parts = self::parts($line, $key, $vars);
-        $subject = self::isSubject($key);
-        $html = false;
 
-        for ($i = 1; $i < count($parts); $i += 2) {
-            $html = $html || $vars[$parts[$i]] instanceof Htmlable;
-        }
-
-        if ($subject || ! $html) {
+        if (self::isSubject($key) || count($parts) === 1) {
             $text = '';
             foreach ($parts as $i => $part) {
-                $text .= $i % 2 === 0 ? $part : ($subject ? self::plain($vars[$part]) : (string) $vars[$part]);
+                $text .= $i % 2 === 0 ? $part : self::plain($vars[$part]);
             }
 
             return $text;
         }
 
         $text = '';
+        $htmlOnly = '';
+        $plain = '';
+        $html = false;
         foreach ($parts as $i => $part) {
-            $text .= $i % 2 === 0 ? e($part) : self::html($vars[$part]);
+            if ($i % 2 === 0) {
+                $text .= e($part);
+                $htmlOnly .= e($part);
+                $plain .= $part;
+            } else {
+                $value = $vars[$part];
+                $html = $html || $value instanceof Htmlable;
+                $text .= self::html($value);
+                $htmlOnly .= htmlspecialchars((string) $value, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $plain .= (string) $value;
+            }
         }
+        $text = PlainText::escapeStart(self::oneLine($text));
 
-        // Laravel's mail line does this to a plain string; an HtmlString is left alone, so it's done here to keep the line as it read before.
-        return new HtmlString(trim(implode(' ', array_map(trim(...), preg_split('/\r\n|\r|\n/', $text)))));
+        // When the values needed nothing beyond HTML escaping (no Markdown punctuation, no line breaks, nothing at the start of the line), Blade escaping the plain line is just as safe, so it stays the plain string it always was.
+        return ! $html && $text === $htmlOnly ? $plain : new HtmlString($text);
     }
 
     /** @param array<string, mixed> $vars */
@@ -243,13 +259,13 @@ final class EmailText
                 $text .= match (true) {
                     $value instanceof Htmlable => $value->toHtml(),
                     str_ends_with($part, '_link') => throw new LogicException("The link variable {{$part}} has to come from EmailText::link(), so an edited line can't carry HTML."),
-                    default => e((string) $value),
+                    default => PlainText::escape((string) $value),
                 };
             }
         }
 
         // The start of the whole line, so an edit that begins with a value that's empty ("{x}- item") is covered too.
-        return new HtmlString(self::escapeStart($text));
+        return new HtmlString(PlainText::escapeStart(self::oneLine($text)));
     }
 
     /**
@@ -271,16 +287,16 @@ final class EmailText
         return $parts;
     }
 
-    /** A line that starts like a Markdown list item, rule or heading underline ("- ", "+ ", "1. ", "2) ", "---", "==="), after any spaces, has its first mark made an entity, so it stays a sentence. "#" and ">" are entities already. */
-    private static function escapeStart(string $text): string
+    /** The line's line breaks made spaces, each piece trimmed, the way Laravel's mail line treats a plain string (it leaves an HtmlString alone), so a value with a line break in it can't start a new paragraph, list or heading. */
+    private static function oneLine(string $text): string
     {
-        return preg_replace(['/^(\s*)-/', '/^(\s*)\+/', '/^(\s*)=/', '/^(\s*\d+)\./', '/^(\s*\d+)\)/'], ['$1&#45;', '$1&#43;', '$1&#61;', '$1&#46;', '$1&#41;'], $text, 1);
+        return trim(implode(' ', array_map(trim(...), preg_split('/\r\n|\r|\n/', $text))));
     }
 
-    /** A value as HTML for a mail line: an HtmlString as it is, anything else escaped the way Blade escapes it. */
+    /** A value as HTML for a mail line: an HtmlString as it is, anything else escaped for HTML and Markdown, so it reads as typed. */
     private static function html(mixed $value): string
     {
-        return $value instanceof Htmlable ? $value->toHtml() : e((string) $value);
+        return $value instanceof Htmlable ? $value->toHtml() : PlainText::escape((string) $value);
     }
 
     /** A value as plain text, for a subject: an HtmlString's entities turned back into characters. */

@@ -114,4 +114,20 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Password Reset Timebox
+    |--------------------------------------------------------------------------
+    |
+    | Laravel's password broker makes asking for a reset link and using one take
+    | at least this many microseconds, so the answer takes the same time for
+    | every address. The default is 200,000 (200 ms), which a slow token check
+    | can pass, so a request for a real address could take noticeably longer.
+    | 750,000 (750 ms) is above what a check takes here, so every request waits
+    | the same time. The key is shared by all password brokers.
+    |
+    */
+
+    'timebox_duration' => 750000,
+
 ];

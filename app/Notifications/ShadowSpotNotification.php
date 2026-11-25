@@ -60,7 +60,7 @@ class ShadowSpotNotification extends Notification
 
             if ($count > 1) {
                 foreach ($this->shifts as $shift) {
-                    $mail->line($shift);
+                    $mail->line(PlainText::line($shift));
                 }
             }
 
@@ -75,7 +75,7 @@ class ShadowSpotNotification extends Notification
 
             if ($count > 1) {
                 foreach ($this->shifts as $shift) {
-                    $mail->line($shift);
+                    $mail->line(PlainText::line($shift));
                 }
             }
 
@@ -91,7 +91,7 @@ class ShadowSpotNotification extends Notification
 
         if ($count > 1) {
             foreach ($this->shifts as $shift) {
-                $mail->line($shift);
+                $mail->line(PlainText::line($shift));
             }
         }
 

@@ -130,14 +130,14 @@ class EmailCatalogTest extends TestCase
 
         $keys = array_map(fn ($email) => $email->key, EmailCatalog::all());
 
-        $this->assertCount(30, $classes);
+        $this->assertCount(31, $classes);
 
         foreach ($classes as $class) {
             $this->assertContains($class, $keys, "{$class} isn't in the catalog.");
         }
 
         $this->assertContains('every_email', $keys);
-        $this->assertCount(31, $keys);
+        $this->assertCount(32, $keys);
         $this->assertSame($keys, array_values(array_unique($keys)));
     }
 

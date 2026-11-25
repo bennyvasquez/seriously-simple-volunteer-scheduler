@@ -175,7 +175,7 @@ final class EmailPreview
     {
         return match (true) {
             str_ends_with($name, '_link') => EmailText::link($value, self::URL),
-            str_ends_with($name, '_bold') => '**'.$value.'**',
+            str_ends_with($name, '_bold') => EmailText::bold($value),
             default => $value,
         };
     }

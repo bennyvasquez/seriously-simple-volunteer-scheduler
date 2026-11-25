@@ -29,6 +29,7 @@ use App\Http\Controllers\Volunteer\TakeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\NewPasswordController;
 
 Route::get('/', [HomeController::class, 'home'])->middleware('auth')->name('home');
 
@@ -38,6 +39,8 @@ Route::middleware('guest')->group(function () {
     Route::post('/login-link/{token}', [LoginLinkController::class, 'consume'])->middleware('throttle:login-link-use')->name('login-link.consume');
     Route::post('/two-factor-challenge/email', [TwoFactorEmailCodeController::class, 'send'])->middleware('throttle:two-factor-email')->name('two-factor.email.send');
     Route::post('/two-factor-challenge/email/verify', [TwoFactorEmailCodeController::class, 'verify'])->middleware('throttle:two-factor')->name('two-factor.email.verify');
+    // Fortify registers this route without a limit. Declaring it again here, with the same name and controller, replaces that one and adds the limit.
+    Route::post('/reset-password', [NewPasswordController::class, 'store'])->middleware('throttle:password-reset')->name('password.update');
 });
 
 Route::middleware('auth')->group(function () {

@@ -8,6 +8,8 @@ use App\Import\ImportRow;
 use App\Models\Area;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use App\Support\EmailAddress;
+use App\Support\PersonName;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
@@ -161,8 +163,12 @@ class ImportPeople
 
     private function problemWith(ImportRow $row, Collection $emailLines, Collection $memberLines): ?string
     {
-        if ($row->name === '') {
+        if (PersonName::clean($row->name) === '') {
             return 'No name';
+        }
+
+        if (PersonName::problem($row->name) !== null) {
+            return PersonName::REFUSAL;
         }
 
         if (mb_strlen($row->name) > 255) {
@@ -175,6 +181,10 @@ class ImportPeople
 
         if ($row->email === '') {
             return 'No email address';
+        }
+
+        if (! EmailAddress::isPlain($row->email)) {
+            return 'The email address has characters other than plain letters, numbers and symbols';
         }
 
         if (Validator::make(['email' => $row->email], ['email' => ['email', 'max:255']])->fails()) {

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Admins, coordinators and area leads can see volunteers' contact details, so until they have a password and confirmed two-factor they can only reach the screens that set those up (spec section 13). It also ends the session of anyone whose account has been turned off, which covers sessions that deleting session rows can't reach. It runs on every web route, so routes added later are covered without anyone remembering to add it.
+ * Admins, coordinators and area leads can see volunteers' contact details, so until they have a password and confirmed two-factor they can only reach the screens that set those up (spec section 13). It also ends the session of anyone who can't sign in (an account that's been turned off, or someone not invited yet), which covers sessions that deleting session rows can't reach. It runs on every web route, so routes added later are covered without anyone remembering to add it.
  */
 class EnsureAccountIsSecure
 {
@@ -42,6 +42,10 @@ class EnsureAccountIsSecure
             return $this->endSessionOfDeactivatedUser($request);
         }
 
+        if (! $user->canSignIn()) {
+            return $this->endSessionOfSomeoneWhoCantSignIn($request);
+        }
+
         if ($user->hasFinishedSecuritySetup()) {
             return $next($request);
         }
@@ -61,14 +65,31 @@ class EnsureAccountIsSecure
     {
         $message = 'This account has been turned off. If you think that\'s a mistake, ask a coordinator.';
 
-        Auth::guard('web')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        $this->logOut($request);
 
         if ($request->expectsJson()) {
             return response()->json(['message' => $message], 403);
         }
 
         return redirect()->route('login')->withErrors(['email' => $message]);
+    }
+
+    /** Someone not invited yet gets exactly what a visitor with no account gets (spec section 13), so the session ends with nothing that says the account exists. */
+    private function endSessionOfSomeoneWhoCantSignIn(Request $request): Response
+    {
+        $this->logOut($request);
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        return redirect()->route('login');
+    }
+
+    private function logOut(Request $request): void
+    {
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
     }
 }

@@ -29,6 +29,15 @@ class SetupCommandTest extends TestCase
         ]);
     }
 
+    public function test_it_refuses_an_address_with_characters_other_than_plain_ones(): void
+    {
+        $this->setUpInstall(['--admin-email' => 'vïctim@example.org'])
+            ->expectsOutputToContain('Type the address using only plain letters, numbers and symbols.')
+            ->assertFailed();
+
+        $this->assertFalse(Organization::query()->exists());
+    }
+
     public function test_it_creates_the_organization_and_first_admin(): void
     {
         Notification::fake();

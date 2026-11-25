@@ -8,6 +8,7 @@ use App\Enums\AreaColor;
 use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\Organization;
+use App\Rules\NoWebAddress;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -38,9 +39,10 @@ class AreaController extends Controller
     {
         Gate::forUser($request->user())->authorize('create', Area::class);
 
-        $request->validate(['name' => ['required', 'string', 'max:100']], [
+        $request->validate(['name' => ['required', 'string', 'max:100', new NoWebAddress]], [
             'name.required' => 'Give the area a name.',
             'name.max' => 'Keep the name to 100 characters or fewer.',
+            'name.'.NoWebAddress::class => NoWebAddress::MESSAGE,
             'name.*' => 'Give the area a name.',
         ]);
 
@@ -73,14 +75,16 @@ class AreaController extends Controller
         Gate::forUser($request->user())->authorize('update', $area);
 
         $request->validate([
-            'name' => ['required', 'string', 'max:100'],
+            'name' => ['required', 'string', 'max:100', new NoWebAddress],
             'color' => ['required', Rule::enum(AreaColor::class)],
-            'lead_name' => ['nullable', 'string', 'max:40'],
+            'lead_name' => ['nullable', 'string', 'max:40', new NoWebAddress],
         ], [
             'name.required' => 'Give the area a name.',
             'name.max' => 'Keep the name to 100 characters or fewer.',
+            'name.'.NoWebAddress::class => NoWebAddress::MESSAGE,
             'name.*' => 'Give the area a name.',
             'color.*' => 'Pick one of the colors listed.',
+            'lead_name.'.NoWebAddress::class => NoWebAddress::MESSAGE,
             'lead_name.*' => 'Keep it to 40 characters or fewer.',
         ]);
 

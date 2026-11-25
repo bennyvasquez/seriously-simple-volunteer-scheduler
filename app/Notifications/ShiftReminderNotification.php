@@ -55,7 +55,7 @@ class ShiftReminderNotification extends Notification
         $this->intro = EmailText::line('shift_reminder.intro.'.$role.'.'.$when, ['area' => $area, 'date' => $date, 'time' => $time, 'timezone' => self::timezoneName($timezone)]);
 
         if ($shift->title !== null && $shift->title !== '') {
-            $this->intro = EmailText::join($this->intro, "\n\n", $shift->title);
+            $this->intro = EmailText::join($this->intro, "\n\n", PlainText::line($shift->title));
         }
 
         $this->nobodyToShadow = $assignment->type === AssignmentType::Shadow && $shift->filledCount() === 0;

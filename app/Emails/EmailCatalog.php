@@ -75,6 +75,7 @@ final class EmailCatalog
         'shift_link' => self::SHIFT_LINK,
         'stop_link' => 'Stop getting cover requests',
         'emails_page_link' => 'Emails page',
+        'reset_link' => 'Change your password',
     ];
 
     /** Emails whose title reads as a name in a sentence ("Changed the shift reminder's opening"). Every other email is named by its title in quotes ("the \"Shift changed\" email"), since many titles are sentences. */
@@ -608,6 +609,14 @@ final class EmailCatalog
             self::email('two_factor_reset', 'Second step reset', self::ACCOUNTS, 'When an admin resets someone\'s second step. It goes to that person.', [
                 'subject' => ['Subject', null],
                 'body' => ['Message', null],
+            ]),
+            self::email('two_factor_attempts', 'Too many wrong codes', self::ACCOUNTS, 'When a lot of wrong second step codes have been typed on someone\'s account, in a day or an hour. It goes to that person, at most once a day.', [
+                'subject' => ['Subject', null],
+                'greeting' => ['Greeting', null],
+                'paused' => ['Opening', null],
+                'advice' => ['What to do', null],
+                'reset' => ['Last line, with the link to reset a password', null],
+                'reset_label' => ['Words that link to reset a password', null, true],
             ]),
             self::email('password_changed', 'Password changed', self::ACCOUNTS, 'After someone\'s password changes. It goes to that person.', [
                 'subject' => ['Subject', null],

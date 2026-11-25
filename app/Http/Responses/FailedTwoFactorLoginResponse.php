@@ -2,6 +2,7 @@
 
 namespace App\Http\Responses;
 
+use App\Support\TwoFactorAlert;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\FailedTwoFactorLoginResponse as FailedTwoFactorLoginResponseContract;
 
@@ -15,6 +16,8 @@ class FailedTwoFactorLoginResponse implements FailedTwoFactorLoginResponseContra
         [$key, $message, $mode] = $request->filled('recovery_code')
             ? ['recovery_code', __('The provided two factor recovery code was invalid.'), ['recovery' => 1]]
             : ['code', __('The provided two factor authentication code was invalid.'), ['app' => 1]];
+
+        TwoFactorAlert::wrongCode($request->session()->get('login.id'));
 
         if ($request->wantsJson()) {
             throw ValidationException::withMessages([

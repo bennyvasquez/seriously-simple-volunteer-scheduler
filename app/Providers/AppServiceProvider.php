@@ -7,16 +7,21 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\LaravelMailLines;
+use App\Notifications\PlainText;
+use App\Support\EmailAddress;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\Events\NotificationFailed;
 use Illuminate\Notifications\Events\NotificationSending;
+use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Dusk\DuskServiceProvider;
@@ -40,10 +45,26 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
+     * Makes every link the app builds, emailed ones included, use the site's own address from APP_URL instead of the address a request was sent to. It reads config(), not env(), so it still works once the configuration is cached.
+     */
+    public function useSiteAddress(): void
+    {
+        $siteAddress = (string) config('app.url');
+
+        URL::forceRootUrl($siteAddress);
+
+        if (str_starts_with($siteAddress, 'https://')) {
+            URL::forceScheme('https');
+        }
+    }
+
+    /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
+        $this->useSiteAddress();
+
         // Laravel's mail layout puts the app name in each email's header, under "Regards," and in the footer, and the sender's name comes from the mail settings. Before an email goes out, both become the organization's name from Settings, so volunteers see who's writing to them rather than "SSVS". The address stays the one in MAIL_FROM_ADDRESS.
         Event::listen(NotificationSending::class, function (NotificationSending $event) {
             $name = $event->channel === 'mail' ? Organization::query()->value('name') : null;
@@ -52,8 +73,16 @@ class AppServiceProvider extends ServiceProvider
                 return;
             }
 
-            config(['app.name' => $name, 'mail.from.name' => $name]);
+            // Laravel's mail views only HTML-escape the app name, and the HTML part then goes through Markdown, so it goes in already escaped for both (PlainText::line), the way every other value in an email does, and reads exactly as typed.
+            config(['app.name' => PlainText::line($name), 'mail.from.name' => $name]);
             Mail::alwaysFrom((string) config('mail.from.address'), $name);
+        });
+
+        // Once the email is sent, or its sending fails (Laravel fires NotificationFailed for any exception while sending), the app name is plain text again for anything else that reads it, including later jobs in a long-running queue worker.
+        Event::listen([NotificationSent::class, NotificationFailed::class], function (NotificationSent|NotificationFailed $event) {
+            if ($event->channel === 'mail' && config('app.name') instanceof Htmlable) {
+                config(['app.name' => config('mail.from.name')]);
+            }
         });
 
         // The four lines Laravel's mail layout adds ("Hello!", "Regards,", the line under each button and "All rights reserved.") read the organization's edits, if any, when an email is rendered. Nothing is copied from Laravel's views.
@@ -71,8 +100,9 @@ class AppServiceProvider extends ServiceProvider
         // Only admins change organization settings (spec section 6).
         Gate::define('manage-settings', fn (User $user) => $user->isActive() && $user->hasRole(Role::Admin));
 
-        RateLimiter::for('login-link', fn (Request $request) => Limit::perMinutes(10, 3)->by(Str::lower((string) $request->input('email')).'|'.$request->ip()));
+        RateLimiter::for('login-link', fn (Request $request) => Limit::perMinutes(10, 3)->by(EmailAddress::normalize(is_string($request->input('email')) ? $request->input('email') : '').'|'.$request->ip()));
         RateLimiter::for('login-link-use', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+        RateLimiter::for('password-reset', fn (Request $request) => Limit::perMinute(10)->by('password-reset|'.$request->ip()));
         RateLimiter::for('email-change', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change|'.$request->user()?->id));
         RateLimiter::for('email-change-identity', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change-identity|'.$request->user()?->id));
         // Saving, resetting and previewing email wording, per person, so a stolen session can't hammer the editor.

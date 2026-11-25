@@ -17,6 +17,6 @@ return [
     'sent' => 'We have emailed your password reset link.',
     'throttled' => 'Please wait a minute before asking again.',
     'token' => 'This reset link has expired or was already used. Ask for a new one.',
-    'user' => "We can't find a user with that email address.",
+    'user' => 'This reset link has expired or was already used. Ask for a new one.',
 
 ];

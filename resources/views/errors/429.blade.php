@@ -6,6 +6,7 @@
     $minutes = is_numeric($retryAfter) ? max(1, (int) ceil($retryAfter / 60)) : null;
     $wait = match (true) {
         $minutes === null => 'Wait a few minutes',
+        $minutes > 90 => 'Wait about '.(int) ceil($retryAfter / 3600).' hours',
         $minutes === 1 => 'Wait a minute',
         default => "Wait {$minutes} minutes",
     };

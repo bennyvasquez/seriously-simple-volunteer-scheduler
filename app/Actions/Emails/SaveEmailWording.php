@@ -7,6 +7,7 @@ use App\Models\EmailWording;
 use App\Models\User;
 use App\Notifications\EmailText;
 use App\Notifications\LaravelMailLines;
+use App\Rules\NoWebAddress;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -202,7 +203,7 @@ class SaveEmailWording
     /** Whether the text holds something mail apps would turn into a link: "://" or "www.". */
     public static function hasWebAddress(string $text): bool
     {
-        return stripos($text, '://') !== false || stripos($text, 'www.') !== false;
+        return NoWebAddress::check($text);
     }
 
     /**

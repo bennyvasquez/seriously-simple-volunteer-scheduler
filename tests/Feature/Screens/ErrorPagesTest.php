@@ -46,6 +46,22 @@ class ErrorPagesTest extends TestCase
         $this->get('/test-too-many')->assertStatus(429)->assertSee('Wait a few minutes, then try again.');
     }
 
+    public function test_a_long_wait_is_said_in_hours_rounded_up(): void
+    {
+        Route::get('/test-long-wait', fn () => abort(429, '', ['Retry-After' => 82000]))->middleware('web');
+
+        $this->get('/test-long-wait')->assertStatus(429)->assertSee('Wait about 23 hours, then try again.');
+    }
+
+    public function test_a_wait_of_ninety_minutes_or_less_is_said_in_minutes(): void
+    {
+        Route::get('/test-ninety', fn () => abort(429, '', ['Retry-After' => 5400]))->middleware('web');
+        Route::get('/test-just-over', fn () => abort(429, '', ['Retry-After' => 5401]))->middleware('web');
+
+        $this->get('/test-ninety')->assertStatus(429)->assertSee('Wait 90 minutes, then try again.');
+        $this->get('/test-just-over')->assertStatus(429)->assertSee('Wait about 2 hours, then try again.');
+    }
+
     public function test_a_page_you_cannot_open_links_home(): void
     {
         $volunteer = User::factory()->create();
