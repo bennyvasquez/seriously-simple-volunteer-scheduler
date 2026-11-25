@@ -259,4 +259,40 @@ class SaveEmailWordingTest extends TestCase
         $this->assertSame('Turn these off on [Emails page](https://example.org/account/emails).', (string) $line);
         Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'test_email.with_link'));
     }
+
+    public function test_a_line_someone_else_saved_since_the_page_loaded_is_refused(): void
+    {
+        $default = trans('emails.login_link.intro');
+        $this->save(['login_link.intro' => 'Their version.']);
+
+        try {
+            app(SaveEmailWording::class)->handle($this->coordinator, ['login_link.intro' => 'My version.', 'login_link.outro' => 'My outro.'], ['login_link.intro' => $default, 'login_link.outro' => trans('emails.login_link.outro')]);
+            $this->fail('The save was not refused.');
+        } catch (ValidationException $e) {
+            $this->assertSame(['login_link.intro' => [SaveEmailWording::STALE]], $e->errors());
+        }
+
+        $this->assertDatabaseHas('email_wordings', ['key' => 'login_link.intro', 'text' => 'Their version.']);
+        $this->assertDatabaseMissing('email_wordings', ['key' => 'login_link.outro']);
+        $this->assertSame(1, ChangeLogEntry::query()->count());
+    }
+
+    public function test_a_line_saved_meanwhile_with_the_same_text_isnt_a_conflict(): void
+    {
+        $default = trans('emails.login_link.intro');
+        $this->save(['login_link.intro' => 'Same text.']);
+
+        app(SaveEmailWording::class)->handle($this->coordinator, ['login_link.intro' => 'Same text.'], ['login_link.intro' => $default]);
+
+        $this->assertDatabaseHas('email_wordings', ['key' => 'login_link.intro', 'text' => 'Same text.']);
+    }
+
+    public function test_the_text_it_started_from_is_checked_only_when_given(): void
+    {
+        $this->save(['login_link.intro' => 'First.']);
+        $this->save(['login_link.intro' => 'Second.']);
+        app(SaveEmailWording::class)->handle($this->coordinator, ['login_link.intro' => 'Third.'], ['login_link.intro' => 'Second.']);
+
+        $this->assertDatabaseHas('email_wordings', ['key' => 'login_link.intro', 'text' => 'Third.']);
+    }
 }

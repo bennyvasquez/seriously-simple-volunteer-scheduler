@@ -1,4 +1,4 @@
-{{-- Wireframes 62 and 63: one email, when it's sent, a box for each line, the words in braces it can use, and the preview. On a computer the preview sits beside the boxes; on a phone it's above them, and only after pressing Preview (public/css/app.css). Save sends the form as a PUT (the button carries the method), Preview posts the same form to the preview route, and each "Back to the default" button submits its own DELETE form below the main one. --}}
+{{-- Wireframes 62 and 63: one email, when it's sent, a box for each line, the words in braces it can use, and the preview. On a computer the preview sits beside the boxes; on a phone it's above them, and only after pressing Preview (public/css/app.css). Save sends the form as a PUT (the button carries the method), Preview posts the same form to the preview route, and each "Back to the default" button sends it to the reset route as a DELETE. The form's first button is a hidden Preview, so pressing Enter in a box previews rather than putting a line back. The preview comes after the boxes in the page, so keyboard and screen reader users meet the boxes first. --}}
 @extends('layouts.app')
 
 @section('title', $email->title.': Emails we send')
@@ -12,8 +12,8 @@
 @endif
 @if ($errors->has('lines'))
 <p class="field-error" role="alert">{{ $errors->first('lines') }}</p>
-@elseif ($errors->any())
-<p class="field-error" role="alert">{{ $previewing ? 'Nothing was saved. Fix the lines marked below to see the preview.' : 'Nothing was saved. Check the lines marked below.' }}</p>
+@elseif ($errors->any() && ! $previewing)
+<p class="field-error" role="alert">Nothing was saved. Check the lines marked below.</p>
 @endif
 
 <section class="panel email-when">
@@ -34,13 +34,13 @@
 </section>
 @else
 <div class="email-layout">
-@include('emails._preview')
-
 <div class="email-lines">
 <p class="muted">Each box is one line of the email. The line under each name says when that line shows: SSVS decides that, and you decide the words. @if ($sampleWord !== null)Words in braces, like <code class="var">{{ '{'.$sampleWord.'}' }}</code>, are filled in for each person.@endif</p>
 
 <form method="POST" action="{{ route('emails.update', $email->key) }}" id="email-form" class="email-form">
 @csrf
+{{-- Enter in a box presses a form's first button; this one previews. Hidden from everyone, since the visible Preview button does the same. --}}
+<button type="submit" formaction="{{ route('emails.preview', $email->key) }}" class="vh" tabindex="-1" aria-hidden="true">Show the preview</button>
 @foreach ($lines as $line)
 @include('emails._line', ['line' => $line])
 @endforeach
@@ -70,16 +70,9 @@
 <button type="submit" name="_method" value="PUT" class="btn btn-primary">Save</button>
 </div>
 </form>
-
-@foreach (array_merge($lines, $insideLines) as $line)
-@if ($line['edited'])
-<form method="POST" action="{{ route('emails.reset', [$email->key, $line['key']]) }}" id="reset-{{ $line['id'] }}">
-@csrf
-@method('DELETE')
-</form>
-@endif
-@endforeach
 </div>
+
+@include('emails._preview')
 </div>
 @endif
 @endsection

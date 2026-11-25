@@ -18,12 +18,10 @@ use Illuminate\View\View;
 /**
  * The email editor (wireframes 61 to 63): the list of emails, one email's lines with when each shows, saving the lines someone changed, putting one line back to the default, and the preview. The routes are for active coordinators and admins only (`can:manage-emails`), and saving, resetting and previewing are rate limited per person.
  *
- * The form sends every line's box (`lines`) and, in hidden inputs, each line's text as the page loaded it (`loaded`). Only the lines someone changed go to SaveEmailWording, so a save never touches another line. A changed line whose stored text no longer matches what the page loaded means someone else saved it meanwhile: the whole submission is refused, and the box shows their version.
+ * The form sends every line's box (`lines`) and, in hidden inputs, each line's text as the page loaded it (`loaded`). Only the lines someone changed go to SaveEmailWording, so a save never touches another line. The action is also given each changed line's text as it loaded; one whose stored text no longer matches means someone else saved it meanwhile, so the whole submission is refused (checked under the action's row lock) and the box shows their version. Back to the default is a button in the same form, sent as a DELETE to the reset route, so the other boxes keep what was typed.
  */
 class EmailWordingController extends Controller
 {
-    private const STALE = 'Someone else changed this line while you were editing. Here\'s their version; make your change again.';
-
     public function index(): View
     {
         $edits = EmailWording::edits();
@@ -51,59 +49,54 @@ class EmailWordingController extends Controller
     {
         $catalog = $this->find($email);
         [$lines, $loaded] = $this->input($request, $catalog);
-        $edits = EmailWording::edits();
         $changed = [];
-        $stale = [];
 
         foreach ($lines as $key => $text) {
-            $was = EmailText::normalize($loaded[$key] ?? '');
-
-            if (EmailText::normalize($text) === $was) {
-                continue;
+            if (EmailText::normalize($text) !== EmailText::normalize($loaded[$key] ?? '')) {
+                $changed[$key] = $text;
             }
-
-            $current = $edits[$key] ?? EmailText::defaultText($key);
-
-            // Someone else saved this line since the page loaded, unless they saved exactly what this person typed.
-            if (EmailText::normalize($current) !== $was) {
-                if (EmailText::normalize($current) !== EmailText::normalize($text)) {
-                    $stale[$key] = $current;
-                }
-
-                continue;
-            }
-
-            $changed[$key] = $text;
         }
 
         $back = redirect()->route('emails.edit', $catalog->key);
-
-        if ($stale !== []) {
-            return $back->withInput(['lines' => array_merge($lines, $stale), 'loaded' => array_merge($loaded, $stale)])
-                ->withErrors(array_combine(array_map(fn (string $key) => 'lines.'.$key, array_keys($stale)), array_fill(0, count($stale), self::STALE)));
-        }
 
         if ($changed === []) {
             return $back->with('status', 'Nothing changed, so there was nothing to save.');
         }
 
         try {
-            $save->handle($request->user(), $changed);
+            // The text each changed line loaded with goes along, so the action refuses, under its row lock, a line someone else saved meanwhile.
+            $save->handle($request->user(), $changed, array_intersect_key($loaded + array_fill_keys(array_keys($changed), ''), $changed));
         } catch (ValidationException $e) {
+            // A line someone else saved shows their version, in the box and as the text it loaded with, so saving again works.
+            $edits = EmailWording::edits();
+            foreach ($e->errors() as $key => $messages) {
+                if ($messages[0] === SaveEmailWording::STALE) {
+                    $lines[$key] = $loaded[$key] = $edits[$key] ?? EmailText::defaultText($key);
+                }
+            }
+
             return $back->withInput(['lines' => $lines, 'loaded' => $loaded])->withErrors($this->lineErrors($e));
         }
 
         return $back->with('status', 'Saved. Emails sent from now on use the new wording.');
     }
 
+    /** One line back to the default. The button is part of the main form, so the other boxes come back with what was typed in them; the reset line shows its default. */
     public function reset(Request $request, string $email, string $line, SaveEmailWording $save): RedirectResponse
     {
         $catalog = $this->find($email);
         abort_unless(in_array($line, $this->editableKeys($catalog), true), 404);
+        [$lines, $loaded] = $this->input($request, $catalog);
+        unset($lines[$line], $loaded[$line]);
+        $back = redirect()->route('emails.edit', $catalog->key)->withInput(['lines' => $lines, 'loaded' => $loaded]);
 
-        $save->handle($request->user(), [$line => null]);
+        try {
+            $save->handle($request->user(), [$line => null]);
+        } catch (ValidationException $e) {
+            return $back->withErrors($this->lineErrors($e));
+        }
 
-        return redirect()->route('emails.edit', $catalog->key)->with('status', 'That line is back to the default wording.');
+        return $back->with('status', 'That line is back to the default wording.');
     }
 
     /** Shows the edit page again with the typed text in the boxes and the preview of the chosen version. Nothing is saved, logged or sent. */

@@ -175,11 +175,57 @@ class EmailEditorTest extends TestCase
         $html = $this->actingAs($this->coordinator)->get(route('emails.edit', 'login_link'))->assertOk()->getContent();
 
         preg_match_all('/<form method="POST"[^>]*>(.*?)<\/form>/s', $html, $forms);
-        $this->assertCount(2, $forms[0], 'The page should have the main form and one Back to the default form.');
-        foreach ($forms[1] as $form) {
-            $this->assertStringContainsString('name="_token"', $form);
+        $this->assertCount(1, $forms[0], 'Every button, Back to the default included, is part of the one form.');
+        $this->assertStringContainsString('name="_token"', $forms[1][0]);
+        $this->assertStringContainsString('formaction="'.route('emails.reset', ['login_link', 'login_link.intro']).'" name="_method" value="DELETE"', $forms[1][0]);
+
+        // Enter in a box presses the form's first button, which previews rather than putting a line back or saving.
+        preg_match('/<button type="submit"[^>]*>/', $forms[1][0], $first);
+        $this->assertStringContainsString('formaction="'.route('emails.preview', 'login_link').'"', $first[0]);
+    }
+
+    public function test_the_boxes_come_before_the_preview_in_the_page(): void
+    {
+        $html = $this->actingAs($this->coordinator)->get(route('emails.edit', 'shift_reminder'))->getContent();
+
+        $this->assertLessThan(strpos($html, 'class="panel email-preview'), strpos($html, 'id="email-form"'));
+        // In the preview, the email comes before the "Show it as" choice.
+        $this->assertLessThan(strpos($html, 'Show it as it would reach:'), strpos($html, 'aria-label="Email preview"'));
+    }
+
+    public function test_back_to_the_default_keeps_what_was_typed_in_the_other_boxes(): void
+    {
+        app(SaveEmailWording::class)->handle($this->admin, ['login_link.outro' => 'This link works once.']);
+        $loaded = $this->loaded(['login_link.subject', 'login_link.intro', 'login_link.outro']);
+        $lines = ['login_link.subject' => 'Your link to log in', 'login_link.intro' => 'Tap below to log in.', 'login_link.outro' => 'This link works once.'];
+
+        $this->actingAs($this->coordinator)->delete(route('emails.reset', ['login_link', 'login_link.outro']), ['lines' => $lines, 'loaded' => $loaded])
+            ->assertRedirect(route('emails.edit', 'login_link'))
+            ->assertSessionHas('status', 'That line is back to the default wording.');
+
+        // Only the reset line changed; the typed lines weren't saved.
+        $this->assertDatabaseCount('email_wordings', 0);
+        $this->assertSame(1, ChangeLogEntry::query()->where('action', 'like', 'email_wording.%')->where('actor_id', $this->coordinator->id)->count());
+
+        $response = $this->actingAs($this->coordinator)->get(route('emails.edit', 'login_link'));
+        $response->assertSee('value="Your link to log in"', false);
+        $response->assertSee('Tap below to log in.');
+        $response->assertSee('value="Tap the button to log in."', false);
+        $response->assertSee(e(trans('emails.login_link.outro')), false);
+        $response->assertDontSee('This link works once.');
+    }
+
+    public function test_going_too_fast_gets_a_plain_page(): void
+    {
+        $data = $this->routes()[3][2];
+        for ($i = 0; $i < 30; $i++) {
+            $this->actingAs($this->coordinator)->post(route('emails.preview', 'login_link'), $data);
         }
-        $this->assertStringContainsString('name="_method" value="DELETE"', $forms[1][1]);
+
+        $response = $this->actingAs($this->coordinator)->put(route('emails.update', 'login_link'), $data)->assertTooManyRequests();
+        $response->assertSee('<h1>You\'re going a little fast</h1>', false);
+        $response->assertSee('Wait a minute, then go back and try again. Use your browser\'s back button so what you typed is still there.', false);
+        $this->assertSame(1, substr_count($response->getContent(), '<h1'));
     }
 
     public function test_an_unknown_email_isnt_found(): void
@@ -404,7 +450,8 @@ class EmailEditorTest extends TestCase
         $response = $this->actingAs($this->coordinator)->post(route('emails.preview', 'login_link'), ['lines' => $lines, 'loaded' => $this->loaded(['login_link.intro'])])->assertOk();
 
         $response->assertSee('Emails can&#039;t have web addresses typed into them. Links come from SSVS.', false);
-        $response->assertSee('Fix the lines marked below to see the preview.');
+        $this->assertSame(1, substr_count($response->getContent(), 'Fix the lines marked below to see the preview.'));
+        $response->assertDontSee('Nothing was saved.');
         $this->assertDatabaseCount('email_wordings', 0);
     }
 

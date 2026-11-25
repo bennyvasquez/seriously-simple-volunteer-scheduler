@@ -15,21 +15,27 @@ use Illuminate\Validation\ValidationException;
  *
  * Two first edits of the same line at once can deadlock or collide on the unique key: the transaction is tried up to three times, and a collision that's left is refused with a plain message rather than an error page.
  *
- * Only lines whose text changed are written and logged, so a save never touches a line someone else changed meanwhile unless this save changes it too. Text that matches the default is the default: saving it puts the line back rather than storing a copy, so a later improvement to the default still reaches that line. Each changed line gets one change log entry, `email_wording.changed` or `email_wording.reset`, with the text before and after (the default's text when the line wasn't edited) and the line and email keys in details.
+ * Only lines whose text changed are written and logged, so a save never touches a line someone else changed meanwhile unless this save changes it too. Text that matches the default is the default: saving it puts the line back rather than storing a copy, so a later improvement to the default still reaches that line. Each changed line gets one change log entry, `email_wording.changed` or `email_wording.reset`, with the text before and after (the default's text when the line wasn't edited) and the line and email keys in details. The editor also passes the text each line had when its page loaded, and a line someone else saved since is refused (STALE) rather than overwritten.
  */
 class SaveEmailWording
 {
     public const MAX = 1000;
 
-    /** @param array<string, ?string> $lines */
-    public function handle(User $actor, array $lines): void
+    /** The refusal for a line someone else saved after the editor's page loaded. */
+    public const STALE = 'Someone else changed this line while you were editing. Here\'s their version; make your change again.';
+
+    /**
+     * @param  array<string, ?string>  $lines
+     * @param  array<string, string>  $expected  Optional: for some lines, the text the person started from (the editor page's text as it loaded). If a line's stored text (or the default, when it has none) no longer matches, someone else saved it meanwhile: the whole save is refused with STALE for that line, unless they saved exactly what this save would. Checked under the row lock, so two saves of one line at once can't both pass.
+     */
+    public function handle(User $actor, array $lines, array $expected = []): void
     {
         $wanted = $this->check($lines);
         $current = null;
 
         try {
-            DB::transaction(function () use ($actor, $wanted, &$current) {
-                $this->store($actor, $wanted, $current);
+            DB::transaction(function () use ($actor, $wanted, $expected, &$current) {
+                $this->store($actor, $wanted, $expected, $current);
             }, 3);
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([(string) $current => 'Someone else just changed this line. Check it and try again.']);
@@ -38,11 +44,33 @@ class SaveEmailWording
         }
     }
 
-    /** @param array<string, ?string> $wanted */
-    private function store(User $actor, array $wanted, ?string &$current): void
+    /**
+     * @param  array<string, ?string>  $wanted
+     * @param  array<string, string>  $expected
+     */
+    private function store(User $actor, array $wanted, array $expected, ?string &$current): void
     {
         ksort($wanted);
         $rows = EmailWording::query()->whereIn('key', array_keys($wanted))->orderBy('key')->lockForUpdate()->get()->keyBy('key');
+        $stale = [];
+
+        foreach ($wanted as $key => $text) {
+            if (! array_key_exists($key, $expected)) {
+                continue;
+            }
+
+            $default = EmailText::defaultText($key);
+            $stored = EmailText::normalize($rows->get($key)?->text ?? $default);
+
+            if ($stored !== EmailText::normalize($expected[$key]) && $stored !== EmailText::normalize($text ?? $default)) {
+                $stale[$key] = self::STALE;
+            }
+        }
+
+        // Thrown inside the transaction, so nothing from this save is stored.
+        if ($stale !== []) {
+            throw ValidationException::withMessages($stale);
+        }
 
         foreach ($wanted as $key => $text) {
             $current = $key;

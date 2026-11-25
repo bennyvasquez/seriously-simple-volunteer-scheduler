@@ -1,4 +1,4 @@
-{{-- One line of an email in the editor (wireframe 62): its label, when it shows, the box, and for an edited line the default and a "Back to the default" button. That button belongs to its own form after the main one (the form attribute), since forms can't be nested. The hidden input carries the text as the page loaded it, so a save can tell whether someone else changed the line meanwhile. --}}
+{{-- One line of an email in the editor (wireframe 62): its label, when it shows, the box, and for an edited line the default and a "Back to the default" button. That button is part of the main form and sends it to the reset route as a DELETE, so the other boxes keep what was typed. The hidden input carries the text as the page loaded it, so a save can tell whether someone else changed the line meanwhile. --}}
 @php
 $error = $errors->first('lines.'.$line['key']);
 $describedBy = trim(($line['when'] ? $line['id'].'-when ' : '').($line['edited'] ? $line['id'].'-default ' : '').($error ? $line['id'].'-error' : ''));
@@ -16,5 +16,5 @@ $describedBy = trim(($line['when'] ? $line['id'].'-when ' : '').($line['edited']
 @if ($line['edited'])<span class="field-hint" id="{{ $line['id'] }}-default">Default: “{{ $line['default'] }}”</span>@endif
 </div>
 <input type="hidden" name="loaded[{{ $line['key'] }}]" value="{{ $line['loaded'] }}">
-@if ($line['edited'])<button type="submit" form="reset-{{ $line['id'] }}" class="link">Back to the default</button>@endif
+@if ($line['edited'])<button type="submit" formaction="{{ route('emails.reset', [$email->key, $line['key']]) }}" name="_method" value="DELETE" class="link">Back to the default</button>@endif
 </div>

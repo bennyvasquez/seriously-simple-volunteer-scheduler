@@ -43,10 +43,14 @@ class EmailEditorTest extends DuskTestCase
 
             $browser->clickLink('Emails we send')->waitForText('Every email SSVS sends')->assertSeeIn('.email-row .tag', 'Edited');
 
+            // Typing in another box first: putting the opening back keeps it, unsaved.
             $browser->clickLink('Shift reminder')->waitForText('When it\'s sent')
+                ->clear('#line-shift_reminder-greeting')
+                ->type('#line-shift_reminder-greeting', 'Hello {first_name},')
                 ->press('Back to the default')
                 ->waitForText('That line is back to the default wording.')
                 ->assertInputValue(self::OPENING, 'You\'re on {area} {date}, {time} ({timezone}).')
+                ->assertInputValue('#line-shift_reminder-greeting', 'Hello {first_name},')
                 ->assertDontSee('Back to the default');
         });
     }
@@ -78,6 +82,9 @@ class EmailEditorTest extends DuskTestCase
             [$preview, $lines] = $this->boxes($browser);
             $this->assertGreaterThanOrEqual($lines['right'], $preview['left'], 'On a computer the preview should be to the right of the boxes.');
             $this->assertLessThan($lines['bottom'], $preview['top']);
+            // The email itself is in view beside the boxes, above the "Show it as" choice.
+            $browser->assertVisible('.email-preview .mail');
+            $this->assertLessThan(900, $browser->script("return document.querySelector('.email-preview .mail').getBoundingClientRect().top;")[0]);
             $browser->screenshot('email-editor-1280');
 
             // On a phone it waits for Preview, then shows above the boxes.
