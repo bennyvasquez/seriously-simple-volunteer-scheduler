@@ -30,12 +30,6 @@ class EmailCatalogTest extends TestCase
         return array_keys(Arr::dot(Lang::get('emails', [], 'en')));
     }
 
-    /** The "Every email" lines are the four Laravel adds, which Task 5 puts in lang/en/emails.php. Until then they're exempt from the wording file checks. */
-    private function isEveryEmail(string $key): bool
-    {
-        return str_starts_with($key, 'every_email.');
-    }
-
     /** @return list<string> */
     private function catalogLineKeys(): array
     {
@@ -65,10 +59,6 @@ class EmailCatalogTest extends TestCase
         $wording = $this->wordingKeys();
 
         foreach ($this->catalogLineKeys() as $key) {
-            if ($this->isEveryEmail($key)) {
-                continue;
-            }
-
             $this->assertContains($key, $wording, "[{$key}] is in the catalog but not in lang/en/emails.php.");
         }
     }
@@ -77,10 +67,6 @@ class EmailCatalogTest extends TestCase
     {
         foreach (EmailCatalog::all() as $email) {
             foreach ($email->lines as $line) {
-                if ($this->isEveryEmail($line['key'])) {
-                    continue;
-                }
-
                 foreach (EmailText::allowedVariables($line['key']) as $variable) {
                     $this->assertArrayHasKey($variable, $email->examples, "{{$variable}} in [{$line['key']}] needs an example in the {$email->title} email.");
                     $this->assertNotSame('', $email->examples[$variable]);
@@ -113,16 +99,26 @@ class EmailCatalogTest extends TestCase
                 $this->assertSame([], array_diff(array_keys($version['examples']), array_keys($email->examples)), "{$email->title}, version {$name}, overrides a variable the email doesn't have.");
 
                 foreach ($version['lines'] as $key) {
-                    if ($this->isEveryEmail($key)) {
-                        continue;
-                    }
-
                     foreach (EmailText::allowedVariables($key) as $variable) {
                         $this->assertArrayHasKey($variable, $email->examples, "{{$variable}} in [{$key}] needs an example in the {$email->title} email.");
                     }
                 }
             }
         }
+    }
+
+    public function test_a_lines_own_examples_are_for_variables_that_line_uses(): void
+    {
+        $found = false;
+
+        foreach (EmailCatalog::all() as $email) {
+            foreach ($email->lines as $line) {
+                $found = $found || $line['examples'] !== [];
+                $this->assertSame([], array_diff(array_keys($line['examples']), EmailText::allowedVariables($line['key'])), "[{$line['key']}] has an example for a word it doesn't use.");
+            }
+        }
+
+        $this->assertTrue($found, 'No line has its own examples, so this check isn\'t looking at anything.');
     }
 
     public function test_every_email_class_is_in_the_catalog(): void

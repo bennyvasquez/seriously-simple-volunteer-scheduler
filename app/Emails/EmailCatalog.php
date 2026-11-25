@@ -8,7 +8,7 @@ use App\Notifications\EmailText;
 /**
  * Describes every email for the editor screens: its title and group, a sentence saying when it's sent, each line of wording with a short label and when it shows, example values for every variable, and the versions the preview can show. The wording itself stays in lang/en/emails.php (a test checks every line there is described here exactly once). The labels and "shows when" sentences are written for coordinators, from the comments above each line in that file.
  *
- * The "Every email" entry (`every_email`) covers four lines Laravel adds to every email. Its lines live under `every_email.` keys that are added to lang/en/emails.php when the editor applies them; until then they aren't in that file.
+ * The "Every email" entry (`every_email`) covers the four lines Laravel's mail layout adds to every email. Their defaults are under `every_email.` in lang/en/emails.php like any other line, and App\Notifications\LaravelMailLines applies the edits when an email is sent.
  */
 final class EmailCatalog
 {
@@ -77,6 +77,15 @@ final class EmailCatalog
         'emails_page_link' => 'Emails page',
     ];
 
+    /** Emails whose title reads as a name in a sentence ("Changed the shift reminder's opening"). Every other email is named by its title in quotes ("the \"Shift changed\" email"), since many titles are sentences. */
+    private const NOUNS = [
+        'shift_reminder' => 'shift reminder',
+        'cover_request' => 'cover request',
+        'invitation' => 'invitation',
+        'login_link' => 'login link email',
+        'two_factor_code' => 'login code email',
+    ];
+
     /** @var list<CatalogEmail>|null */
     private static ?array $all = null;
 
@@ -108,6 +117,32 @@ final class EmailCatalog
         return null;
     }
 
+    /**
+     * How the change log names one line: "the shift reminder's opening", "the \"Put on a shift\" email's subject", "every email's sign-off". A line no email lists any more (a later release removed it) is "a line of" its email, or of "an email" when the email is gone too.
+     */
+    public static function lineName(string $key): string
+    {
+        $emailKey = explode('.', $key)[0];
+        $email = self::find($emailKey);
+
+        if ($email === null) {
+            return 'a line of an email';
+        }
+
+        $whose = match (true) {
+            $emailKey === 'every_email' => 'every email\'s',
+            isset(self::NOUNS[$emailKey]) => 'the '.self::NOUNS[$emailKey].'\'s',
+            default => 'the "'.$email->title.'" email\'s',
+        };
+        $line = collect($email->lines)->firstWhere('key', $key);
+
+        if ($line === null) {
+            return 'a line of '.substr($whose, 0, -2);
+        }
+
+        return $whose.' '.lcfirst($line['label']);
+    }
+
     private static function reminderWhen(): string
     {
         // With no organization yet (a fresh install), show the default of 24 hours.
@@ -124,9 +159,9 @@ final class EmailCatalog
     }
 
     /**
-     * One email. `$lines` maps a line's key inside the email to [label, when it shows or null] and, for a line that's only used inside other lines (a phrase such as "Front desk shift on Thursday, October 22, 6:30 to 9:30pm"), a third element, true. `$versions` maps a name to the line keys it shows (inside the email, or a full key for a line that another email's lines add, such as the back on lines in a cancelled email), or to a list holding those keys and then the example overrides; with none given, a "Main" version shows every line. Lines used only inside other lines are left out of every version.
+     * One email. `$lines` maps a line's key inside the email to [label, when it shows or null] and, for a line that's only used inside other lines (a phrase such as "Front desk shift on Thursday, October 22, 6:30 to 9:30pm"), a third element, true. A line can also have `'examples' => [variable => value]`, its own example values where the email's would read wrong in that line (the reminder's shadows aren't the people on the shift); a version's examples still win over them. `$versions` maps a name to the line keys it shows (inside the email, or a full key for a line that another email's lines add, such as the back on lines in a cancelled email), or to a list holding those keys and then the example overrides; with none given, a "Main" version shows every line. Lines used only inside other lines are left out of every version.
      *
-     * @param  array<string, array{0: string, 1: ?string, 2?: bool}>  $lines
+     * @param  array<string, array{0: string, 1: ?string, 2?: bool, examples?: array<string, string>}>  $lines
      * @param  array<string, string>  $examples
      * @param  array<string, list<string>|array{0: list<string>, 1?: array<string, string>}>  $versions
      */
@@ -135,7 +170,7 @@ final class EmailCatalog
         $catalogLines = [];
         $inside = [];
         foreach ($lines as $suffix => $line) {
-            $catalogLines[] = ['key' => "{$key}.{$suffix}", 'label' => $line[0], 'when' => $line[1], 'inside' => $line[2] ?? false];
+            $catalogLines[] = ['key' => "{$key}.{$suffix}", 'label' => $line[0], 'when' => $line[1], 'inside' => $line[2] ?? false, 'examples' => $line['examples'] ?? []];
             if ($line[2] ?? false) {
                 $inside[] = $suffix;
             }
@@ -151,11 +186,9 @@ final class EmailCatalog
 
         // The variables of the email's own lines and of any other email's lines a version adds.
         $used = [];
-        if ($key !== 'every_email') {
-            $keys = array_merge(array_column($catalogLines, 'key'), ...array_column($built, 'lines'));
-            foreach (array_unique($keys) as $lineKey) {
-                array_push($used, ...EmailText::allowedVariables($lineKey));
-            }
+        $keys = array_merge(array_column($catalogLines, 'key'), ...array_column($built, 'lines'));
+        foreach (array_unique($keys) as $lineKey) {
+            array_push($used, ...EmailText::allowedVariables($lineKey));
         }
 
         $merged = $examples + self::EXAMPLES;
@@ -189,7 +222,7 @@ final class EmailCatalog
                 'nobody_to_shadow' => ['Nobody to shadow', 'Shows for a shadow when only shadows are on the shift'],
                 'nobody_else' => ['No other regulars on the shift', 'Shows when no other regular is on the shift, even if shadows are (they\'re listed separately)'],
                 'also_on' => ['Who else is on the shift', 'Shows when other regulars are on the shift'],
-                'shadowing' => ['Who is shadowing', 'Shows when shadows are on the shift'],
+                'shadowing' => ['Who is shadowing', 'Shows when shadows are on the shift', 'examples' => ['names' => 'Casey M.']],
                 'time_changed' => ['Unanswered time change', 'Shows when the person hasn\'t answered a time change for this shift'],
                 'still_works' => ['First button of the time change', 'Shows when the person hasn\'t answered a time change for this shift'],
                 'cant' => ['Second button of the time change', 'Shows when the person hasn\'t answered a time change for this shift'],
@@ -584,9 +617,9 @@ final class EmailCatalog
             self::email('every_email', 'Every email', self::EVERY, 'Added by Laravel to emails that need it: the heading when an email has no greeting, the sign-off, the line under each button, and the footer. These four lines read the same in every email.', [
                 'heading' => ['Heading when an email has no greeting', 'Shows at the top of an email that has no greeting of its own. The default is "Hello!".'],
                 'sign_off' => ['Sign-off', 'Shows at the end of every email. The default is "Regards,".'],
-                'button_trouble' => ['Line under each button', 'Shows under the button in every email that has one, with the button\'s name and address.'],
-                'footer' => ['Footer', 'Shows at the bottom of every email. The default is "All rights reserved.".'],
-            ], [], [
+                'button_trouble' => ['Line under each button', 'Shows under the button in every email that has one. The button\'s address always comes right after it.'],
+                'footer' => ['Footer', 'Shows at the bottom of every email, after the year and the organization\'s name. The default is "All rights reserved.". It can\'t use [ ] * _ ` ~ | \\ < or >.'],
+            ], ['button' => 'Log in'], [
                 'Main' => [['heading', 'sign_off', 'button_trouble', 'footer']],
             ]),
         ];

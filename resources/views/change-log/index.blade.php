@@ -1,4 +1,4 @@
-{{-- Screens 28 and 29: the change log. The same markup serves the wide screen and the phone; the CSS stacks the time above the sentence. --}}
+{{-- Screens 28, 29 and 64: the change log. The same markup serves the wide screen and the phone; the CSS stacks the time above the sentence. The Email filter shows once the Emails kind is picked (or an email is), so it works without JavaScript after pressing Show changes. An email edit shows the text before and after, escaped, exactly as it was typed. --}}
 @extends('layouts.app')
 
 @section('title', 'Change log')
@@ -8,7 +8,7 @@
 <nav aria-label="Breadcrumb" class="muted"><a href="{{ route('calendar.week') }}">Calendar</a> / Change log</nav>
 <div>
 <h1>Change log</h1>
-<p class="muted">Every change to accounts, roles and the schedule, newest first. Nothing here can be edited.</p>
+<p class="muted">Every change to accounts, roles, the schedule and the wording of emails, newest first. Nothing here can be edited.</p>
 </div>
 
 <form method="GET" action="{{ route('change-log.index') }}" class="log-filters">
@@ -26,6 +26,14 @@
 <option value="{{ $key }}" @selected($filters['kind'] === $key)>{{ $label }}</option>
 @endforeach
 </select></label>
+@if ($filters['kind'] === 'emails' || $filters['email'] !== '')
+<label class="field">Email<select name="email">
+<option value="">Every email we send</option>
+@foreach ($emails as $key => $title)
+<option value="{{ $key }}" @selected($filters['email'] === $key)>{{ $title }}</option>
+@endforeach
+</select></label>
+@endif
 <label class="field">From<input type="date" name="from" value="{{ $filters['from'] }}"></label>
 <label class="field">To<input type="date" name="to" value="{{ $filters['to'] }}"></label>
 <button type="submit" class="btn btn-primary">Show changes</button>
@@ -43,7 +51,11 @@
 @foreach ($entries as $entry)
 <div class="log-entry">
 <div class="log-when">{{ $entry['time'] }}<br>by @if ($entry['actor']['id'])<a href="{{ route('people.show', $entry['actor']['id']) }}">{{ $entry['actor']['label'] }}</a>@else{{ $entry['actor']['label'] }}@endif</div>
-<div>{{ $entry['sentence'] }}@if ($entry['changes'])<div class="log-change">{{ $entry['changes'] }}</div>@endif</div>
+<div>{{ $entry['sentence'] }}@if ($entry['changes'])<div class="log-change">{{ $entry['changes'] }}</div>@endif
+@if ($entry['text'])
+<div class="log-change log-text"><p><b>Before:</b> <span class="log-old">{{ $entry['text']['before'] }}</span></p><p><b>After:</b> <span class="log-new">{{ $entry['text']['after'] }}</span></p></div>
+@endif
+</div>
 </div>
 @endforeach
 @endforeach

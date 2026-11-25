@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Accounts\GrantRole;
+use App\Actions\Emails\SaveEmailWording;
 use App\Actions\Scheduling\AddRegular;
 use App\Actions\Scheduling\CreateOneTimeShift;
 use App\Actions\Scheduling\GenerateShifts;
@@ -25,6 +26,7 @@ use App\Notifications\EmailChangeConfirmationNotification;
 use App\Notifications\EmailChangedNotification;
 use App\Notifications\EmailText;
 use App\Notifications\InvitationNotification;
+use App\Notifications\LaravelMailLines;
 use App\Notifications\LoginLinkNotification;
 use App\Notifications\MadeRegularNotification;
 use App\Notifications\MovedBackNotification;
@@ -54,12 +56,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Markdown;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Translation\Translator;
 use InvalidArgumentException;
+use RuntimeException;
 use Tests\TestCase;
 
 class EmailTextTest extends TestCase
@@ -293,7 +297,7 @@ class EmailTextTest extends TestCase
         // Every email class has an example: a new one fails here until it's added to the list above.
         $classes = collect(File::files(app_path('Notifications')))
             ->map(fn ($file) => 'App\\Notifications\\'.$file->getBasename('.php'))
-            ->reject(fn (string $class) => in_array($class, [PlainText::class, EmailText::class], true))
+            ->reject(fn (string $class) => in_array($class, [PlainText::class, EmailText::class, LaravelMailLines::class], true))
             ->sort()->values()->all();
         $covered = collect($examples)->map(fn (array $example) => $example[0]::class)->unique()->sort()->values()->all();
         $this->assertSame($classes, $covered, 'Every email class needs an example in emailExamples().');
@@ -561,5 +565,124 @@ class EmailTextTest extends TestCase
             }
             $this->assertDoesNotMatchRegularExpression('/\{[a-z][a-z0-9_]*\}/', $mail['html'].$mail['text'].$mail['subject'], "{$label}: a variable was left unfilled.");
         }
+    }
+
+    /** The login link email has no greeting and one button, so it shows all four lines Laravel adds. @return array{subject: string, html: string, text: string} */
+    private function loginLinkMail(): array
+    {
+        $sam = User::query()->firstWhere('email', 'sam@example.org') ?? User::factory()->create(['name' => 'Sam Example', 'email' => 'sam@example.org']);
+
+        return $this->sentMail(new LoginLinkNotification('https://example.org/login/example-token'), $sam);
+    }
+
+    public function test_the_every_email_defaults_are_laravels_own_lines(): void
+    {
+        app('translator')->setLoaded([]);
+
+        $this->assertSame('Hello!', EmailText::defaultText('every_email.heading'));
+        $this->assertSame('Regards,', EmailText::defaultText('every_email.sign_off'));
+        $this->assertSame('All rights reserved.', EmailText::defaultText('every_email.footer'));
+        foreach (LaravelMailLines::KEYS as $laravel => $key) {
+            $this->assertSame($laravel, str_replace('{button}', ':actionText', EmailText::defaultText($key)), $key);
+        }
+
+        // Unedited, an email reads exactly as Laravel writes it.
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $mail = $this->loginLinkMail();
+        $this->assertStringContainsString('Hello!</h1>', $mail['html']);
+        $this->assertStringContainsString("Regards,<br>\nExample Makers", $mail['html']);
+        $this->assertStringContainsString('If you\'re having trouble clicking the "Log in" button, copy and paste the URL below'."\n".'into your web browser:', $mail['html']);
+        $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['html']);
+    }
+
+    public function test_editing_the_sign_off_changes_it_in_a_sent_email_with_the_name_still_under_it(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $this->edit(['every_email.sign_off' => 'Thanks for all you do, <b>truly</b> [x](https://example.org) *team*,']);
+
+        $mail = $this->loginLinkMail();
+
+        $this->assertStringContainsString('Thanks for all you do, &lt;b&gt;truly&lt;/b&gt; [x](https://example.org) *team*,<br>'."\n".'Example Makers', $mail['html']);
+        $this->assertStringNotContainsString('Regards,', $mail['html']);
+        $this->assertStringNotContainsString('<b>truly', $mail['html']);
+        $this->assertStringNotContainsString('<em>', $mail['html']);
+        $this->assertStringNotContainsString('<a href="https://example.org"', $mail['html']);
+        // The plain-text part takes the <br> out, as it always has.
+        $this->assertStringContainsString("Thanks for all you do, <b>truly</b> [x](https://example.org) *team*,\nExample Makers", $mail['text']);
+        $this->assertStringNotContainsString('Regards,', $mail['text']);
+    }
+
+    public function test_the_edited_button_line_keeps_the_buttons_name_and_address(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $this->edit(['every_email.button_trouble' => 'Can\'t press "{button}"? Copy this address: (not :actionText or :ACTIONTEXT)']);
+
+        $mail = $this->loginLinkMail();
+
+        // A typed :actionText stays as typed rather than becoming the button's name.
+        $this->assertStringContainsString('Can\'t press "Log in"? Copy this address: (not :actionText or :ACTIONTEXT)', $mail['html']);
+        $this->assertStringContainsString('href="https://example.org/login/example-token"', $mail['html']);
+        $this->assertStringContainsString('[https://example.org/login/example-token](https://example.org/login/example-token)', $mail['text']);
+        $this->assertStringContainsString('Can\'t press "Log in"? Copy this address: (not :actionText or :ACTIONTEXT)', $mail['text']);
+        $this->assertStringNotContainsString('having trouble', $mail['html'].$mail['text']);
+    }
+
+    public function test_editing_the_heading_and_footer_changes_them_as_plain_text(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $this->edit(['every_email.heading' => 'Hi <i>there</i> *friend*!', 'every_email.footer' => 'Thanks for volunteering & see you soon!']);
+
+        $mail = $this->loginLinkMail();
+
+        $this->assertStringContainsString('Hi &lt;i&gt;there&lt;/i&gt; *friend*!</h1>', $mail['html']);
+        $this->assertStringContainsString('Example Makers. Thanks for volunteering &amp; see you soon!', $mail['html']);
+        $this->assertStringNotContainsString('Hello!', $mail['html']);
+        $this->assertStringNotContainsString('All rights reserved.', $mail['html']);
+        $this->assertStringContainsString('Hi <i>there</i> *friend*!', $mail['text']);
+        $this->assertStringContainsString('Example Makers. Thanks for volunteering & see you soon!', $mail['text']);
+    }
+
+    public function test_a_stored_footer_with_formatting_marks_sends_the_default_and_is_reported(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        Exceptions::fake();
+        // The footer goes through Laravel's own escaping, so it can't hold the marks Markdown reads; the editor refuses them, and a row put in by hand is ignored.
+        $this->edit(['every_email.footer' => 'Pay [here](//example.org)']);
+
+        $mail = $this->loginLinkMail();
+
+        $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['html']);
+        $this->assertStringNotContainsString('Pay', $mail['html'].$mail['text']);
+        Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'every_email.footer'));
+    }
+
+    public function test_putting_a_line_back_reaches_the_next_email(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+        $coordinator = User::factory()->create(['email' => 'chris@example.org']);
+        app(SaveEmailWording::class)->handle($coordinator, ['every_email.sign_off' => 'Cheers,', 'every_email.heading' => 'Hi!']);
+
+        $this->assertStringContainsString("Cheers,<br>\nExample Makers", $this->loginLinkMail()['html']);
+
+        app(SaveEmailWording::class)->handle($coordinator, ['every_email.sign_off' => null, 'every_email.heading' => null]);
+
+        $mail = $this->loginLinkMail();
+        $this->assertStringContainsString("Regards,<br>\nExample Makers", $mail['html']);
+        $this->assertStringContainsString('Hello!</h1>', $mail['html']);
+        $this->assertStringNotContainsString('Cheers', $mail['html'].$mail['text']);
+    }
+
+    public function test_the_lines_laravel_adds_are_left_alone_outside_those_four(): void
+    {
+        app('translator')->setLoaded([]);
+        $this->edit(['every_email.sign_off' => 'Cheers,']);
+
+        $this->assertSame('Not a line we know', __('Not a line we know'));
+        $this->assertSame('Cheers,', (string) __('Regards,'));
     }
 }

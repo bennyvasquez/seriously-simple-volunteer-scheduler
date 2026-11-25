@@ -20,19 +20,9 @@
 <h2>When it's sent</h2>
 <p>{{ $email->when }}</p>
 @if ($email->key === 'shift_reminder' && $isAdmin)<p><a href="{{ route('settings') }}">Change the timing in Settings</a></p>@endif
+@can('view-change-log')<p><a href="{{ route('change-log.index', ['kind' => 'emails', 'email' => $email->key]) }}">See who changed this email and when</a></p>@endcan
 </section>
 
-@if ($readOnly)
-<section class="panel">
-<h2>Its lines</h2>
-<p>These lines can't be changed here yet. They're coming in a later update.</p>
-<ul class="plain-list">
-@foreach ($email->lines as $line)
-<li><b>{{ $line['label'] }}</b>@if ($line['when'])<br><span class="muted">{{ $line['when'] }}</span>@endif</li>
-@endforeach
-</ul>
-</section>
-@else
 <div class="email-layout">
 <div class="email-lines">
 <p class="muted">Each box is one line of the email. The line under each name says when that line shows: SSVS decides that, and you decide the words. @if ($sampleWord !== null)Words in braces, like <code class="var">{{ '{'.$sampleWord.'}' }}</code>, are filled in for each person.@endif</p>
@@ -74,5 +64,4 @@
 
 @include('emails._preview')
 </div>
-@endif
 @endsection

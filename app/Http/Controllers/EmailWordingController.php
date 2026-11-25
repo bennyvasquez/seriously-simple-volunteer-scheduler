@@ -163,14 +163,13 @@ class EmailWordingController extends Controller
 
         $previewing = $version !== null;
         $version ??= array_key_first($email->versions);
-        $preview = $lines !== [] && $errors === null ? EmailPreview::render($email, $version, $edits ?? $stored) : null;
+        $preview = $errors === null ? EmailPreview::render($email, $version, $edits ?? $stored) : null;
 
         $view = view('emails.edit', [
             'email' => $email,
             'lines' => array_values(array_filter($lines, fn (array $line) => ! $line['inside'])),
             'insideLines' => array_values(array_filter($lines, fn (array $line) => $line['inside'])),
-            'readOnly' => $lines === [],
-            'words' => $lines === [] ? [] : EmailPreview::words($email),
+            'words' => EmailPreview::words($email),
             'sampleWord' => array_key_exists('first_name', $email->examples) ? 'first_name' : array_key_first($email->examples),
             'version' => $version,
             'previewing' => $previewing,

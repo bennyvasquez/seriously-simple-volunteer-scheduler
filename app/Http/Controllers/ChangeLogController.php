@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\ChangeLog\Describe;
+use App\Emails\EmailCatalog;
 use App\Models\Area;
 use App\Models\AreaClosure;
 use App\Models\ChangeLogEntry;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
 /**
- * The change log (screens 28 and 29): every change, newest first, for coordinators and admins. Filters are who made it, who it's about, the kind of change and dates in the organization's time zone, all in the query string so a link keeps them (the person page links here with `about`). A filter value that doesn't make sense is ignored rather than refused.
+ * The change log (screens 28, 29 and 64): every change, newest first, for coordinators and admins. Filters are who made it, who it's about, the kind of change, one email (wireframe 64) and dates in the organization's time zone, all in the query string so a link keeps them (the person page links here with `about`, and each email's editor page with `email`). A filter value that doesn't make sense is ignored rather than refused.
  */
 class ChangeLogController extends Controller
 {
@@ -57,6 +58,11 @@ class ChangeLogController extends Controller
             $query->ofAction(...self::KINDS[$filters['kind']][1]);
         }
 
+        // One email's history goes by the line keys in details, not the row: putting a line back deletes its row, and a later edit makes a new one.
+        if ($filters['email'] !== '') {
+            $query->ofAction(...self::KINDS['emails'][1])->where('details->key', 'like', addcslashes($filters['email'], '%_\\').'.%');
+        }
+
         $query->between($filters['fromAt'], $filters['toAt']);
 
         $page = $query->orderByDesc('created_at')->orderByDesc('id')->paginate(self::PER_PAGE)->withQueryString();
@@ -82,6 +88,7 @@ class ChangeLogController extends Controller
                 'actor' => $this->actorFor($entry, $seeable),
                 'sentence' => Describe::entry($entry, $viewer, $areas, $visibleIds),
                 'changes' => Describe::changes($entry),
+                'text' => Describe::textChange($entry),
             ])
             ->groupBy('date');
 
@@ -90,13 +97,14 @@ class ChangeLogController extends Controller
             'page' => $page,
             'filters' => $filters,
             'kinds' => collect(self::KINDS)->map(fn (array $kind) => $kind[0]),
+            'emails' => collect(EmailCatalog::all())->mapWithKeys(fn ($email) => [$email->key => $email->title]),
             'makers' => User::query()->whereIn('id', ChangeLogEntry::query()->whereNotNull('actor_id')->select('actor_id'))->orderBy('name')->get(['id', 'name']),
             'summary' => $this->summary($page->total(), $filters),
         ]);
     }
 
     /**
-     * @return array{by: string, about: string, kind: string, from: string, to: string, fromAt: ?CarbonImmutable, toAt: ?CarbonImmutable, fromDay: ?CarbonImmutable, toDay: ?CarbonImmutable}
+     * @return array{by: string, about: string, kind: string, email: string, from: string, to: string, fromAt: ?CarbonImmutable, toAt: ?CarbonImmutable, fromDay: ?CarbonImmutable, toDay: ?CarbonImmutable}
      */
     private function filters(Request $request, string $timezone): array
     {
@@ -104,6 +112,7 @@ class ChangeLogController extends Controller
             'by' => ['nullable', 'string', 'regex:/^(system|\d{1,18})$/'],
             'about' => ['nullable', 'string', 'max:255'],
             'kind' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::KINDS))],
+            'email' => ['nullable', 'string', 'in:'.implode(',', array_map(fn ($email) => $email->key, EmailCatalog::all()))],
             'from' => ['nullable', 'string', 'date_format:Y-m-d'],
             'to' => ['nullable', 'string', 'date_format:Y-m-d'],
         ])->valid();
@@ -116,6 +125,7 @@ class ChangeLogController extends Controller
             'by' => $input['by'] ?? '',
             'about' => trim($input['about'] ?? ''),
             'kind' => $input['kind'] ?? '',
+            'email' => $input['email'] ?? '',
             'from' => $input['from'] ?? '',
             'to' => $input['to'] ?? '',
             'fromAt' => $from?->startOfDay()->utc(),
@@ -154,8 +164,13 @@ class ChangeLogController extends Controller
             $words .= ' about '.$filters['about'];
         }
 
-        if ($filters['kind'] !== '') {
+        // "in Emails" goes without saying when the changes are to one email.
+        if ($filters['kind'] !== '' && ! ($filters['kind'] === 'emails' && $filters['email'] !== '')) {
             $words .= ' in '.self::KINDS[$filters['kind']][0];
+        }
+
+        if ($filters['email'] !== '') {
+            $words .= $filters['email'] === 'every_email' ? ' to the lines in every email' : ' to the "'.EmailCatalog::find($filters['email'])?->title.'" email';
         }
 
         $format = fn (CarbonImmutable $date) => $date->format('M j');

@@ -9,7 +9,7 @@ use Tests\Browser\Concerns\ChecksAccessibility;
 use Tests\DuskTestCase;
 
 /**
- * The email editor (wireframes 61 to 63) in a real browser: a coordinator changes the reminder's opening, previews it, saves it, sees "Edited" on the list and puts it back. It also checks where the preview sits (beside the boxes on a computer, above them on a phone) and runs the accessibility checks at both widths.
+ * The email editor (wireframes 61 to 63) in a real browser: a coordinator changes the reminder's opening, previews it, saves it, sees "Edited" on the list, puts it back and reads the email's history in the change log (wireframe 64). It also checks where the preview sits (beside the boxes on a computer, above them on a phone) and runs the accessibility checks at both widths.
  */
 class EmailEditorTest extends DuskTestCase
 {
@@ -52,6 +52,16 @@ class EmailEditorTest extends DuskTestCase
                 ->assertInputValue(self::OPENING, 'You\'re on {area} {date}, {time} ({timezone}).')
                 ->assertInputValue('#line-shift_reminder-greeting', 'Hello {first_name},')
                 ->assertDontSee('Back to the default');
+
+            // The email's history (wireframe 64), with the text before and after, on a computer and a phone.
+            $browser->clickLink('See who changed this email and when')
+                ->waitForText('Changed the shift reminder\'s opening')
+                ->assertSee('Put the shift reminder\'s opening back to the default')
+                ->assertSeeIn('.log-list', 'After: Just a heads up: you\'re on {area} {date}, {time} ({timezone}).')
+                ->assertSelected('email', 'shift_reminder');
+            $this->assertAccessible($browser);
+            $browser->resize(390, 844)->refresh()->waitForText('Changed the shift reminder\'s opening');
+            $this->assertAccessible($browser);
         });
     }
 
@@ -117,7 +127,7 @@ class EmailEditorTest extends DuskTestCase
                 $browser->visit(route('emails.edit', 'cover_urgent'))->scrollIntoView('.email-actions button[formaction]')->press('Preview')->waitForText('This preview uses your unsaved changes');
                 $this->assertAccessible($browser);
 
-                $browser->visit(route('emails.edit', 'every_email'))->waitForText('These lines can\'t be changed here yet.');
+                $browser->visit(route('emails.edit', 'every_email'))->waitForText('Line under each button');
                 $this->assertAccessible($browser);
             }
         });

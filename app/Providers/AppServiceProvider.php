@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
+use App\Notifications\LaravelMailLines;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Illuminate\Translation\Translator;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Dusk\DuskServiceProvider;
 use Laravel\Fortify\Events\RecoveryCodeReplaced;
@@ -53,6 +55,9 @@ class AppServiceProvider extends ServiceProvider
             config(['app.name' => $name, 'mail.from.name' => $name]);
             Mail::alwaysFrom((string) config('mail.from.address'), $name);
         });
+
+        // The four lines Laravel's mail layout adds ("Hello!", "Regards,", the line under each button and "All rights reserved.") read the organization's edits, if any, when an email is rendered. Nothing is copied from Laravel's views.
+        $this->callAfterResolving('translator', fn (Translator $translator) => LaravelMailLines::register($translator));
 
         // Long enough to resist guessing; no breached-password lookup, because that calls an outside service on every change.
         Password::defaults(fn () => Password::min(10));

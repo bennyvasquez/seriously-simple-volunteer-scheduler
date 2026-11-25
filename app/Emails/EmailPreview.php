@@ -11,6 +11,8 @@ use Illuminate\Support\HtmlString;
 /**
  * One version of an email as the editor's preview shows it (wireframe 63): the catalog's example people and the given edits in place of the stored ones, with nothing saved or sent. Each line goes through EmailText exactly as the notification sends it, so typed text is escaped the same way, and the rest is turned into HTML the way Laravel's mail template does it: a plain line is escaped (Blade's `{{ }}`), an escaped one is kept, and Markdown turns the result into HTML, so the only links are the ones the code builds. Links point at example.org.
  *
+ * A catalog line can have its own example values (the reminder's shadows are Casey M., not the Jordan P. who's on the shift); they're used for that line only, and a version's examples still win.
+ *
  * Phrases used inside other lines (an `inside` catalog line) fill in the variable they stand for: `x_label` is the text of the `{x_link}` link, `shift_phrase` is `{shift}`, and any other phrase (`how.every_week`, `shift_line`) is the variable named like it. When a version lists both lines of a one-or-several pair, the one its example `{count}` picks is shown. Lines that fill in part of another line (`needs`, `released` and `emailed` in the urgent email) go into that line the way the code puts them there, or make one line together when no line shown uses them.
  */
 final class EmailPreview
@@ -48,7 +50,7 @@ final class EmailPreview
 
             foreach ($keys as $key) {
                 if (EmailText::isSubject($key)) {
-                    $subject = (string) EmailText::line($key, $vars);
+                    $subject = (string) EmailText::line($key, self::lineVariables($email, $key, $vars, $chosen['examples']));
 
                     continue;
                 }
@@ -65,7 +67,8 @@ final class EmailPreview
                     continue;
                 }
 
-                $line = in_array('note', EmailText::allowedVariables($key), true) ? EmailText::plainTextLine($key, $vars) : EmailText::line($key, $vars);
+                $lineVars = self::lineVariables($email, $key, $vars, $chosen['examples']);
+                $line = in_array('note', EmailText::allowedVariables($key), true) ? EmailText::plainTextLine($key, $lineVars) : EmailText::line($key, $lineVars);
                 $blocks[] = self::block(self::kind($email, $key), $line);
             }
 
@@ -160,12 +163,35 @@ final class EmailPreview
     {
         $vars = self::texts($email, $overrides);
 
-        // Built the way the notifications build them: a link to a page, and bold text in Markdown.
         foreach ($vars as $name => $value) {
-            if (str_ends_with($name, '_link')) {
-                $vars[$name] = EmailText::link($value, self::URL);
-            } elseif (str_ends_with($name, '_bold')) {
-                $vars[$name] = '**'.$value.'**';
+            $vars[$name] = self::built($name, $value);
+        }
+
+        return $vars;
+    }
+
+    /** One example value built the way the notifications build it: a link to a page, and bold text in Markdown. */
+    private static function built(string $name, string|HtmlString $value): string|HtmlString
+    {
+        return match (true) {
+            str_ends_with($name, '_link') => EmailText::link($value, self::URL),
+            str_ends_with($name, '_bold') => '**'.$value.'**',
+            default => $value,
+        };
+    }
+
+    /**
+     * The values one line is filled in with: the email's, with the line's own examples over them (the reminder's shadows aren't the people on the shift), except where the version sets the variable itself.
+     *
+     * @param  array<string, string|HtmlString>  $vars
+     * @param  array<string, string>  $versionExamples
+     * @return array<string, string|HtmlString>
+     */
+    private static function lineVariables(CatalogEmail $email, string $key, array $vars, array $versionExamples): array
+    {
+        foreach (collect($email->lines)->firstWhere('key', $key)['examples'] ?? [] as $name => $value) {
+            if (! array_key_exists($name, $versionExamples)) {
+                $vars[$name] = self::built($name, $value);
             }
         }
 

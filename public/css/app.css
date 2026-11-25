@@ -207,6 +207,9 @@ a{color:#1a1a1a}a:hover{color:#000}
 .log-entry{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:14px 16px;border-bottom:1px solid #e3e3e3}
 .log-when{font-size:14px;color:#444}
 .log-change{font-size:14px;color:#333;background:#f7f7f7;border-left:3px solid #b5b5b5;padding:6px 10px;margin-top:6px}
+.log-text{display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.log-old{background:#fde8e8;text-decoration:line-through;padding:0 2px}
+.log-new{background:#e3f4e3;padding:0 2px}
 .log-pager{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 @media (max-width:699px){
 .log-page{padding:16px}

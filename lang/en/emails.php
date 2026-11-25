@@ -692,4 +692,16 @@ return [
         'emails_page_label' => 'Emails page',
     ],
 
+    // The four lines Laravel's mail layout adds to every email. They're applied when an email is sent (App\Notifications\LaravelMailLines), and each default is Laravel's own line exactly, so an email reads the same until someone edits one.
+    'every_email' => [
+        // The heading of an email that has no greeting of its own. No variables.
+        'heading' => 'Hello!',
+        // The sign-off at the end of every email, with the organization's name under it. No variables.
+        'sign_off' => 'Regards,',
+        // The line under the button in every email that has one. {button} is the button's label. The button's address always follows this line, so it can't be moved or left out.
+        'button_trouble' => "If you're having trouble clicking the \"{button}\" button, copy and paste the URL below\ninto your web browser:",
+        // The end of the footer, after the year and the organization's name. No variables. It can't use [ ] * _ ` ~ | \ < or >, because the footer isn't escaped the way other lines are.
+        'footer' => 'All rights reserved.',
+    ],
+
 ];

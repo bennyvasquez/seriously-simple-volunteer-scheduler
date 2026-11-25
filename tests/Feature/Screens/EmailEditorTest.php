@@ -487,10 +487,6 @@ class EmailEditorTest extends TestCase
     public function test_every_version_of_every_email_previews(): void
     {
         foreach (EmailCatalog::all() as $email) {
-            if ($email->key === 'every_email') {
-                continue;
-            }
-
             foreach (array_keys($email->versions) as $version) {
                 $preview = EmailPreview::render($email, $version, []);
                 $this->assertNotSame([], $preview['blocks'], "{$email->key}: {$version}");
@@ -502,14 +498,47 @@ class EmailEditorTest extends TestCase
             ->assertOk()->assertSessionHasNoErrors();
     }
 
-    public function test_the_every_email_page_lists_its_lines_without_boxes_yet(): void
+    public function test_the_every_email_page_edits_the_four_lines_laravel_adds(): void
     {
         $response = $this->actingAs($this->coordinator)->get(route('emails.edit', 'every_email'))->assertOk();
 
         $response->assertSee('<h1>Every email</h1>', false);
-        $response->assertSee('Sign-off');
-        $response->assertSee('These lines can\'t be changed here yet.', false);
-        $response->assertDontSee('name="lines[', false);
+        foreach (['heading', 'sign_off', 'button_trouble', 'footer'] as $line) {
+            $response->assertSee('name="lines[every_email.'.$line.']"', false);
+        }
+        $response->assertSee('{button}');
+        $response->assertDontSee('can\'t be changed here yet');
+
+        $this->actingAs($this->coordinator)->put(route('emails.update', 'every_email'), [
+            'lines' => ['every_email.sign_off' => 'Thanks,'],
+            'loaded' => ['every_email.sign_off' => 'Regards,'],
+        ])->assertRedirect(route('emails.edit', 'every_email'));
+        $this->assertDatabaseHas('email_wordings', ['key' => 'every_email.sign_off', 'text' => 'Thanks,']);
+
+        $this->actingAs($this->coordinator)->post(route('emails.preview', 'every_email'), [
+            'lines' => ['every_email.button_trouble' => 'Trouble with "{button}"? Use the address below.'],
+            'loaded' => [],
+        ])->assertOk()->assertSee('Trouble with &quot;Log in&quot;? Use the address below.', false)->assertSee('Thanks,');
+    }
+
+    public function test_the_footer_refuses_marks_that_would_become_formatting(): void
+    {
+        foreach (['See [our page](example.org)', '*Thanks*', 'snake_case', 'a <b>bold</b> one', 'back\\slash'] as $typed) {
+            $this->actingAs($this->coordinator)->put(route('emails.update', 'every_email'), [
+                'lines' => ['every_email.footer' => $typed],
+                'loaded' => ['every_email.footer' => 'All rights reserved.'],
+            ])->assertSessionHasErrors(['lines.every_email.footer' => 'The footer can\'t use [ ] * _ ` ~ | \\ < or >, because emails would turn them into formatting or links.']);
+        }
+        $this->assertDatabaseCount('email_wordings', 0);
+    }
+
+    public function test_a_line_can_have_its_own_example_people(): void
+    {
+        $response = $this->actingAs($this->coordinator)->post(route('emails.preview', 'shift_reminder'), ['version' => 'Someone on the shift', 'lines' => [], 'loaded' => []])->assertOk();
+
+        $response->assertSee('Also on this shift: Jordan P.');
+        $response->assertSee('Shadowing: Casey M.');
+        $response->assertDontSee('Shadowing: Jordan P.');
     }
 
     public function test_links_to_the_editor_show_for_coordinators_and_admins_only(): void

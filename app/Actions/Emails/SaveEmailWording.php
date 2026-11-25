@@ -6,12 +6,13 @@ use App\Models\ChangeLogEntry;
 use App\Models\EmailWording;
 use App\Models\User;
 use App\Notifications\EmailText;
+use App\Notifications\LaravelMailLines;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Saves edited email lines (spec section 10). `$lines` maps a line key ("login_link.intro") to its new text; only null puts the line back to the default. Every line is checked before anything is stored: the key has to be a line in lang/en/emails.php, the text can't be empty, only spaces or longer than MAX characters, it can't hold a web address ("://" or "www.", since mail apps turn bare addresses into links themselves), every {variable} has to be one the default line has, written exactly, and a link variable (one ending in `_link`) or {note} the default has must stay. A refusal is a ValidationException keyed by line key, and nothing is saved. Text is stored with Unicode format characters (bidi overrides, zero-width characters) removed and its whitespace made single spaces, which is how it's sent.
+ * Saves edited email lines (spec section 10). `$lines` maps a line key ("login_link.intro") to its new text; only null puts the line back to the default. Every line is checked before anything is stored: the key has to be a line in lang/en/emails.php, the text can't be empty, only spaces or longer than MAX characters, it can't hold a web address ("://" or "www.", since mail apps turn bare addresses into links themselves), the footer Laravel adds can't hold the marks Markdown reads (LaravelMailLines::FOOTER_MARKS), every {variable} has to be one the default line has, written exactly, and a link variable (one ending in `_link`) or {note} the default has must stay. A refusal is a ValidationException keyed by line key, and nothing is saved. Text is stored with Unicode format characters (bidi overrides, zero-width characters) removed and its whitespace made single spaces, which is how it's sent.
  *
  * Two first edits of the same line at once can deadlock or collide on the unique key: the transaction is tried up to three times, and a collision that's left is refused with a plain message rather than an error page.
  *
@@ -159,6 +160,10 @@ class SaveEmailWording
 
         if (stripos($text, '://') !== false || stripos($text, 'www.') !== false) {
             return 'Emails can\'t have web addresses typed into them. Links come from SSVS.';
+        }
+
+        if ($key === LaravelMailLines::FOOTER && ($footer = LaravelMailLines::footerProblem($text)) !== null) {
+            return $footer;
         }
 
         $allowed = EmailText::allowedVariables($key);
