@@ -2,12 +2,13 @@
 
 namespace App\Http\Responses;
 
+use App\Support\EmailAddress;
 use Illuminate\Http\JsonResponse;
 use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse;
 use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse;
 
 /**
- * The answer to "send me a password reset link". It is the same for every address, so it never reveals whether an account exists. Fortify's broker also answers "invalid user" or "throttled" only for some addresses, so those get this answer too.
+ * The answer to "send me a password reset link". It is the same for every address, so it never reveals whether an account exists. Fortify's broker also answers "invalid user" or "throttled" only for some addresses, so those get this answer too. The daily limit for an address gives it as well, without sending anything.
  */
 class NeutralPasswordResetLinkResponse implements FailedPasswordResetLinkRequestResponse, SuccessfulPasswordResetLinkRequestResponse
 {
@@ -19,6 +20,6 @@ class NeutralPasswordResetLinkResponse implements FailedPasswordResetLinkRequest
     {
         return $request->wantsJson()
             ? new JsonResponse(['message' => self::MESSAGE], 200)
-            : back()->withInput($request->only('email'))->with('status', self::MESSAGE)->with('reset_link_sent', true);
+            : back()->withInput(EmailAddress::normalizeInput($request))->with('status', self::MESSAGE)->with('reset_link_sent', true);
     }
 }

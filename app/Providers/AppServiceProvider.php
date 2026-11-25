@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Enums\Role;
+use App\Http\Controllers\Auth\LoginLinkController;
+use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
@@ -58,6 +60,14 @@ class AppServiceProvider extends ServiceProvider
         }
     }
 
+    /** The address a sign-in form was sent with, in its one spelling. The throttle middleware runs before the one that normalizes it, so the limits do it themselves. */
+    private static function typedAddress(Request $request): string
+    {
+        $address = $request->input('email');
+
+        return EmailAddress::normalize(is_string($address) ? $address : '');
+    }
+
     /**
      * Bootstrap any application services.
      */
@@ -100,7 +110,23 @@ class AppServiceProvider extends ServiceProvider
         // Only admins change organization settings (spec section 6).
         Gate::define('manage-settings', fn (User $user) => $user->isActive() && $user->hasRole(Role::Admin));
 
-        RateLimiter::for('login-link', fn (Request $request) => Limit::perMinutes(10, 3)->by(EmailAddress::normalize(is_string($request->input('email')) ? $request->input('email') : '').'|'.$request->ip()));
+        // Three login links in 10 minutes for an address from one IP address, and ten a day for an address from anywhere. The daily limit counts requests from other people too, so reaching it answers exactly like a normal request and sends nothing: a different answer would tell the requester that someone else has been asking for that address.
+        RateLimiter::for('login-link', function (Request $request) {
+            $address = self::typedAddress($request);
+
+            return [
+                Limit::perMinutes(10, 3)->by($address.'|'.$request->ip()),
+                Limit::perDay(10)->by('login-link-day|'.$address)->response(fn (Request $request) => LoginLinkController::sentResponse($request)),
+            ];
+        });
+        // Five reset requests a minute from one IP address, and ten a day for an address from anywhere, with the daily limit answering like a normal request for the same reason as above.
+        RateLimiter::for('password-reset-link', fn (Request $request) => [
+            Limit::perMinute(5)->by($request->ip()),
+            Limit::perDay(10)->by('reset-link-day|'.self::typedAddress($request))->response(fn (Request $request) => (new NeutralPasswordResetLinkResponse(''))->toResponse($request)),
+        ]);
+        // Checking a signed-in person's password, to confirm it or to change it, five times in 10 minutes per person.
+        RateLimiter::for('password-confirm', fn (Request $request) => Limit::perMinutes(10, 5)->by('password-confirm|'.$request->user()?->id));
+        RateLimiter::for('password-change', fn (Request $request) => Limit::perMinutes(10, 5)->by('password-change|'.$request->user()?->id));
         RateLimiter::for('login-link-use', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
         RateLimiter::for('password-reset', fn (Request $request) => Limit::perMinute(10)->by('password-reset|'.$request->ip()));
         RateLimiter::for('email-change', fn (Request $request) => Limit::perMinutes(10, 5)->by('email-change|'.$request->user()?->id));

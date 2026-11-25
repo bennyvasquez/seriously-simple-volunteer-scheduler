@@ -10,6 +10,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\LoginLinkNotification;
+use App\Support\EmailAddress;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -58,8 +59,14 @@ class LoginLinkController extends Controller
             defer(fn () => $user->notify(new LoginLinkNotification($issueLoginLink->handle($user, LoginLinkPurpose::SignIn, destination: $destination))));
         }
 
+        return self::sentResponse($request);
+    }
+
+    /** The answer to asking for a link, the same for every address. The daily limit for an address gives this answer too, without sending anything. */
+    public static function sentResponse(Request $request): RedirectResponse
+    {
         // login_link_sent tells the login screen to show "Check your email". Other flows also flash a plain status to that screen.
-        return back()->withInput($request->only('email'))
+        return back()->withInput(EmailAddress::normalizeInput($request))
             ->with('status', 'If that address has an account, we\'ve emailed a link. It works for 15 minutes.')
             ->with('login_link_sent', true);
     }
