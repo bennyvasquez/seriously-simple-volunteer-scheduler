@@ -34,7 +34,7 @@ class InitialPasswordController extends Controller
         }
 
         // Adding a first password needs proof that the person controls the inbox: an emailed-link sign-in in the last few minutes. People in two-factor setup are exempt, because setup is how they get their first password.
-        if (! $user->requiresTwoFactor() && ! $this->signedInByLinkRecently($request)) {
+        if (! $user->requiresTwoFactor() && ! LoginLinkController::signedInByLinkRecently($request)) {
             throw ValidationException::withMessages([
                 'password' => 'To add a password, sign in again with an emailed link, then add it within '.LoginLinkController::RECENT_MINUTES.' minutes.',
             ]);
@@ -65,12 +65,5 @@ class InitialPasswordController extends Controller
         }
 
         return redirect()->route('account.security')->with('status', 'Your password is set.');
-    }
-
-    private function signedInByLinkRecently(Request $request): bool
-    {
-        $at = $request->session()->get('auth.link_login_at');
-
-        return is_int($at) && $at >= now()->subMinutes(LoginLinkController::RECENT_MINUTES)->getTimestamp();
     }
 }

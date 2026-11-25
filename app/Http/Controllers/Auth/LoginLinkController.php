@@ -22,6 +22,27 @@ class LoginLinkController extends Controller
     /** How many minutes after signing in with an emailed link a first password can still be added. */
     public const RECENT_MINUTES = 15;
 
+    /** The session key that remembers who last signed in by an emailed link, and when. */
+    public const LINK_LOGIN_KEY = 'auth.link_login';
+
+    /** Records that this person just proved they control their inbox by opening an emailed link. */
+    public static function rememberLinkLogin(Request $request, User $user): void
+    {
+        $request->session()->put(self::LINK_LOGIN_KEY, ['user' => $user->id, 'at' => now()->getTimestamp()]);
+    }
+
+    /** Whether the signed-in person opened an emailed link in the last few minutes. */
+    public static function signedInByLinkRecently(Request $request): bool
+    {
+        $login = $request->session()->get(self::LINK_LOGIN_KEY);
+
+        return is_array($login)
+            && $request->user() !== null
+            && ($login['user'] ?? null) === $request->user()->id
+            && is_int($login['at'] ?? null)
+            && $login['at'] >= now()->subMinutes(self::RECENT_MINUTES)->getTimestamp();
+    }
+
     /** Emails a login link. The answer is the same whether or not the address has an account. */
     public function request(Request $request, IssueLoginLink $issueLoginLink): RedirectResponse
     {
@@ -91,7 +112,7 @@ class LoginLinkController extends Controller
         }
 
         // A link login replaces any login left pending in this browser, such as someone else's password login abandoned at the code screen, so none of its markers carry over.
-        $request->session()->forget(['login.id', 'login.remember', 'login.via', 'login.email_code_sent']);
+        $request->session()->forget(['login.id', 'login.remember', 'login.via', 'login.email_code_sent', self::LINK_LOGIN_KEY]);
 
         if ($user->hasEnabledTwoFactorAuthentication()) {
             // Hand off to Fortify's two-factor challenge. Remember this was a link login: an emailed code won't count as a second factor.
@@ -102,7 +123,7 @@ class LoginLinkController extends Controller
 
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
-        $request->session()->put('auth.link_login_at', now()->getTimestamp());
+        self::rememberLinkLogin($request, $user);
 
         return redirect()->intended(config('fortify.home'));
     }

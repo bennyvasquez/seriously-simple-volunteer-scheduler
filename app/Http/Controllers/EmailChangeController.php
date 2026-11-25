@@ -6,6 +6,7 @@ use App\Actions\Accounts\ConfirmEmailChange;
 use App\Actions\Accounts\IssueLoginLink;
 use App\Actions\Accounts\RequestEmailChange;
 use App\Enums\LoginLinkPurpose;
+use App\Http\Controllers\Auth\LoginLinkController;
 use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\ConfirmItsYouNotification;
@@ -82,6 +83,9 @@ class EmailChangeController extends Controller
 
         // Its own key, not Laravel's auth.password_confirmed_at: this link stands in for a password only on the email change screens, never on other password-protected routes.
         $request->session()->put(self::IDENTITY_CONFIRMED_AT, time());
+
+        // Opening this link proves control of the inbox just as a sign-in link does.
+        LoginLinkController::rememberLinkLogin($request, $link->user);
 
         return redirect()->route('account.email.edit');
     }

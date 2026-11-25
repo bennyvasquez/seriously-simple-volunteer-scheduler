@@ -48,6 +48,40 @@ class FirstPasswordTest extends TestCase
         $this->assertSame($user->id, $entry->actor_id);
     }
 
+    public function test_a_first_password_can_follow_an_invitation_link(): void
+    {
+        $user = User::factory()->withoutPassword()->create();
+
+        $url = app(IssueLoginLink::class)->handle($user, LoginLinkPurpose::Invitation);
+        $this->post(route('login-link.consume', basename(parse_url($url, PHP_URL_PATH))))->assertRedirect();
+        $this->addPassword($user)->assertRedirect(route('account.show'));
+
+        $this->assertTrue(Hash::check(self::NEW_PASSWORD, $user->fresh()->password));
+    }
+
+    public function test_a_first_password_can_follow_a_confirm_its_you_link(): void
+    {
+        $user = User::factory()->withoutPassword()->create();
+
+        $url = app(IssueLoginLink::class)->handle($user, LoginLinkPurpose::ConfirmIdentity);
+        $this->post('/account/email/identity/'.basename(parse_url($url, PHP_URL_PATH)))->assertRedirect(route('account.email.edit'));
+        $this->addPassword($user)->assertRedirect(route('account.show'));
+
+        $this->assertTrue(Hash::check(self::NEW_PASSWORD, $user->fresh()->password));
+    }
+
+    public function test_another_persons_link_sign_in_in_the_session_does_not_count(): void
+    {
+        $user = User::factory()->withoutPassword()->create();
+        $other = User::factory()->create();
+
+        $this->actingAs($user)->withSession(['auth.link_login' => ['user' => $other->id, 'at' => now()->getTimestamp()]])
+            ->post(route('account.password.set'), ['password' => self::NEW_PASSWORD, 'password_confirmation' => self::NEW_PASSWORD])
+            ->assertSessionHasErrors(['password' => self::REFUSAL]);
+
+        $this->assertNull($user->fresh()->password);
+    }
+
     public function test_a_first_password_long_after_a_link_sign_in_is_refused(): void
     {
         $user = User::factory()->withoutPassword()->create();
