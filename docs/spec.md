@@ -61,7 +61,7 @@ One person can hold several roles. Nobody sees schedule details until a coordina
 
 ### What each role can do
 
-These tables describe what's built today, checked against the code's policies and gates, and tests/Feature/Security/AccessMatrixTest.php checks them: it sends every route's request as every kind of visitor and compares what they get with these tables. Anything that changes who can do what updates them in the same pull request. "Volunteer" means someone who can sign in and holds no role. Admins can do everything coordinators can, but the emails that go to "the Coordinator role" reach an admin only if they also hold that role. Someone who isn't invited yet, or whose account is turned off, can't sign in and gets none of this.
+These tables describe what's built today, checked against the code's policies and gates, and tests/Feature/Security/AccessMatrixTest.php checks them: it sends every route's request as every kind of visitor, compares what they get with these tables, and, where a screen turns someone away with a message instead of refusing the request (taking a shift before being cleared, shadowing once cleared, releasing someone else's shift), checks that who's on the shift didn't change. Anything that changes who can do what updates them in the same pull request. "Volunteer" means someone who can sign in and holds no role. Admins can do everything coordinators can, but the emails that go to "the Coordinator role" reach an admin only if they also hold that role. Someone who isn't invited yet, or whose account is turned off, can't sign in and gets none of this.
 
 **Signing in**
 

@@ -32,7 +32,7 @@ use Tests\TestCase;
  *
  * Each route is one case: the world is seeded once, then each visitor's request runs inside a transaction that's rolled back, so one visitor's change (turning someone off, say) never changes what the next one sees.
  *
- * Outcomes: ok (2xx, or a redirect anywhere but login and account.security), login (a redirect to login), setup (a redirect to account.security), forbidden (403) and missing (404). The outcome is about getting in, not about the flow: `ok` means the route let the visitor through, so a page that explains why they can't take a shift, or a form sent back with validation errors, is `ok`. Those rules belong to the flow tests.
+ * Outcomes: ok (2xx, or a redirect anywhere but login and account.security), refused (the same, but nothing changed: who's on the shift in the address is exactly what it was, checked before the rollback), login (a redirect to login), setup (a redirect to account.security), forbidden (403) and missing (404). `ok` means the route let the visitor through, so a form sent back with validation errors is `ok`. `refused` is for the screens that answer a visitor the spec says can't do something with a page or a redirect that explains why (taking a shift before being cleared, shadowing once cleared, releasing someone else's shift), so the row proves the action didn't happen.
  */
 class AccessMatrixTest extends TestCase
 {
@@ -71,6 +71,9 @@ class AccessMatrixTest extends TestCase
     /** A guest who isn't partway through a password login has nothing to answer here, so goes to log in. */
     private const PENDING_LOGIN = [...self::GUESTS, 'guest' => 'login'];
 
+    /** Something only for the people on the shift, asked about a shift nobody here is on. */
+    private const NOT_THEIRS = [...self::EVERYONE, 'volunteer' => 'refused', 'cleared' => 'refused', 'lead_own' => 'refused', 'lead_other' => 'refused', 'coordinator' => 'refused', 'admin' => 'refused'];
+
     /** Emailed links for changing an address work whether or not this device is logged in (section 13). */
     private const EMAILED_LINK = [...self::EVERYONE, 'guest' => 'ok'];
 
@@ -85,14 +88,17 @@ class AccessMatrixTest extends TestCase
         'POST account.emails' => ['expect' => self::EVERYONE],
         // own_shift has every visitor on it.
         'GET shifts.release' => ['params' => ['shift' => '@own_shift'], 'expect' => self::EVERYONE],
-        'POST shifts.release' => ['params' => ['shift' => '@own_shift'], 'expect' => self::EVERYONE],
+        'POST shifts.release' => ['params' => ['shift' => '@own_shift'], 'data' => ['scope' => 'one'], 'expect' => self::EVERYONE],
+        // Their own shifts only: nobody but regular_a is on shift_a, so everyone else is turned away with "You're not on this shift any more." and the shift keeps its people.
+        'GET shifts.release #someone else\'s shift' => ['params' => ['shift' => '@shift_a'], 'expect' => self::NOT_THEIRS],
+        'POST shifts.release #someone else\'s shift' => ['params' => ['shift' => '@shift_a'], 'data' => ['scope' => 'one'], 'expect' => self::NOT_THEIRS],
         'GET shifts.released' => ['expect' => self::EVERYONE],
-        // Taking needs clearance, and shadowing needs not being cleared, but both pages open for everyone who can sign in and explain the refusal.
+        // Taking needs clearance, and shadowing needs not being cleared. Both pages open for everyone who can sign in and explain a refusal; the forms change nothing for someone the spec turns away.
         'GET shifts.take' => ['params' => ['shift' => '@open_shift'], 'expect' => self::EVERYONE],
-        'POST shifts.take' => ['params' => ['shift' => '@open_shift'], 'expect' => self::EVERYONE],
+        'POST shifts.take' => ['params' => ['shift' => '@open_shift'], 'data' => ['how' => 'date'], 'expect' => [...self::EVERYONE, 'volunteer' => 'refused']],
         'GET shifts.taken' => ['params' => ['shift' => '@open_shift'], 'expect' => self::EVERYONE],
         'GET shifts.shadow' => ['params' => ['shift' => '@shift_a'], 'expect' => self::EVERYONE],
-        'POST shifts.shadow' => ['params' => ['shift' => '@shift_a'], 'expect' => self::EVERYONE],
+        'POST shifts.shadow' => ['params' => ['shift' => '@shift_a'], 'expect' => [...self::EVERYONE, 'cleared' => 'refused', 'lead_own' => 'refused', 'lead_other' => 'refused', 'coordinator' => 'refused', 'admin' => 'refused']],
         // Answering a change: own_batch has a row for every visitor; other_batch belongs to regular_a only.
         'GET changes.show' => ['params' => ['batch' => '@own_batch'], 'expect' => self::EVERYONE],
         'POST changes.confirm' => ['params' => ['batch' => '@own_batch'], 'expect' => self::EVERYONE],
@@ -375,7 +381,8 @@ class AccessMatrixTest extends TestCase
 
         foreach (self::VISITORS as $visitor) {
             $expected = $row['expect'][$visitor];
-            $actual = $this->outcome($this->send($key, $visitor));
+            [$response, $shiftChanged] = $this->send($key, $visitor);
+            $actual = $this->outcome($response, $shiftChanged, $expected);
             $finding = self::FINDINGS["{$key}|{$visitor}"] ?? null;
 
             if ($actual === $expected) {
@@ -400,8 +407,12 @@ class AccessMatrixTest extends TestCase
         }
     }
 
-    /** Sends the row's request as the visitor, inside a transaction that's rolled back, with a fresh session and fresh rate limits. */
-    private function send(string $key, string $visitor): TestResponse
+    /**
+     * Sends the row's request as the visitor, inside a transaction that's rolled back, with a fresh session and fresh rate limits. Also says whether who's on the shift in the address changed, checked before the rollback.
+     *
+     * @return array{0: TestResponse, 1: bool}
+     */
+    private function send(string $key, string $visitor): array
     {
         [$method, $name] = self::methodAndName($key);
         $row = self::ROUTES[$key];
@@ -419,7 +430,12 @@ class AccessMatrixTest extends TestCase
         DB::beginTransaction();
 
         try {
-            return $this->call($method, route($name, $this->resolve($row['params'] ?? [])), $this->resolve($row['data'] ?? []));
+            $params = $this->resolve($row['params'] ?? []);
+            $people = fn () => isset($params['shift']) ? Assignment::query()->where('shift_id', $params['shift'])->orderBy('id')->get(['id', 'user_id', 'type'])->toArray() : [];
+            $before = $people();
+            $response = $this->call($method, route($name, $params), $this->resolve($row['data'] ?? []));
+
+            return [$response, $people() !== $before];
         } finally {
             DB::rollBack();
         }
@@ -435,7 +451,19 @@ class AccessMatrixTest extends TestCase
         }, $value) : $value, $values);
     }
 
-    private function outcome(TestResponse $response): string
+    /** The outcome, where `refused` is an `ok` that changed nothing on the shift; it's only told apart from `ok` when the row expects it. */
+    private function outcome(TestResponse $response, bool $shiftChanged, string $expected): string
+    {
+        $outcome = $this->statusOutcome($response);
+
+        if ($outcome === 'ok' && $expected === 'refused') {
+            return $shiftChanged ? 'ok (the shift\'s people changed)' : 'refused';
+        }
+
+        return $outcome;
+    }
+
+    private function statusOutcome(TestResponse $response): string
     {
         $status = $response->status();
 
