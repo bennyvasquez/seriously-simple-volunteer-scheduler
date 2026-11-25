@@ -135,4 +135,17 @@ class EmailChangeLogTest extends TestCase
             ->assertOk()
             ->assertSee(route('change-log.index', ['kind' => 'emails', 'email' => 'shift_reminder']));
     }
+
+    public function test_the_email_filter_is_ignored_with_another_kind(): void
+    {
+        $this->save(['login_link.intro' => 'Tap the button to log in now.']);
+        ChangeLogEntry::record($this->coordinator, 'user.invited', $this->robin);
+
+        $this->actingAs($this->coordinator)->get(route('change-log.index', ['kind' => 'invitations', 'email' => 'login_link']))
+            ->assertOk()
+            ->assertSee('1 change in Invitations and accounts')
+            ->assertDontSee('to the &quot;Login link&quot; email', false)
+            ->assertDontSee('log in now')
+            ->assertDontSee('name="email"', false);
+    }
 }

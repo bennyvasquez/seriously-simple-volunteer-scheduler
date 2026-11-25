@@ -22,6 +22,8 @@ class SaveEmailWording
 {
     public const MAX = 1000;
 
+    public const WEB_ADDRESS = 'Emails can\'t have web addresses typed into them. Links come from SSVS.';
+
     /** The refusal for a line someone else saved after the editor's page loaded. */
     public const STALE = 'Someone else changed this line while you were editing. Here\'s their version; make your change again.';
 
@@ -148,7 +150,8 @@ class SaveEmailWording
         return $wanted;
     }
 
-    private function problemWith(string $key, string $text): ?string
+    /** The refusal for one line's normalized text, or null when it can be saved. Public so the footer is checked the same way when an email is sent (LaravelMailLines). */
+    public function problemWith(string $key, string $text): ?string
     {
         if ($text === '') {
             return 'Type the wording, or use Back to the default.';
@@ -158,8 +161,8 @@ class SaveEmailWording
             return 'Keep this line to '.self::MAX.' characters or fewer. It has '.mb_strlen($text).'.';
         }
 
-        if (stripos($text, '://') !== false || stripos($text, 'www.') !== false) {
-            return 'Emails can\'t have web addresses typed into them. Links come from SSVS.';
+        if (self::hasWebAddress($text)) {
+            return self::WEB_ADDRESS;
         }
 
         if ($key === LaravelMailLines::FOOTER && ($footer = LaravelMailLines::footerProblem($text)) !== null) {
@@ -194,6 +197,12 @@ class SaveEmailWording
         }
 
         return null;
+    }
+
+    /** Whether the text holds something mail apps would turn into a link: "://" or "www.". */
+    public static function hasWebAddress(string $text): bool
+    {
+        return stripos($text, '://') !== false || stripos($text, 'www.') !== false;
     }
 
     /**

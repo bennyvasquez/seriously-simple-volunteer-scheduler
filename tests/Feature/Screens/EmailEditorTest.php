@@ -11,6 +11,7 @@ use App\Models\ChangeLogEntry;
 use App\Models\EmailWording;
 use App\Models\Organization;
 use App\Models\User;
+use App\Notifications\LaravelMailLines;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
@@ -530,6 +531,30 @@ class EmailEditorTest extends TestCase
             ])->assertSessionHasErrors(['lines.every_email.footer' => 'The footer can\'t use [ ] * _ ` ~ | \\ < or >, because emails would turn them into formatting or links.']);
         }
         $this->assertDatabaseCount('email_wordings', 0);
+    }
+
+    public function test_the_footer_refuses_entities_that_spell_out_an_address(): void
+    {
+        foreach (['https&#58;//evil.example/x', '&#91;x&#93;(https&#58;&#47;&#47;evil.example)', 'www&#46;evil.example', 'Thanks &amp; bye'] as $typed) {
+            $this->actingAs($this->coordinator)->put(route('emails.update', 'every_email'), [
+                'lines' => ['every_email.footer' => $typed],
+                'loaded' => ['every_email.footer' => 'All rights reserved.'],
+            ])->assertSessionHasErrors(['lines.every_email.footer' => 'The footer can\'t contain codes that start with & and end with ;.']);
+        }
+        $this->assertDatabaseCount('email_wordings', 0);
+
+        // A plain ampersand is fine.
+        $this->actingAs($this->coordinator)->put(route('emails.update', 'every_email'), [
+            'lines' => ['every_email.footer' => 'Thanks & see you soon.'],
+            'loaded' => ['every_email.footer' => 'All rights reserved.'],
+        ])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('email_wordings', ['key' => 'every_email.footer', 'text' => 'Thanks & see you soon.']);
+    }
+
+    public function test_the_footer_check_also_reads_decoded_text(): void
+    {
+        $this->assertNull(LaravelMailLines::footerProblem('Thanks & see you soon.'));
+        $this->assertSame(SaveEmailWording::WEB_ADDRESS, app(SaveEmailWording::class)->problemWith('every_email.footer', 'see www.example.org'));
     }
 
     public function test_a_line_can_have_its_own_example_people(): void

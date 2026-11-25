@@ -125,7 +125,8 @@ class ChangeLogController extends Controller
             'by' => $input['by'] ?? '',
             'about' => trim($input['about'] ?? ''),
             'kind' => $input['kind'] ?? '',
-            'email' => $input['email'] ?? '',
+            // One email only makes sense with the Emails kind or no kind; with any other kind it's ignored.
+            'email' => in_array($input['kind'] ?? '', ['', 'emails'], true) ? ($input['email'] ?? '') : '',
             'from' => $input['from'] ?? '',
             'to' => $input['to'] ?? '',
             'fromAt' => $from?->startOfDay()->utc(),

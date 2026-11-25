@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Actions\Emails\SaveEmailWording;
 use App\Models\EmailWording;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\HtmlString;
@@ -13,7 +14,9 @@ use RuntimeException;
  *
  * The edit is read when the email is rendered, from the same per-request copy every other edited line uses (EmailWording::edits(), cleared on every save), so a line put back to the default is never sent again. An edit is escaped the way EmailText escapes any edited line, because Laravel's view echoes these lines without escaping them (`@lang`). In the button line, {button} becomes Laravel's :actionText, and a colon typed in the edit is made an entity, so typed text can't name one of Laravel's placeholders. The address after that line is always Laravel's own.
  *
- * The footer is different: the HTML part puts it through Blade's escaping and then Markdown, so entities would show as typed ("&#42;"), and the plain-text part strips anything that looks like a tag. It's sent as typed instead, which is safe because an edit can't hold the marks Markdown reads there or angle brackets (FOOTER_MARKS): saving refuses them, and a stored footer that has them anyway is reported and Laravel's line goes out.
+ * The footer is different: the HTML part puts it through Blade's escaping and then Markdown, so entities would show as typed ("&#42;"), and the plain-text part strips anything that looks like a tag. It's sent as typed instead, which is safe because an edit can't hold the marks Markdown reads there or angle brackets (FOOTER_MARKS), or anything shaped like an HTML entity (`&#58;`, `&lt;`), since the plain-text part decodes entities after stripping tags and an entity could spell out a web address or a link. Saving refuses all of that, and when an email is sent the stored footer gets the same checks a save runs (SaveEmailWording::problemWith()): one that fails them anyway (put in by hand) is reported and Laravel's line goes out.
+ *
+ * These four keys are for email only. Laravel's mail views echo them raw, so an edit comes back escaped as HTML entities; a screen that showed `{{ __('Hello!') }}` would show those entities. No screen uses them (a test checks).
  */
 final class LaravelMailLines
 {
@@ -48,8 +51,8 @@ final class LaravelMailLines
         if ($key === self::FOOTER) {
             $edit = EmailText::normalize(EmailWording::edits()[$key]);
 
-            if (self::footerProblem($edit) !== null) {
-                report(new RuntimeException("The edited email wording [emails.{$key}] has a mark the footer can't use, so the default line was sent instead."));
+            if (($problem = app(SaveEmailWording::class)->problemWith($key, $edit)) !== null) {
+                report(new RuntimeException("The edited email wording [emails.{$key}] can't be used ({$problem}), so the default line was sent instead."));
 
                 return null;
             }
@@ -64,13 +67,26 @@ final class LaravelMailLines
         return str_replace([':', '{button}'], ['&#58;', ':actionText'], $html);
     }
 
-    /** The refusal for a footer edit with marks Markdown would read, or null when it has none. */
+    /** Something shaped like an HTML entity: `&#58;`, `&#x3a;`, `&lt;`. */
+    private const ENTITY = '/&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i';
+
+    /** The footer's own refusals (the rest of a save's checks run too): anything shaped like an entity, and the marks it can't hold or a web address, in the text as typed or with its entities turned back into characters. Null when it has none. */
     public static function footerProblem(string $text): ?string
     {
+        if (preg_match(self::ENTITY, $text) === 1) {
+            return 'The footer can\'t contain codes that start with & and end with ;.';
+        }
+
+        $decoded = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        if (SaveEmailWording::hasWebAddress($decoded)) {
+            return SaveEmailWording::WEB_ADDRESS;
+        }
+
         $marks = self::FOOTER_MARKS;
 
         foreach ($marks as $mark) {
-            if (str_contains($text, $mark)) {
+            if (str_contains($text, $mark) || str_contains($decoded, $mark)) {
                 $last = array_pop($marks);
 
                 return 'The footer can\'t use '.implode(' ', $marks).' or '.$last.', because emails would turn them into formatting or links.';

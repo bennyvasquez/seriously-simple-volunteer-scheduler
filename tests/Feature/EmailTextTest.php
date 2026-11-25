@@ -685,4 +685,54 @@ class EmailTextTest extends TestCase
         $this->assertSame('Not a line we know', __('Not a line we know'));
         $this->assertSame('Cheers,', (string) __('Regards,'));
     }
+
+    /** @return list<string> Footers that spell out a web address or a link with entities, which the plain-text part would decode. */
+    private static function entityFooters(): array
+    {
+        return ['https&#58;//evil.example/x', '&#91;x&#93;(https&#58;&#47;&#47;evil.example)', 'www&#46;evil.example'];
+    }
+
+    public function test_a_stored_footer_that_spells_out_an_address_with_entities_sends_the_default(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+
+        foreach (self::entityFooters() as $typed) {
+            DB::table('email_wordings')->delete();
+            $this->edit(['every_email.footer' => $typed]);
+            Exceptions::fake();
+
+            $mail = $this->loginLinkMail();
+
+            $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['html'], $typed);
+            $this->assertStringContainsString('Example Makers. All rights reserved.', $mail['text'], $typed);
+            $this->assertStringNotContainsString('evil.example', $mail['html'].$mail['text'], $typed);
+            Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'every_email.footer'));
+        }
+    }
+
+    public function test_a_stored_footer_gets_every_check_a_save_runs(): void
+    {
+        app('translator')->setLoaded([]);
+        Organization::factory()->create(['name' => 'Example Makers']);
+
+        foreach (['See https://example.org', 'Hi {first_name}', 'Thanks &amp; bye'] as $typed) {
+            DB::table('email_wordings')->delete();
+            $this->edit(['every_email.footer' => $typed]);
+            Exceptions::fake();
+
+            $this->assertStringContainsString('Example Makers. All rights reserved.', $this->loginLinkMail()['html'], $typed);
+            Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'every_email.footer'));
+        }
+    }
+
+    public function test_the_lines_laravel_adds_are_only_used_in_emails(): void
+    {
+        // An edit of these comes back escaped for Laravel's mail views, so a screen showing one with {{ }} would show entities.
+        foreach (File::allFiles(resource_path('views')) as $file) {
+            foreach (array_keys(LaravelMailLines::KEYS) as $key) {
+                $this->assertStringNotContainsString("'".strtok($key, "\n")."'", $file->getContents(), "{$file->getRelativePathname()} uses Laravel's mail line [{$key}].");
+            }
+        }
+    }
 }
