@@ -2,6 +2,7 @@
 
 namespace App\Actions\Fortify;
 
+use App\Actions\Accounts\SignOutEverywhere;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,8 @@ use Laravel\Fortify\Contracts\UpdatesUserPasswords;
 class UpdateUserPassword implements UpdatesUserPasswords
 {
     use PasswordValidationRules;
+
+    public function __construct(private SignOutEverywhere $signOutEverywhere) {}
 
     /**
      * Validate and update the user's password.
@@ -36,6 +39,12 @@ class UpdateUserPassword implements UpdatesUserPasswords
             $user->save();
 
             ChangeLogEntry::record($user, 'user.password_changed', $user, changes: $changes);
+
+            // This device stays signed in; every other session and remember-me cookie ends.
+            $this->signOutEverywhere->handle($user, request()->session()->getId());
         });
+
+        // A new session id, so the old one can't be reused.
+        request()->session()->regenerate(true);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Actions\Fortify;
 
+use App\Actions\Accounts\SignOutEverywhere;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use App\Notifications\PasswordChangedNotification;
@@ -14,6 +15,8 @@ use Laravel\Fortify\Contracts\ResetsUserPasswords;
 class ResetUserPassword implements ResetsUserPasswords
 {
     use PasswordValidationRules;
+
+    public function __construct(private SignOutEverywhere $signOutEverywhere) {}
 
     /**
      * Validate and reset the user's forgotten password.
@@ -38,7 +41,13 @@ class ResetUserPassword implements ResetsUserPasswords
             $user->save();
 
             ChangeLogEntry::record($user, 'user.password_reset', $user, changes: $changes);
+
+            // Every device is signed out, including any that had the old password.
+            $this->signOutEverywhere->handle($user);
         });
+
+        // A new session id, so the old one can't be reused.
+        request()->session()->regenerate(true);
 
         // After the response: the new password is already saved, so a mail server failure is logged instead of shown to the person.
         defer(fn () => $user->notify(new PasswordChangedNotification));
