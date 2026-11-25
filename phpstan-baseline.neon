@@ -1,0 +1,2905 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Accounts/ConfirmEmailChange.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Accounts/ConfirmEmailChange.php
+
+		-
+			message: '#^Parameter \#1 \$actor of static method App\\Models\\ChangeLogEntry\:\:record\(\) expects App\\Models\\User\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Accounts/ConfirmEmailChange.php
+
+		-
+			message: '#^Parameter \#1 \$callback of static method Illuminate\\Database\\Connection\:\:transaction\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Actions/Accounts/ConfirmEmailChange.php
+
+		-
+			message: '#^Parameter \#1 \$user of method App\\Actions\\Accounts\\SignOutEverywhere\:\:handle\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Accounts/ConfirmEmailChange.php
+
+		-
+			message: '#^Method App\\Actions\\Accounts\\GrantRole\:\:handle\(\) should return App\\Models\\RoleAssignment but returns Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Actions/Accounts/GrantRole.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Accounts/MoveBackToShadowing.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:weekdayName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Accounts/MoveBackToShadowing.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:currentOrFuture\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Accounts/RemovePerson.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>text" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Actions/Emails/SaveEmailWording.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$cancelled_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$local_date\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$people_needed\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 6
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,string\>\:\:map\(\) expects callable\(non\-falsy\-string, int\)\: string, Closure\(Carbon\\CarbonImmutable\)\: string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Parameter \#2 \$lockedShift of static method App\\Actions\\Scheduling\\PutOnShift\:\:makeRegular\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Parameter \#2 \$lockedShift of static method App\\Cover\\CoverFill\:\:fillForRegularsLocked\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Parameter \#2 \$shift of static method App\\Actions\\Scheduling\\PutOnShift\:\:overlappingShift\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Parameter \#3 \$overlapping of method App\\Actions\\Scheduling\\AddRegular\:\:overDates\(\) expects Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\SlotRegular\>\|null, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\AssignmentType\:\:Regular will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Actions/Scheduling/AddRegular.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/CancelShift.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/ConfirmChangeNotice.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/ConfirmChangeNotice.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Actions/Scheduling/CreateArea.php
+
+		-
+			message: '#^Cannot call method getTimestamp\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/CreateClosure.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between Carbon\\CarbonImmutable\|null and false will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Actions/Scheduling/CreateClosure.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/CreateOneTimeShift.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\SlotRegular\:\:\$before_start\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:notify\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Cannot call method subDay\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Parameter \#1 \$slot of class App\\Notifications\\RegularEndedNotification constructor expects App\\Models\\WeeklySlot, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Parameter \$about of static method App\\Models\\ChangeLogEntry\:\:record\(\) expects App\\Models\\User\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/EndRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/MarkNoShow.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/MarkNoShow.php
+
+		-
+			message: '#^Anonymous function has an unused use \$actor\.$#'
+			identifier: closure.unusedUse
+			count: 1
+			path: app/Actions/Scheduling/MarkNoShow.php
+
+		-
+			message: '#^Anonymous function has an unused use \$noShow\.$#'
+			identifier: closure.unusedUse
+			count: 1
+			path: app/Actions/Scheduling/MarkNoShow.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\AssignmentType\:\:Shadow will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Actions/Scheduling/MarkNoShow.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Actions/Scheduling/MarkNoShow.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/PutOnShift.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/PutOnShift.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/PutOnShift.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/PutOnShift.php
+
+		-
+			message: '#^Parameter \#3 \$shadow of static method App\\Actions\\Scheduling\\PutOnShift\:\:makeRegular\(\) expects App\\Models\\Assignment, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/PutOnShift.php
+
+		-
+			message: '#^Property App\\Models\\Assignment\:\:\$type \(string\) does not accept App\\Enums\\AssignmentType\:\:Regular\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: app/Actions/Scheduling/PutOnShift.php
+
+		-
+			message: '#^Cannot call method greaterThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/ReleaseFutureSchedule.php
+
+		-
+			message: '#^Cannot call method subDay\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/ReleaseFutureSchedule.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/ReleaseFutureSchedule.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:weekdayName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Method App\\Actions\\Scheduling\\ReleaseShifts\:\:rangePreview\(\) should return array\{shifts\: Illuminate\\Support\\Collection\<int, App\\Models\\Shift\>, lastOnCalendar\: string\|null\} but returns array\{shifts\: Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>, lastOnCalendar\: string\|null\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Parameter \#1 \$area of static method App\\Cover\\CoverLadder\:\:urgentAudience\(\) expects App\\Models\\Area, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: array\{shift\: App\\Models\\Shift, request\: App\\Models\\CoverRequest\|null, nobodyAsked\: bool, recipients\: Illuminate\\Support\\Collection\<int, App\\Models\\User\>, sends\: list\<array\{App\\Models\\User, Illuminate\\Notifications\\Notification\}\>, shadowsTold\: list\<string\>\}, Closure\(App\\Models\\Shift\)\: array\{shift\: App\\Models\\Shift, request\: App\\Models\\CoverRequest\|null, nobodyAsked\: bool, recipients\: Illuminate\\Support\\Collection\<int, App\\Models\\User\>, sends\: list\<array\{App\\Models\\User, Illuminate\\Notifications\\Notification\}\>, shadowsTold\: list\<string\>\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:filter\(\) expects \(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: bool\)\|null, Closure\(App\\Models\\Shift\)\: bool given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AssignmentType\:\:Regular will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AssignmentType\:\:Shadow will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Actions/Scheduling/ReleaseShifts.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/RemoveClosure.php
+
+		-
+			message: '#^Parameter \#1 \$callback of static method Illuminate\\Database\\Connection\:\:transaction\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Actions/Scheduling/RemoveClosure.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:notify\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/RemoveFromShift.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/RemoveFromShift.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Actions/Scheduling/RemoveFromShift.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/RemoveFromShift.php
+
+		-
+			message: '#^Parameter \$about of static method App\\Models\\ChangeLogEntry\:\:record\(\) expects App\\Models\\User\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/RemoveFromShift.php
+
+		-
+			message: '#^Property App\\Models\\Assignment\:\:\$user_id \(int\<0, max\>\) does not accept null\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: app/Actions/Scheduling/RemoveFromShift.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between Carbon\\CarbonImmutable\|null and false will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Actions/Scheduling/RemoveFromShift.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$reason\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:occursOn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<\(int\|string\), mixed\>\:\:modelKeys\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Method App\\Actions\\Scheduling\\RestoreShift\:\:restoreLocked\(\) should return array\{emailed\: Illuminate\\Support\\Collection\<int, App\\Models\\User\>, removed\: Illuminate\\Support\\Collection\<int, App\\Models\\User\>, covered\: list\<array\{App\\Models\\User, Illuminate\\Notifications\\Notification\}\>, timeChange\: array\{was_starts_at\: Carbon\\CarbonImmutable, was_ends_at\: Carbon\\CarbonImmutable, except\: list\<int\>\}\|null\} but returns array\{emailed\: Illuminate\\Support\\Collection\<int, mixed\>, removed\: Illuminate\\Support\\Collection\<\(int\|string\), mixed\>, covered\: list\<array\{App\\Models\\User, Illuminate\\Notifications\\Notification\}\>, timeChange\: array\{was_starts_at\: string, was_ends_at\: string, except\: array\<int, \(int\|string\)\>\}\|null\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Offset ''via'' on string\|null on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Parameter \#1 \$person of static method App\\Actions\\Scheduling\\PutOnShift\:\:overlappingShift\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between null and ''slot\.updated'' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>reason" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Actions/Scheduling/RestoreShift.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/SendChangeHeadsUps.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendChangeHeadsUps.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendChangeHeadsUps.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Actions/Scheduling/SendChangeHeadsUps.php
+
+		-
+			message: '#^Cannot call method subHours\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendChangeHeadsUps.php
+
+		-
+			message: '#^Parameter \#1 \$area of method App\\Actions\\Scheduling\\SendChangeHeadsUps\:\:audience\(\) expects App\\Models\\Area, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/SendChangeHeadsUps.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:canSignIn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Call to method Illuminate\\Support\\Collection\<int,array\<string, App\\Models\\Shift\|bool\|Carbon\\CarbonImmutable\|list\<int\>\|string\|null\>\|null\>\:\:isEmpty\(\) will always evaluate to false\.$#'
+			identifier: method.impossibleType
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Cannot call method equalTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Cannot call method getTimestamp\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Method App\\Actions\\Scheduling\\SendChangeNotices\:\:recordLocked\(\) should return list\<array\{user\: App\\Models\\User, notification\: App\\Notifications\\ShiftTimeChangedNotification\}\> but returns list\<array\{user\: Illuminate\\Database\\Eloquent\\Model\|null, notification\: App\\Notifications\\ShiftTimeChangedNotification\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Parameter \#2 \$items of class App\\Notifications\\ShiftTimeChangedNotification constructor expects Illuminate\\Support\\Collection\<int, array\{shift\: App\\Models\\Shift, was_starts_at\: Carbon\\CarbonImmutable, was_ends_at\: Carbon\\CarbonImmutable, was_title\?\: string\|null\}\>, Illuminate\\Support\\Collection\<int, array\{shift\: App\\Models\\Shift, was_starts_at\: Carbon\\CarbonImmutable\|string, was_ends_at\: Carbon\\CarbonImmutable\|string, was_title\?\: string\|null, back_on\?\: bool, except\?\: list\<int\>\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Parameter \$about of static method App\\Models\\ChangeLogEntry\:\:record\(\) expects App\\Models\\User\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Property App\\Actions\\Scheduling\\SendChangeNotices\:\:\$titleOnly \(array\<int, array\{person\: App\\Models\\User, changes\: list\<array\{shift\: App\\Models\\Shift, was\: string, wasTitle\: string\|null\}\>\}\>\) does not accept non\-empty\-array\<array\{person\: Illuminate\\Database\\Eloquent\\Model\|null, changes\: array\<int, array\{shift\: App\\Models\\Shift, was\: string, wasTitle\: string\|null\}\>\}\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>was_ends_at" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>was_starts_at" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Actions/Scheduling/SendChangeNotices.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$reminder_emails\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:canSignIn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:releaserName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Cannot call method subHours\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Method App\\Actions\\Scheduling\\SendShiftReminders\:\:remindLocked\(\) should return list\<array\{App\\Models\\User, App\\Notifications\\ShiftReminderNotification\}\> but returns array\<int, array\{Illuminate\\Database\\Eloquent\\Model\|null, App\\Notifications\\ShiftReminderNotification\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Parameter \#2 \$except of closure expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AssignmentType will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Actions/Scheduling/SendShiftReminders.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/SlotAttributes.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/StaffedShiftChecks.php
+
+		-
+			message: '#^Parameter \#1 \$person of static method App\\Actions\\Scheduling\\PutOnShift\:\:overlappingShift\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/StaffedShiftChecks.php
+
+		-
+			message: '#^Parameter \#2 \$person of static method App\\Calendar\\PersonSearch\:\:displayName\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/StaffedShiftChecks.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/TakeShadowSpot.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/TakeShadowSpot.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/TakeShadowSpot.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: mixed, Closure\(App\\Models\\Assignment\)\: mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/TakeShadowSpot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$frequency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/TakeShift.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_rotation\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/TakeShift.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:regulars\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/TakeShift.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:weekdayName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/TakeShift.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Actions/Scheduling/TakeShift.php
+
+		-
+			message: '#^Parameter \#2 \$slot of method App\\Actions\\Scheduling\\AddRegular\:\:handle\(\) expects App\\Models\\WeeklySlot, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/TakeShift.php
+
+		-
+			message: '#^Parameter \#5 \$releaser of static method App\\Cover\\CoverFill\:\:notices\(\) expects App\\Models\\User\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/TakeShift.php
+
+		-
+			message: '#^Property App\\Models\\Area\:\:\$color \(string\) does not accept App\\Enums\\AreaColor\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: app/Actions/Scheduling/UpdateArea.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method addDay\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method getTimestamp\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method lessThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method max\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method min\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method subDay\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Parameter \#2 \$area of method App\\Actions\\Scheduling\\UpdateClosure\:\:generate\(\) expects App\\Models\\Area, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/UpdateClosure.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/UpdateShift.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Actions/Scheduling/UpdateShift.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Actions/Scheduling/UpdateShift.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$cancel_reason\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$cancelled_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$edited_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 8
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$local_date\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$title\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:assignments\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:currentOrFuture\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Offset ''via'' on string\|null on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#1 \$changes of class App\\Notifications\\ShiftChangedNotification constructor expects Illuminate\\Support\\Collection\<int, array\{shift\: App\\Models\\Shift, was\: string, wasTitle\: string\|null\}\>, Illuminate\\Support\\Collection\<int, array\{shift\: Illuminate\\Database\\Eloquent\\Model, was\: string, wasTitle\: mixed\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#1 \$shift of method App\\Actions\\Scheduling\\UpdateWeeklySlot\:\:applySlot\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#1 \$shift of method App\\Actions\\Scheduling\\UpdateWeeklySlot\:\:cancelledBySlotChange\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#1 \$shift of method App\\Actions\\Scheduling\\UpdateWeeklySlot\:\:differs\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#1 \$value of function collect contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 2
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#2 \$changes of method App\\Actions\\Scheduling\\SendChangeNotices\:\:recordLocked\(\) expects list\<array\{shift\: App\\Models\\Shift, was_starts_at\: Carbon\\CarbonImmutable, was_ends_at\: Carbon\\CarbonImmutable, was_title\?\: string\|null, back_on\?\: bool, except\?\: list\<int\>\}\>, list\<array\{shift\: Illuminate\\Database\\Eloquent\\Model, was_starts_at\: mixed, was_ends_at\: mixed, was_title\: mixed\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#2 \$lockedShift of static method App\\Actions\\Scheduling\\StaffedShiftChecks\:\:problem\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#2 \$lockedShift of static method App\\Cover\\CoverFill\:\:fillForRegularsLocked\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Parameter \#2 \$shift of method App\\Actions\\Scheduling\\UpdateWeeklySlot\:\:saveAndLog\(\) expects App\\Models\\Shift, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 3
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between null and ''slot\.updated'' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Actions/Scheduling/UpdateWeeklySlot.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<int, App\\Models\\Area\>\:\:modelKeys\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Calendar/CalendarMonth.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Calendar/CalendarMonth.php
+
+		-
+			message: '#^Parameter \#3 \$shifts of static method App\\Calendar\\CalendarMonth\:\:describeDay\(\) expects Illuminate\\Support\\Collection\<string, Illuminate\\Support\\Collection\<int, App\\Models\\Shift\>\>, Illuminate\\Database\\Eloquent\\Collection\<\(int\|string\), Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\Shift\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Calendar/CalendarMonth.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$color\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_rotation\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$regulars\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Cannot call method getTimestamp\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Empty array passed to foreach\.$#'
+			identifier: foreach.emptyArray
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Parameter \#2 \$area of method App\\Calendar\\CalendarWeek\:\:manages\(\) expects App\\Models\\Area, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Parameter \#3 \$shiftsByDay of class App\\Calendar\\CalendarWeek constructor expects Illuminate\\Support\\Collection\<string, Illuminate\\Support\\Collection\<int, App\\Models\\Shift\>\>, Illuminate\\Database\\Eloquent\\Collection\<\(int\|string\), Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\Shift\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Calendar/CalendarWeek.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Calendar/ClosureLabels.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Calendar/ClosureLabels.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\WeeklySlot\:\:\$end_time\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\WeeklySlot\:\:\$start_time\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_rotation\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\<Illuminate\\Database\\Eloquent\\Model\>\:\:currentOrFuture\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Method App\\Calendar\\NeedsAttention\:\:readyForReview\(\) should return Illuminate\\Support\\Collection\<int, array\{label\: string, detail\: string, url\: string\|null, urgent\: bool\}\> but returns Illuminate\\Support\\Collection\<int, array\{label\: string, detail\: string, url\: string, urgent\: bool\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Method App\\Calendar\\NeedsAttention\:\:slotsWithoutRegular\(\) should return Illuminate\\Support\\Collection\<int, array\{label\: string, detail\: string, url\: string\|null, urgent\: bool\}\> but returns Illuminate\\Support\\Collection\<int, array\{label\: string, detail\: string, url\: string, urgent\: bool\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\SlotFrequency\:\:EveryOtherWeek will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Calendar/NeedsAttention.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_removed_person\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 5
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Call to function is_string\(\) with null will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Cannot access property \$name on null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Expression on left side of \?\? is always null\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Match arm comparison between null and ''example_seed'' is always false\.$#'
+			identifier: match.alwaysFalse
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Match arm comparison between null and ''import'' is always false\.$#'
+			identifier: match.alwaysFalse
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Match arm comparison between null and ''migration'' is always false\.$#'
+			identifier: match.alwaysFalse
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Match arm comparison between null and ''role\.granted'' is always false\.$#'
+			identifier: match.alwaysFalse
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Match arm comparison between null and ''shadow_signup'' is always false\.$#'
+			identifier: match.alwaysFalse
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Match arm comparison between null and ''take'' is always false\.$#'
+			identifier: match.alwaysFalse
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Method App\\ChangeLog\\Describe\:\:textChange\(\) never returns array\{before\: string, after\: string\} so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''area_id'' on string\|null on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''count'' on array\{\}\|string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''email'' on array\{\}\|string in isset\(\) does not exist\.$#'
+			identifier: isset.offset
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''ends_on'' on array\{\}\|string in isset\(\) does not exist\.$#'
+			identifier: isset.offset
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''hidden'' on string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''lead_name'' on array\{\}\|string in isset\(\) does not exist\.$#'
+			identifier: isset.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''name'' on array\{\}\|string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''new'' on null on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''no_show_at'' on array\{\}\|string in isset\(\) does not exist\.$#'
+			identifier: isset.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''note'' on array\{\}\|string in isset\(\) does not exist\.$#'
+			identifier: isset.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''old'' on null on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''starts_on'' on array\{\}\|string in isset\(\) does not exist\.$#'
+			identifier: isset.offset
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''text'' on array\{\}\|string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Offset ''via'' on array\{\}\|string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Parameter \#2 \$person of static method App\\Calendar\\PersonSearch\:\:displayName\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 3
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Static method App\\ChangeLog\\Describe\:\:closureArea\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Static method App\\ChangeLog\\Describe\:\:closureDays\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between 1 and 1 will always evaluate to true\.$#'
+			identifier: identical.alwaysTrue
+			count: 2
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between false and true will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between null and null will always evaluate to true\.$#'
+			identifier: identical.alwaysTrue
+			count: 1
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 3
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 4
+			path: app/ChangeLog/Describe.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Cover/CoverEligibility.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Cover/CoverEligibility.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Cover/CoverEligibility.php
+
+		-
+			message: '#^Parameter \#5 \$releaser of static method App\\Cover\\CoverFill\:\:notices\(\) expects App\\Models\\User\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Cover/CoverFill.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:leadTitle\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Cover/CoverLadder.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Cover/CoverLadder.php
+
+		-
+			message: '#^Cannot call method subHours\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Cover/CoverLadder.php
+
+		-
+			message: '#^Method App\\Cover\\CoverLadder\:\:stillUncoveredSends\(\) should return array\<int, array\{App\\Models\\User, App\\Notifications\\ShadowSpotNotification\}\> but returns array\<int\<0, max\>, array\{Illuminate\\Database\\Eloquent\\Model\|null, App\\Notifications\\ShadowSpotNotification\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Cover/CoverLadder.php
+
+		-
+			message: '#^Parameter \#1 \$area of static method App\\Cover\\CoverLadder\:\:urgentAudience\(\) expects App\\Models\\Area, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Cover/CoverLadder.php
+
+		-
+			message: '#^Parameter \#2 \$area of static method App\\ChangeLog\\Describe\:\:roleName\(\) expects App\\Models\\Area\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Cover/CoverLadder.php
+
+		-
+			message: '#^Parameter \#3 \$releasedAt of class App\\Notifications\\CoverUrgentNotification constructor expects Carbon\\CarbonImmutable, Carbon\\Carbon\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Cover/CoverLadder.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\<Illuminate\\Database\\Eloquent\\Model\>\:\:active\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Cover/ShadowProgress.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email_verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasEnabledTwoFactorAuthentication\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Parameter \#1 \$actor of static method App\\Models\\ChangeLogEntry\:\:record\(\) expects App\\Models\\User\|null, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Parameter \#1 \$user of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\ChangeLogEntry\>\:\:about\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Parameter \#1 \$user of static method Illuminate\\Support\\Facades\\Auth\:\:login\(\) expects Illuminate\\Contracts\\Auth\\Authenticatable, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Parameter \#2 \$user of static method App\\Http\\Controllers\\Auth\\LoginLinkController\:\:rememberLinkLogin\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\LoginLinkPurpose\:\:Invitation will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\LoginLinkPurpose\:\:Invitation will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Auth/LoginLinkController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\WeeklySlot\:\:\$end_time\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\WeeklySlot\:\:\$start_time\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$local_date\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Parameter \#1 \$array \(array\{0\: array\{label\: ''Edit the slot'', url\: string\}, 1\?\: array\{label\: ''Add a regular'', url\: string\}\}\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:filter\(\) expects \(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: bool\)\|null, Closure\(App\\Models\\Shift\)\: bool given\.$#'
+			identifier: argument.type
+			count: 3
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between Carbon\\CarbonImmutable\|null and false will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Calendar/AddController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/CalendarController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<int, App\\Models\\Area\>\:\:modelKeys\(\)\.$#'
+			identifier: method.notFound
+			count: 3
+			path: app/Http/Controllers/Calendar/CalendarController.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between Carbon\\CarbonImmutable\|null and false will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Http/Controllers/Calendar/CalendarController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<int, App\\Models\\Area\>\:\:modelKeys\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<int, App\\Models\\AreaClosure\>\:\:modelKeys\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Cannot call method equalTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 11
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 13
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: non\-falsy\-string, Closure\(App\\Models\\Assignment\)\: non\-falsy\-string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: string, Closure\(App\\Models\\Assignment\)\: string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:sortBy\(\) expects array\<array\{string, ''asc''\|''desc''\|SortDirection\}\|\(callable\(Illuminate\\Database\\Eloquent\\Model, Illuminate\\Database\\Eloquent\\Model\)\: mixed\)\|\(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: mixed\)\|string\>\|\(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: mixed\)\|int\|string, Closure\(App\\Models\\Assignment\)\: int\<0, max\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Parameter \#2 \$person of static method App\\Calendar\\PersonSearch\:\:displayName\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between Carbon\\CarbonImmutable\|null and false will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Http/Controllers/Calendar/ClosureController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\SlotRegular\:\:\$added_to_shifts\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\SlotRegular\:\:\$before_start\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\SlotRegular\:\:\$removed_from_shifts\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\SlotRegular\:\:\$skipped_overlaps\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:currentOrFuture\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Left side of && is always false\.$#'
+			identifier: booleanAnd.leftAlwaysFalse
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Parameter \#2 \$person of static method App\\Calendar\\PersonSearch\:\:displayName\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Result of \|\| is always false\.$#'
+			identifier: booleanOr.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between App\\Enums\\SlotFrequency\:\:Weekly and App\\Enums\\SlotFrequency\:\:EveryOtherWeek will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\SlotFrequency\:\:EveryOtherWeek will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 4
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\SlotFrequency\:\:Weekly will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 4
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Ternary operator condition is always false\.$#'
+			identifier: ternary.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/Calendar/RegularController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$frequency\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_rotation\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$regulars\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$valid_from\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$valid_until\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$weekday\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:canSignIn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 4
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 6
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Method App\\Http\\Controllers\\Calendar\\ShiftController\:\:people\(\) should return Illuminate\\Support\\Collection\<int, array\{name\: string, role\: string, remove\: string\|null, end\: string\|null, assignment\: int, noShow\: bool, canMark\: bool, answer\: string\|null\}\> but returns Illuminate\\Support\\Collection\<int, array\{name\: string, role\: string, remove\: string\|null, end\: null, assignment\: int, noShow\: bool, canMark\: bool, answer\: mixed\}\|array\{name\: string, role\: string, remove\: string\|null, end\: string\|null, answer\: mixed\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: \(array\{name\: string, role\: ''Regular''\|''Regular, every other week''\|''Regular, every week'', remove\: string\|null, end\: string\|null, answer\: mixed\}\|array\{name\: string, role\: ''Shadowing'', remove\: string\|null, end\: null, assignment\: int\<0, max\>, noShow\: bool, canMark\: bool, answer\: mixed\}\), Closure\(App\\Models\\Assignment\)\: \(array\{name\: string, role\: ''Regular''\|''Regular, every other week''\|''Regular, every week'', remove\: string\|null, end\: string\|null, answer\: mixed\}\|array\{name\: string, role\: ''Shadowing'', remove\: string\|null, end\: null, assignment\: int\<0, max\>, noShow\: bool, canMark\: bool, answer\: mixed\}\) given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) expects callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: array\{name\: mixed, role\: ''On this shift''\|''Regular, every other week''\|''Regular, every week''\|''Shadowing'', remove\: null, end\: null\}, Closure\(App\\Models\\Assignment\)\: array\{name\: mixed, role\: ''On this shift''\|''Regular, every other week''\|''Regular, every week''\|''Shadowing'', remove\: null, end\: null\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:filter\(\) expects \(callable\(Illuminate\\Database\\Eloquent\\Model, int\)\: bool\)\|null, Closure\(App\\Models\\Assignment\)\: mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Parameter \#2 \$default of method Illuminate\\Http\\Request\:\:old\(\) expects array\|Illuminate\\Database\\Eloquent\\Model\|string\|null, int\<0, max\> given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Parameter \#2 \$person of static method App\\Calendar\\PersonSearch\:\:displayName\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Parameter \#3 \$assignment of method App\\Actions\\Scheduling\\RemoveFromShift\:\:one\(\) expects App\\Models\\Assignment, Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AssignmentType\:\:Shadow will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/Calendar/ShiftController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/ChangeLogController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_removed_person\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/ChangeLogController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/ChangeLogController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/ChangeLogController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$password\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/EmailChangeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasEnabledTwoFactorAuthentication\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/EmailChangeController.php
+
+		-
+			message: '#^Parameter \#1 \$user of method Illuminate\\Auth\\SessionGuard\:\:login\(\) expects Illuminate\\Contracts\\Auth\\Authenticatable, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/EmailChangeController.php
+
+		-
+			message: '#^Parameter \#1 \$user of static method Illuminate\\Support\\Facades\\Auth\:\:login\(\) expects Illuminate\\Contracts\\Auth\\Authenticatable, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/EmailChangeController.php
+
+		-
+			message: '#^Parameter \#2 \$user of static method App\\Http\\Controllers\\Auth\\LoginLinkController\:\:rememberLinkLogin\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/EmailChangeController.php
+
+		-
+			message: '#^Parameter \#2 \$user of static method App\\Support\\RememberedDevice\:\:belongsTo\(\) expects App\\Models\\User, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/EmailChangeController.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/People/ClearanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$has_waiting_link\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/People/PeopleController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$last_invitation_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/People/PeopleController.php
+
+		-
+			message: '#^Parameter \#1 \$time of method App\\Http\\Controllers\\People\\PeopleController\:\:when\(\) expects Carbon\\CarbonInterface\|null, string\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Http/Controllers/People/PeopleController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$assignments\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$cancelled_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$role\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<int, App\\Models\\Assignment\>\:\:load\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^PHPDoc tag @return has invalid value \(array\{clearedSince\: \?string, done\: int, required\: int, ready\: bool, history\: Collection\<int, array\{text\: string, status\: string\}\> \(status is Done, Done \(before moving back\), No\-show or Cancelled\), canClear\: bool\}\)\: Unexpected token "\(", expected ''\}'' at offset 435 on line 4$#'
+			identifier: phpDoc.parseError
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AssignmentType\:\:Regular will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/People/PersonController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$cancelled_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$ends_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_removed_person\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$local_date\.$#'
+			identifier: property.notFound
+			count: 5
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$starts_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Method App\\Http\\Controllers\\Volunteer\\ChangeNoticeController\:\:summary\(\) should return array\{heading\: string, same\: bool, now\: string, was\: string, date\: string, count\: int, which\: string, lines\: list\<array\{date\: string, now\: string, was\: string\}\>, \.\.\.\} but returns array\{heading\: non\-falsy\-string, same\: bool, now\: string, was\: string, date\: mixed, count\: int\<0, max\>, which\: non\-falsy\-string, lines\: array\<int, array\{date\: mixed, now\: string, was\: string\}\>, \.\.\.\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Parameter \#1 \$shifts of static method App\\Notifications\\ShiftTimeChangedNotification\:\:consecutiveDatesOfOneSlot\(\) expects Illuminate\\Support\\Collection\<int, App\\Models\\Shift\>, Illuminate\\Support\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\|null\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/Volunteer/ChangeNoticeController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Shift\:\:\$card_tag\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Shift\:\:\$cover_names\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_rotation\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$regulars\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:releaserName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:weekdayName\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:open\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Cannot call method getTimestamp\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 5
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>required_shadow_shifts" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>timezone" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Volunteer/HomeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:occursOn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:weekdayName\(\)\.$#'
+			identifier: method.notFound
+			count: 4
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<int, App\\Models\\Shift\>\:\:modelKeys\(\)\.$#'
+			identifier: method.notFound
+			count: 3
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Method App\\Http\\Controllers\\Volunteer\\ReleaseController\:\:assignment\(\) should return App\\Models\\Assignment\|null but returns Illuminate\\Database\\Eloquent\\Model\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Negated boolean expression is always true\.$#'
+			identifier: booleanNot.alwaysTrue
+			count: 2
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 2
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\AssignmentType\:\:Regular will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AssignmentType\:\:Shadow will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\AssignmentType\:\:Regular will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string\|null and App\\Enums\\AssignmentType\:\:Shadow will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Ternary operator condition is always false\.$#'
+			identifier: ternary.alwaysFalse
+			count: 3
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Http/Controllers/Volunteer/ReleaseController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/ShadowController.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Volunteer/ShadowController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$frequency\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_removed_person\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:canSignIn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:leadTitle\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:shortName\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:weekdayName\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Controllers/Volunteer/TakeController.php
+
+		-
+			message: '#^Cannot call method lt\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Http/Middleware/RecordLastSeen.php
+
+		-
+			message: '#^Cannot call method lt\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Models/AreaClosure.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Models/AreaClosure.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:releaserName\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/CoverRequest.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:canSignIn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/LoginLink.php
+
+		-
+			message: '#^Call to function in_array\(\) with arguments string, array\<int\<0, max\>\|string, App\\Enums\\LoginLinkPurpose\> and true will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: app/Models/LoginLink.php
+
+		-
+			message: '#^Cannot call method isPast\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Models/LoginLink.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 4
+			path: app/Models/LoginLink.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Models/LoginLink.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Models/Shift.php
+
+		-
+			message: '#^Cannot call method lessThanOrEqualTo\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Models/Shift.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Models/Shift.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:occursOn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/SlotRegular.php
+
+		-
+			message: '#^Cannot call method includes\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Models/SlotRegular.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Models/SlotRegular.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\SlotFrequency\:\:EveryOtherWeek will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Models/SlotRegular.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Models/SlotRegular.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$area\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Models/User.php
+
+		-
+			message: '#^Method App\\Models\\User\:\:visiblePeople\(\) should return Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\User\> but returns Illuminate\\Database\\Eloquent\\Builder\<static\(App\\Models\\User\)\>\.$#'
+			identifier: return.type
+			count: 2
+			path: app/Models/User.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: app/Models/User.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Models/User.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\WeeklySlot\:\:\$end_time\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\WeeklySlot\:\:\$start_time\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Cannot access property \$dayOfWeek on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Cannot call method includes\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Comparison operation "\<" between int\<0, max\> and 0 is always false\.$#'
+			identifier: smaller.alwaysFalse
+			count: 1
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\SlotFrequency\:\:EveryOtherWeek will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\SlotFrequency\:\:Weekly will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Models/WeeklySlot.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/CoverRequestNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/CoverRequestNotification.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,App\\Models\\Shift\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Notifications/CoverRequestNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/CoverUrgentNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/CoverUrgentNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/MadeRegularNotification.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/MadeRegularNotification.php
+
+		-
+			message: '#^Result of \|\| is always false\.$#'
+			identifier: booleanOr.alwaysFalse
+			count: 1
+			path: app/Notifications/MadeRegularNotification.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\SlotFrequency\:\:EveryOtherWeek will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Notifications/MadeRegularNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/MovedBackNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Notifications/NoAnswerLeadNotification.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Notifications/NoAnswerLeadNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/PutOnShiftNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/RegularEndedNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Notifications/RemovedFromShiftsNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShadowLeftNotification.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,App\\Models\\Shift\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Notifications/ShadowLeftNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShadowSignedUpLeadNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShadowSignedUpLeadNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShadowSignedUpNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShadowSignedUpNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShadowSpotNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShadowSpotNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Notifications/ShiftCancelledNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Notifications/ShiftChangedNotification.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Notifications/ShiftChangedNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShiftCoveredNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShiftCoveredNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShiftReminderNotification.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Notifications/ShiftReminderNotification.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Notifications/ShiftReminderNotification.php
+
+		-
+			message: '#^Negated boolean expression is always true\.$#'
+			identifier: booleanNot.alwaysTrue
+			count: 1
+			path: app/Notifications/ShiftReminderNotification.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: app/Notifications/ShiftReminderNotification.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AssignmentType\:\:Shadow will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 2
+			path: app/Notifications/ShiftReminderNotification.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type IntlTimeZone\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Notifications/ShiftReminderNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Notifications/ShiftRestoredNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShiftTakenLeadNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShiftTakenLeadNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShiftTakenNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShiftTakenNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:datesWithin\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Cannot call method getTimestamp\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Cannot call method greaterThan\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Cannot call method setTimezone\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Offset ''back_on'' on array\{shift\: App\\Models\\Shift, was_starts_at\: Carbon\\CarbonImmutable, was_ends_at\: Carbon\\CarbonImmutable, was_title\?\: string\|null\} on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,array\<string, App\\Models\\Shift\|Carbon\\CarbonImmutable\|string\|null\>\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Parameter \#1 \$key of method Illuminate\\Support\\Collection\<int,array\<string, mixed\>\>\:\:every\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between false and true will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Notifications/ShiftTimeChangedNotification.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Notifications/ShiftsReleasedNotification.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Notifications/ShiftsReleasedNotification.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,App\\Models\\Shift\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Notifications/ShiftsReleasedNotification.php
+
+		-
+			message: '#^Parameter \#1 \$area of method App\\Models\\User\:\:canManageArea\(\) expects App\\Models\\Area, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 5
+			path: app/Policies/ShiftPolicy.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between Carbon\\CarbonImmutable\|null and false will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Support/Input.php

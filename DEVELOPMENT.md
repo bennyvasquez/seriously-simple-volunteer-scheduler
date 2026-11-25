@@ -46,6 +46,15 @@ docker compose exec app php artisan test
 
 Tests use a separate `ssvs_test` database, so they never touch your development data. If tests fail because the `ssvs_test` database doesn't exist, your database volume predates it: run `docker compose down -v` and start again (this deletes local development data).
 
+### Static analysis and dependency audit
+
+```bash
+docker compose exec app ./vendor/bin/phpstan analyse --memory-limit=1G
+docker compose exec app composer audit --locked
+```
+
+PHPStan (through Larastan) checks `app/` at level 5 against `phpstan-baseline.neon`, a list of the errors that existed when it was added, so only new errors fail. Fix a new error rather than adding it to the baseline. After you fix a baselined error, PHPStan reports the entry as unmatched; regenerate with `./vendor/bin/phpstan analyse --generate-baseline --memory-limit=1G` so the baseline only shrinks. If PHPStan reports a file that no longer exists or misses a new one, run `./vendor/bin/phpstan clear-result-cache`. `composer audit --locked` fails if any locked package has a known security advisory. CI runs both after the tests.
+
 ### Browser tests
 
 A few screens use JavaScript (for example the login page and the recovery codes Copy button), and PHPUnit can't run it, so those are also tested in a real browser with Laravel Dusk. Every screen still works with JavaScript off, and the feature tests prove that; browser tests add coverage on top. Run them with:

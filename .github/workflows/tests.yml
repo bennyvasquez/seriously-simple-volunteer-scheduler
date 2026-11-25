@@ -33,6 +33,13 @@ jobs:
           && php artisan key:generate --no-interaction
           && php artisan test'
 
+      # The repository is bind mounted, so the vendor directory the tests step installed is still there.
+      - name: Run static analysis
+        run: docker compose run --rm -T app ./vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      - name: Check dependencies for security advisories
+        run: docker compose run --rm -T app composer audit --locked
+
   browser:
     runs-on: ubuntu-latest
     # A normal run takes a few minutes once the Selenium image is downloaded; this stops a hung build from running for hours.
