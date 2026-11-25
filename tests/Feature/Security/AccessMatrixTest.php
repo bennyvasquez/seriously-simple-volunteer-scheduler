@@ -231,11 +231,9 @@ class AccessMatrixTest extends TestCase
     ];
 
     /**
-     * Mismatches between a row (the spec) and the code, found by this test and reported to the maintainer. A case listed here is skipped instead of failing while the mismatch lasts; `*` stands for every route. A route-specific entry that starts matching fails, so it gets taken off the list.
+     * Mismatches between a row (the spec) and the code, found by this test and reported to the maintainer. Keyed "{route key}|{visitor}", a case listed here is skipped instead of failing while the mismatch lasts, and fails once it matches, so it gets taken off the list.
      */
-    private const FINDINGS = [
-        '*|not_invited' => 'a session for someone not invited yet is treated as a volunteer\'s instead of being ended (section 6: they get none of this).',
-    ];
+    private const FINDINGS = [];
 
     /** @var array<string, mixed> */
     private array $world = [];
@@ -372,59 +370,30 @@ class AccessMatrixTest extends TestCase
         $row = self::ROUTES[$key];
         $this->assertSame(self::VISITORS, array_keys(array_merge(array_flip(self::VISITORS), $row['expect'])), "{$key} needs an outcome for every visitor and no others.");
 
-        // A visitor with a finding on every route is checked once, below, rather than skipping every route.
-        $visitors = array_filter(self::VISITORS, fn (string $visitor) => ! isset(self::FINDINGS["*|{$visitor}"]));
-
-        $this->checkRows([$key], $visitors);
-    }
-
-    public function test_visitors_with_a_finding_on_every_route(): void
-    {
-        $visitors = array_filter(self::VISITORS, fn (string $visitor) => isset(self::FINDINGS["*|{$visitor}"]));
-
-        if ($visitors === []) {
-            $this->expectNotToPerformAssertions();
-
-            return;
-        }
-
-        $this->checkRows(array_keys(self::ROUTES), $visitors);
-    }
-
-    /**
-     * Sends each row's request as each visitor and compares the outcome with the row. A mismatch on the FINDINGS list skips the case, naming the finding; any other mismatch fails.
-     *
-     * @param  array<int, string>  $keys
-     * @param  array<int, string>  $visitors
-     */
-    private function checkRows(array $keys, array $visitors): void
-    {
         $mismatches = [];
         $findings = [];
 
-        foreach ($keys as $key) {
-            foreach ($visitors as $visitor) {
-                $expected = self::ROUTES[$key]['expect'][$visitor];
-                $actual = $this->outcome($this->send($key, $visitor));
-                $finding = self::FINDINGS["{$key}|{$visitor}"] ?? self::FINDINGS["*|{$visitor}"] ?? null;
+        foreach (self::VISITORS as $visitor) {
+            $expected = $row['expect'][$visitor];
+            $actual = $this->outcome($this->send($key, $visitor));
+            $finding = self::FINDINGS["{$key}|{$visitor}"] ?? null;
 
-                if ($actual === $expected) {
-                    $this->assertFalse(isset(self::FINDINGS["{$key}|{$visitor}"]), "{$key} for {$visitor} matches the spec now, so take it off FINDINGS.");
+            if ($actual === $expected) {
+                $this->assertNull($finding, "{$key} for {$visitor} matches the spec now, so take it off FINDINGS.");
 
-                    continue;
-                }
-
-                if ($finding !== null) {
-                    $findings[$finding] = true;
-
-                    continue;
-                }
-
-                $mismatches[] = "{$key}, {$visitor}: expected {$expected}, got {$actual}";
+                continue;
             }
+
+            if ($finding !== null) {
+                $findings[$finding] = true;
+
+                continue;
+            }
+
+            $mismatches[] = "{$visitor}: expected {$expected}, got {$actual}";
         }
 
-        $this->assertSame([], $mismatches, 'These don\'t match spec section 6.');
+        $this->assertSame([], $mismatches, "{$key} doesn't match spec section 6.");
 
         if ($findings !== []) {
             $this->markTestSkipped('Finding: '.implode(' ', array_keys($findings)));

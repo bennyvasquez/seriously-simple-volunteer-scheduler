@@ -128,6 +128,23 @@ class SessionsAndDeactivationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_a_session_for_someone_not_invited_yet_ends_with_nothing_that_says_the_account_exists(): void
+    {
+        $user = User::factory()->notInvited()->create();
+
+        $this->actingAs($user)->get('/')
+            ->assertRedirect(route('login'))
+            ->assertSessionHasNoErrors()
+            ->assertSessionMissing('status');
+        $this->assertGuest();
+
+        // The login page then reads the same as it does for anyone with no account.
+        $this->get(route('login'))->assertOk()->assertDontSee('turned off')->assertDontSee('invited');
+
+        $this->actingAs($user->fresh())->getJson(route('my-shifts'))->assertStatus(401)->assertExactJson(['message' => 'Unauthenticated.']);
+        $this->assertGuest();
+    }
+
     public function test_a_remember_me_cookie_stops_working_once_the_account_is_turned_off(): void
     {
         $coordinator = $this->withRole(Role::Coordinator);
