@@ -54,7 +54,7 @@ class MovedBackNotification extends Notification
             $mail->line(EmailText::line('moved_back.asked_intro'));
 
             foreach ($this->shifts as $shift) {
-                $mail->line($shift);
+                $mail->line(PlainText::line($shift));
             }
         }
 
@@ -62,7 +62,7 @@ class MovedBackNotification extends Notification
             $mail->line(EmailText::line('moved_back.nobody_asked_intro'));
 
             foreach ($this->nobodyAsked as $shift) {
-                $mail->line($shift);
+                $mail->line(PlainText::line($shift));
             }
         }
 

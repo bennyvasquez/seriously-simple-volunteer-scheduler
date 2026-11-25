@@ -7,11 +7,14 @@ use App\Models\ChangeLogEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\LaravelMailLines;
+use App\Notifications\PlainText;
 use App\Support\EmailAddress;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\Events\NotificationSending;
+use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
@@ -69,8 +72,16 @@ class AppServiceProvider extends ServiceProvider
                 return;
             }
 
-            config(['app.name' => $name, 'mail.from.name' => $name]);
+            // Laravel's mail views only HTML-escape the app name, and the HTML part then goes through Markdown, so it goes in already escaped for both (PlainText::line), the way every other value in an email does, and reads exactly as typed.
+            config(['app.name' => PlainText::line($name), 'mail.from.name' => $name]);
             Mail::alwaysFrom((string) config('mail.from.address'), $name);
+        });
+
+        // Once the email is sent, the app name is plain text again for anything else that reads it.
+        Event::listen(NotificationSent::class, function (NotificationSent $event) {
+            if ($event->channel === 'mail' && config('app.name') instanceof Htmlable) {
+                config(['app.name' => config('mail.from.name')]);
+            }
         });
 
         // The four lines Laravel's mail layout adds ("Hello!", "Regards,", the line under each button and "All rights reserved.") read the organization's edits, if any, when an email is rendered. Nothing is copied from Laravel's views.
