@@ -4,11 +4,13 @@ namespace Tests\Feature\Security;
 
 use App\Actions\Accounts\GrantRole;
 use App\Actions\Scheduling\AddRegular;
+use App\Actions\Scheduling\EndRegular;
 use App\Actions\Scheduling\GenerateShifts;
 use App\Calendar\PersonSearch;
 use App\Enums\Role;
 use App\Enums\SlotFrequency;
 use App\Models\Area;
+use App\Models\Assignment;
 use App\Models\Organization;
 use App\Models\SlotRegular;
 use App\Models\User;
@@ -110,6 +112,31 @@ class LeadVisibilityTest extends TestCase
         $this->assertTrue($lead->canSee($other));
     }
 
+    public function test_a_regular_ended_before_its_first_slot_day_still_counts_while_its_end_isnt_before_its_start(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $slot = $this->slot($this->frontDesk);
+        $robin = User::factory()->create();
+        $sam = User::factory()->create();
+
+        // Both start on Wednesday, October 14; the slot runs on Fridays, so the first slot day is October 16.
+        $robinRegular = app(AddRegular::class)->handle($lead, $slot, $robin, '2026-10-14');
+        $samRegular = app(AddRegular::class)->handle($lead, $slot, $sam, '2026-10-14');
+
+        // Robin's last date is Thursday, October 15: the end isn't before the start, but no slot day falls between them, so the regular never works.
+        app(EndRegular::class)->handle($lead, $robinRegular, '2026-10-15');
+        // Sam's last date is before the start, which stores the day before the start: the end is before the start.
+        app(EndRegular::class)->handle($lead, $samRegular, '2026-10-01');
+
+        $this->assertSame('2026-10-15', $robinRegular->fresh()->ends_on->toDateString());
+        $this->assertSame('2026-10-13', $samRegular->fresh()->ends_on->toDateString());
+        $this->assertSame(0, Assignment::query()->whereIn('user_id', [$robin->id, $sam->id])->count());
+
+        // What's built (spec sections 6 and 13): a regular in the lead's areas counts when its end isn't before its start, whether or not a slot day falls in it.
+        $this->assertTrue($lead->canSee($robin));
+        $this->assertFalse($lead->canSee($sam));
+    }
+
     public function test_a_lead_still_sees_people_who_work_their_areas(): void
     {
         $lead = $this->person(Role::AreaLead, $this->frontDesk);
@@ -141,6 +168,43 @@ class LeadVisibilityTest extends TestCase
         $this->assertSame(['Robin Visible'], $found->pluck('display_name')->all());
         $this->assertSame(['Robin E.'], PersonSearch::find($lead, 'Robin E', false, [$visible->id])['matches']->pluck('display_name')->all());
         $this->assertSame($robin->id, PersonSearch::find($lead, 'Robin E', false, [$visible->id])['matches']->sole()->id);
+    }
+
+    public function test_a_hidden_person_is_found_by_their_short_name_whatever_their_middle_names(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $ana = User::factory()->create(['name' => 'Ana de la Cruz']);
+        $robin = User::factory()->create(['name' => 'Robin Ann Example']);
+
+        $this->assertSame('Ana C.', $ana->shortName());
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'Ana C', false)));
+        $this->assertSame(['Ana C.'], PersonSearch::find($lead, 'ana c.', false)['matches']->pluck('display_name')->all());
+        $this->assertSame(['Robin Ann Example'], $this->names(PersonSearch::find($lead, 'Robin E', false)));
+        // The middle name isn't shown, so it doesn't match.
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'Robin A', false)));
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'de la', false)));
+    }
+
+    public function test_a_search_without_accents_finds_a_hidden_name_with_them(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        User::factory()->create(['name' => 'José Example']);
+
+        $this->assertSame(['José Example'], $this->names(PersonSearch::find($lead, 'jose e', false)));
+        $this->assertSame(['José Example'], $this->names(PersonSearch::find($lead, 'José E.', false)));
+    }
+
+    public function test_a_visible_person_still_matches_on_their_full_name(): void
+    {
+        $lead = $this->person(Role::AreaLead, $this->frontDesk);
+        $ana = User::factory()->create(['name' => 'Ana de la Cruz']);
+        app(AddRegular::class)->handle(null, $this->slot($this->frontDesk), $ana, '2026-10-14');
+
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'de la cruz', false)));
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'ana de', false)));
+        $this->assertSame(['Ana de la Cruz'], $this->names(PersonSearch::find($lead, 'Ana C', false)));
+        // Every word has to match in order, not only the first.
+        $this->assertSame([], $this->names(PersonSearch::find($lead, 'Ana Smith', false)));
     }
 
     public function test_a_lead_who_leads_every_area_cant_search_by_email(): void

@@ -59,13 +59,7 @@ return [
     | Trusted Proxies
     |--------------------------------------------------------------------------
     |
-    | Only for an HTTP proxy or load balancer in front of the app (nginx using
-    | proxy_pass, Caddy, HAProxy, a cloud load balancer): a comma-separated
-    | list of its addresses, whose X-Forwarded-* headers report the visitor's
-    | address, scheme and host. Left empty, no proxy is trusted and those
-    | headers are ignored, which is right for nginx with PHP-FPM. "*" trusts
-    | every sender, must be the whole value, and is only for an app that can
-    | be reached only through the proxy.
+    | Only for an HTTP proxy or load balancer in front of the app (nginx using proxy_pass, Caddy, HAProxy, a cloud load balancer): a comma-separated list of its addresses, whose X-Forwarded-* headers report the visitor's address, scheme and host. Left empty, no proxy is trusted and those headers are ignored, which is right for nginx with PHP-FPM. "*" trusts every sender, must be the whole value, and is only for an app that can be reached only through the proxy.
     |
     */
 
