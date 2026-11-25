@@ -11,16 +11,21 @@ use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\EmailAddress;
 use DomainException;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Database\Console\Migrations\FreshCommand;
 use Illuminate\Database\Console\Migrations\RefreshCommand;
 use Illuminate\Database\Console\Migrations\ResetCommand;
 use Illuminate\Database\Console\WipeCommand;
 use Illuminate\Foundation\Events\DiagnosingHealth;
+use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use ReflectionProperty;
 use RuntimeException;
@@ -48,16 +53,73 @@ class HealthAndCommandsTest extends TestCase
         $this->assertStringNotContainsString('<script', $response->getContent());
     }
 
-    public function test_up_answers_during_maintenance(): void
+    /** Runs $check with the app in maintenance mode through a real `artisan down`, kept in a temporary storage folder so the developer's own app never goes down. */
+    private function duringMaintenance(callable $check): void
     {
-        $this->artisan('down')->assertSuccessful();
+        $realDownFile = storage_path('framework/down');
+        $realWasDown = is_file($realDownFile);
+        $storage = sys_get_temp_dir().'/ssvs-maintenance-'.Str::random(12);
+        File::ensureDirectoryExists($storage.'/framework');
+        $this->app->useStoragePath($storage);
 
         try {
-            $this->get('/up')->assertOk();
-            $this->get('/login')->assertStatus(503);
+            $this->artisan('down')->assertSuccessful();
+            $this->assertFileExists($storage.'/framework/down');
+            $this->assertSame($realWasDown, is_file($realDownFile));
+
+            $check();
         } finally {
             $this->artisan('up');
+            File::deleteDirectory($storage);
         }
+    }
+
+    public function test_up_answers_during_maintenance(): void
+    {
+        $this->duringMaintenance(function () {
+            $this->get('/up')->assertOk();
+            $this->get('/login')->assertStatus(503);
+        });
+    }
+
+    public function test_up_is_exempt_from_maintenance_without_loading_any_routes(): void
+    {
+        $test = $this->app;
+        PreventRequestsDuringMaintenance::flushState();
+
+        try {
+            // A fresh app whose HTTP kernel is made but never handles a request, so no route file runs: what a server with cached routes has.
+            $fresh = require base_path('bootstrap/app.php');
+            $fresh->make(HttpKernel::class);
+        } finally {
+            Container::setInstance($test);
+        }
+
+        $this->assertContains('up', (new ReflectionProperty(PreventRequestsDuringMaintenance::class, 'neverPrevent'))->getValue());
+    }
+
+    public function test_up_answers_during_maintenance_when_routes_are_not_loaded_again(): void
+    {
+        // With cached routes, the routing callbacks in bootstrap/app.php never run. Clear what they may have set, then build the HTTP kernel again the way a request on such a server does.
+        PreventRequestsDuringMaintenance::flushState();
+        $this->app->forgetInstance(HttpKernel::class);
+        $this->app->make(HttpKernel::class);
+
+        $this->duringMaintenance(function () {
+            $this->get('/up')->assertOk();
+            $this->get('/login')->assertStatus(503);
+        });
+    }
+
+    public function test_the_maintenance_page_carries_the_security_headers(): void
+    {
+        $this->duringMaintenance(function () {
+            $this->get('/login')->assertStatus(503)
+                ->assertHeader('Content-Security-Policy', SecurityHeaders::POLICY)
+                ->assertHeader('X-Frame-Options', 'DENY')
+                ->assertHeader('X-Content-Type-Options', 'nosniff')
+                ->assertHeader('Referrer-Policy', 'same-origin');
+        });
     }
 
     public function test_up_answers_500_when_a_health_listener_throws(): void

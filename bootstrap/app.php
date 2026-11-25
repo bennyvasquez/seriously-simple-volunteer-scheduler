@@ -9,7 +9,6 @@ use App\Http\Middleware\TrustConfiguredProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -26,9 +25,8 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
         then: function (): void {
-            // Our own plain health check, outside the web group so it sets no session cookie. It answers during maintenance mode too.
+            // Our own plain health check, outside the web group so it sets no session cookie. It answers during maintenance mode too (withMiddleware below).
             Route::middleware([])->group(__DIR__.'/../routes/health.php');
-            PreventRequestsDuringMaintenance::except('up');
         },
     )
     ->withMiddleware(function (Middleware $middleware) use ($expiredFormMessage): void {
@@ -38,8 +36,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Which proxies are trusted to report the visitor's address, scheme and host comes from the TRUSTED_PROXIES setting, none by default (see TrustConfiguredProxies). Laravel's own middleware is swapped for it because the configuration isn't loaded yet when this callback runs.
         $middleware->replace(TrustProxies::class, TrustConfiguredProxies::class);
 
-        // On every answer, not only the web group's, so the error page for an address with no page gets the security headers too.
-        $middleware->append(SecurityHeaders::class);
+        // The health check keeps answering during maintenance mode. Set here rather than where its route is loaded, because a server with cached routes never runs the route callbacks.
+        $middleware->preventRequestsDuringMaintenance(except: ['up']);
+
+        // On every answer, not only the web group's, so the error page for an address with no page gets the security headers too. First in the stack, so it also wraps the maintenance mode check and its 503 page.
+        $middleware->prepend(SecurityHeaders::class);
 
         $middleware->web(append: [
             EnsureAccountIsSecure::class,

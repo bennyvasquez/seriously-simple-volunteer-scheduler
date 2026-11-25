@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Puts the security headers on every answer, error pages included (bootstrap/app.php adds it to the whole stack, so a 404 for an address with no page gets them too). Scripts and stylesheets load only from this site's own files, so the policy has no 'unsafe-inline' for them. The one exception is style attributes (style-src-attr): the calendar grid places each shift block with a computed top and height, which a stylesheet can't hold. Style attributes can't run script.
+ * Puts the security headers on every answer, error pages included (bootstrap/app.php puts it first in the whole stack, so a 404 for an address with no page and the maintenance mode 503 get them too). Scripts and stylesheets load only from this site's own files, so the policy has no 'unsafe-inline' for them. The one exception is style attributes (style-src-attr): the calendar grid places each shift block with a computed top and height, which a stylesheet can't hold. Style attributes can't run script.
  */
 class SecurityHeaders
 {
