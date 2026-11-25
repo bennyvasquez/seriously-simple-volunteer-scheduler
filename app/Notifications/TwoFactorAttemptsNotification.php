@@ -20,6 +20,6 @@ class TwoFactorAttemptsNotification extends Notification
             ->greeting(EmailText::line('two_factor_attempts.greeting', ['first_name' => $notifiable->firstName()]))
             ->line(EmailText::line('two_factor_attempts.paused'))
             ->line(EmailText::line('two_factor_attempts.advice'))
-            ->line(EmailText::line('two_factor_attempts.security', ['security_link' => EmailText::link(EmailText::line('two_factor_attempts.security_label'), route('account.security'))]));
+            ->line(EmailText::line('two_factor_attempts.reset', ['reset_link' => EmailText::link(EmailText::line('two_factor_attempts.reset_label'), route('password.request'))]));
     }
 }

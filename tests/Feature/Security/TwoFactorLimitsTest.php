@@ -124,7 +124,10 @@ class TwoFactorLimitsTest extends TestCase
 
         $this->assertSame('Someone is trying to sign in to your account', $mail->subject);
         $this->assertSame('Hi '.$this->lead->firstName().',', $mail->greeting);
-        $this->assertStringContainsString(route('account.security'), (string) $mail->introLines[2]);
-        $this->assertStringContainsString('Go to Login and security', (string) $mail->introLines[2]);
+        $this->assertSame('Someone started signing in to your account and typed a lot of wrong two-factor codes.', $mail->introLines[0]);
+        $this->assertSame('If that was you, there\'s nothing to do, though code attempts may be paused for a while. If it wasn\'t, someone may know your password or be able to read your email: change your password now and let a coordinator know.', $mail->introLines[1]);
+        $this->assertStringContainsString(route('password.request'), (string) $mail->introLines[2]);
+        $this->assertStringContainsString('Change your password', (string) $mail->introLines[2]);
+        $this->assertStringNotContainsString(route('account.security'), (string) $mail->introLines[2]);
     }
 }

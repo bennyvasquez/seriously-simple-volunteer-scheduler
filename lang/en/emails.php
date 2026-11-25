@@ -81,13 +81,13 @@ return [
         // The greeting at the top. {first_name} is the person's first name.
         'greeting' => 'Hi {first_name},',
         // The first line. No variables.
-        'paused' => 'Someone signed in with your password and then typed a lot of wrong two-factor codes, so we\'ve paused code attempts on your account for a while.',
+        'paused' => 'Someone started signing in to your account and typed a lot of wrong two-factor codes.',
         // The second line. No variables.
-        'advice' => 'If that was you, you can try again later. If it wasn\'t, someone knows your password: change it now and let a coordinator know.',
-        // The last line. {security_link} is a link to the Login and security page, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
-        'security' => '{security_link}',
+        'advice' => 'If that was you, there\'s nothing to do, though code attempts may be paused for a while. If it wasn\'t, someone may know your password or be able to read your email: change your password now and let a coordinator know.',
+        // The last line. {reset_link} is a link to the page for resetting a password, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
+        'reset' => '{reset_link}',
         // The text of that link. No variables.
-        'security_label' => 'Go to Login and security',
+        'reset_label' => 'Change your password',
     ],
 
     'password_changed' => [
