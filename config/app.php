@@ -59,11 +59,13 @@ return [
     | Trusted Proxies
     |--------------------------------------------------------------------------
     |
-    | A comma-separated list of the addresses of the proxies (such as nginx)
-    | that sit in front of the app and report the visitor's address, scheme
-    | and host in X-Forwarded-* headers. Left empty, no proxy is trusted and
-    | those headers are ignored. "*" trusts every sender and must be set
-    | explicitly.
+    | Only for an HTTP proxy or load balancer in front of the app (nginx using
+    | proxy_pass, Caddy, HAProxy, a cloud load balancer): a comma-separated
+    | list of its addresses, whose X-Forwarded-* headers report the visitor's
+    | address, scheme and host. Left empty, no proxy is trusted and those
+    | headers are ignored, which is right for nginx with PHP-FPM. "*" trusts
+    | every sender, must be the whole value, and is only for an app that can
+    | be reached only through the proxy.
     |
     */
 
