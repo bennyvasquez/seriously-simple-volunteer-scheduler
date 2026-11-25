@@ -75,6 +75,21 @@ return [
         'body' => '{admin}, an admin at {organization}, reset the second step for your login. Next time you log in with your password, you\'ll set up your authenticator app again. If you didn\'t ask for this, contact a coordinator right away.',
     ],
 
+    'two_factor_attempts' => [
+        // The subject of the email sent when a lot of wrong two-factor codes were typed on someone's account. No variables.
+        'subject' => 'Someone is trying to sign in to your account',
+        // The greeting at the top. {first_name} is the person's first name.
+        'greeting' => 'Hi {first_name},',
+        // The first line. No variables.
+        'paused' => 'Someone signed in with your password and then typed a lot of wrong two-factor codes, so we\'ve paused code attempts on your account for a while.',
+        // The second line. No variables.
+        'advice' => 'If that was you, you can try again later. If it wasn\'t, someone knows your password: change it now and let a coordinator know.',
+        // The last line. {security_link} is a link to the Login and security page, with the words from the next line as its text. The link is built in code, so it can move but can't be left out.
+        'security' => '{security_link}',
+        // The text of that link. No variables.
+        'security_label' => 'Go to Login and security',
+    ],
+
     'password_changed' => [
         // The subject of the email sent after someone's password changes. No variables.
         'subject' => 'Your password was changed',

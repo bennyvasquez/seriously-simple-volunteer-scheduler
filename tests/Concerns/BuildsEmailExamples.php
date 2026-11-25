@@ -43,6 +43,7 @@ use App\Notifications\ShiftsReleasedNotification;
 use App\Notifications\ShiftTakenLeadNotification;
 use App\Notifications\ShiftTakenNotification;
 use App\Notifications\ShiftTimeChangedNotification;
+use App\Notifications\TwoFactorAttemptsNotification;
 use App\Notifications\TwoFactorCodeNotification;
 use App\Notifications\TwoFactorResetNotification;
 use Carbon\CarbonImmutable;
@@ -110,6 +111,7 @@ trait BuildsEmailExamples
             'invitation' => [new InvitationNotification($url), $sam],
             'invitation by a coordinator' => [new InvitationNotification($url, $name('Chris C.')), $sam],
             'two factor reset' => [new TwoFactorResetNotification($coordinator), $sam],
+            'two factor attempts' => [new TwoFactorAttemptsNotification, $sam],
             'password changed' => [new PasswordChangedNotification, $sam],
             'put on shift' => [new PutOnShiftNotification($first), $sam],
             'cleared' => [new ClearedNotification($coordinator, Organization::current()), $sam],
