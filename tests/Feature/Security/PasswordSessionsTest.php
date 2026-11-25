@@ -4,7 +4,9 @@ namespace Tests\Feature\Security;
 
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -41,6 +43,44 @@ class PasswordSessionsTest extends TestCase
         $entry = ChangeLogEntry::query()->where('action', 'user.signed_out_everywhere')->sole();
         $this->assertSame($user->id, $entry->subject_id);
         $this->assertTrue($entry->details['kept_current_session']);
+        $this->assertAuthenticatedAs($user);
+        $this->get(route('account.show'))->assertOk();
+    }
+
+    public function test_a_remembered_device_stays_remembered_and_other_cookies_stop_working(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct horse battery'), 'remember_token' => 'old-token']);
+        $name = Auth::guard('web')->getRecallerName();
+        $recaller = fn (string $token, string $passwordHash) => app('encrypter')->encrypt(
+            CookieValuePrefix::create($name, app('encrypter')->getKey()).$user->id.'|'.$token.'|'.Auth::guard('web')->hashPasswordForCookie($passwordHash),
+            false,
+        );
+        $oldCookie = $recaller('old-token', $user->password);
+
+        $response = $this->actingAs($user)->withCookie($name, $oldCookie)
+            ->put(route('user-password.update'), ['current_password' => 'correct horse battery', 'password' => 'a brand new password', 'password_confirmation' => 'a brand new password'])
+            ->assertSessionHasNoErrors();
+
+        $response->assertCookie($name);
+        $fresh = $user->fresh();
+        $this->assertNotSame('old-token', $fresh->remember_token);
+        $this->assertNotSame($oldCookie, $response->getCookie($name, false)?->getValue());
+        $this->assertNotSame($oldCookie, $recaller($fresh->remember_token, $fresh->password));
+
+        // The old cookie, from another device, no longer signs anyone in.
+        Auth::forgetGuards();
+        $this->flushSession();
+        $this->app['auth']->shouldUse('web');
+        $this->withCookie($name, $oldCookie)->get(route('account.show'))->assertRedirect(route('login'));
+    }
+
+    public function test_a_device_that_was_not_remembered_is_not_given_a_remember_cookie(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct horse battery')]);
+
+        $this->actingAs($user)
+            ->put(route('user-password.update'), ['current_password' => 'correct horse battery', 'password' => 'a brand new password', 'password_confirmation' => 'a brand new password'])
+            ->assertCookieMissing(Auth::guard('web')->getRecallerName());
     }
 
     public function test_a_reset_signs_out_every_device(): void

@@ -47,7 +47,9 @@ class ResetUserPassword implements ResetsUserPasswords
         });
 
         // A new session id, so the old one can't be reused.
-        request()->session()->regenerate(true);
+        if (request()->hasSession()) {
+            request()->session()->regenerate(true);
+        }
 
         // After the response: the new password is already saved, so a mail server failure is logged instead of shown to the person.
         defer(fn () => $user->notify(new PasswordChangedNotification));
