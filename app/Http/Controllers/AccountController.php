@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\Role;
+use App\Http\Controllers\Auth\LoginLinkController;
 use App\Models\Organization;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -57,6 +58,8 @@ class AccountController extends Controller
         return view('account.show', [
             'user' => $user,
             'hasPassword' => $user->password !== null,
+            // The "Add a password" form only shows while adding one would be accepted (InitialPasswordController), so nobody fills in a form that's going to be refused.
+            'canAddPassword' => $user->password === null && ($user->requiresTwoFactor() || LoginLinkController::signedInByLinkRecently($request)),
             'isStaff' => $user->requiresTwoFactor(),
             // Fortify flashes its own keyword when a password changes; other messages are already words.
             'status' => $status === 'password-updated' ? 'Your password is changed.' : $status,

@@ -2,6 +2,8 @@
 
 namespace Tests\Browser;
 
+use App\Actions\Accounts\IssueLoginLink;
+use App\Enums\LoginLinkPurpose;
 use App\Models\User;
 use Database\Seeders\ExampleOrganizationSeeder;
 use Laravel\Dusk\Browser;
@@ -104,6 +106,36 @@ class SignInAccessibilityTest extends DuskTestCase
             $browser->loginAs($lead)
                 ->visit('/account')
                 ->assertPathIs('/account');
+
+            $this->assertAccessible($browser);
+        });
+    }
+
+    public function test_adding_a_first_password_needs_a_fresh_link_sign_in(): void
+    {
+        $person = User::factory()->withoutPassword()->create(['email' => 'no-password@example.org']);
+
+        $this->browse(function (Browser $browser) use ($person) {
+            // Signed in some other way: no form, a way to get a new link instead.
+            $browser->loginAs($person)
+                ->visit('/account')
+                ->assertSee('Add a password (optional)')
+                ->assertDontSee('Save password')
+                ->assertSee('Log out to get a new link');
+
+            $this->assertAccessible($browser);
+
+            $browser->press('Log out to get a new link')
+                ->waitForLocation('/login');
+
+            // Right after opening an emailed link, the form is there.
+            $url = app(IssueLoginLink::class)->handle($person, LoginLinkPurpose::SignIn);
+            $browser->visit(parse_url($url, PHP_URL_PATH))
+                ->press('Log me in')
+                ->waitForLocation('/')
+                ->visit('/account')
+                ->assertSee('Save password')
+                ->assertDontSee('Log out to get a new link');
 
             $this->assertAccessible($browser);
         });

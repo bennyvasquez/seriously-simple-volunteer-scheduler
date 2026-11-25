@@ -21,13 +21,20 @@
 <section class="panel">
 <h2>Add a password (optional)</h2>
 <p class="muted">If you'd rather type a password than wait for an email, add one here. You can still use email links whenever you like.</p>
-<p class="muted">To keep your account safe, we only add a password within {{ \App\Http\Controllers\Auth\LoginLinkController::RECENT_MINUTES }} minutes of you signing in with an emailed link. If it's been longer, log out and ask for a new link first.</p>
+@if ($canAddPassword)
 <form method="POST" action="{{ route('account.password.set') }}">
 @csrf
 <x-field name="password" type="password" label="New password" autocomplete="new-password" hint="At least 10 characters." />
 <x-field name="password_confirmation" type="password" label="Type it again" autocomplete="new-password" />
 <button type="submit" class="btn btn-primary">Save password</button>
 </form>
+@else
+<p>To keep your account safe, we only add a password within {{ \App\Http\Controllers\Auth\LoginLinkController::RECENT_MINUTES }} minutes of you signing in with an emailed link. Log out, ask for a new link on the login page, and come back here after you open it.</p>
+<form method="POST" action="{{ route('logout') }}">
+@csrf
+<button type="submit" class="btn">Log out to get a new link</button>
+</form>
+@endif
 </section>
 @else
 <section class="panel">

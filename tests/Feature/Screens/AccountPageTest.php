@@ -27,11 +27,37 @@ class AccountPageTest extends TestCase
         return $lead->fresh();
     }
 
-    public function test_a_volunteer_without_a_password_can_add_one(): void
+    public function test_a_volunteer_without_a_password_can_add_one_right_after_a_link_sign_in(): void
     {
         $volunteer = User::factory()->withoutPassword()->create();
 
-        $this->actingAs($volunteer)->get(route('account.show'))->assertOk()->assertSee('Add a password (optional)')->assertDontSee('Make new recovery codes');
+        $this->actingAs($volunteer)->withSession(['auth.link_login' => ['user' => $volunteer->id, 'at' => now()->subMinutes(14)->getTimestamp()]])
+            ->get(route('account.show'))->assertOk()
+            ->assertSee('Add a password (optional)')
+            ->assertSee('action="'.route('account.password.set').'"', false)
+            ->assertSee('Save password')
+            ->assertDontSee('Log out to get a new link')
+            ->assertDontSee('Make new recovery codes');
+    }
+
+    public function test_without_a_recent_link_sign_in_the_page_says_how_to_add_one_instead_of_showing_the_form(): void
+    {
+        $volunteer = User::factory()->withoutPassword()->create();
+        $sessions = [
+            'no link sign-in' => [],
+            'a link sign-in over 15 minutes ago' => ['auth.link_login' => ['user' => $volunteer->id, 'at' => now()->subMinutes(16)->getTimestamp()]],
+        ];
+
+        foreach ($sessions as $case => $session) {
+            $this->actingAs($volunteer)->withSession($session)
+                ->get(route('account.show'))->assertOk()
+                ->assertSee('Add a password (optional)')
+                ->assertSee('To keep your account safe, we only add a password within 15 minutes of you signing in with an emailed link.')
+                ->assertSee('Log out to get a new link')
+                ->assertDontSee('action="'.route('account.password.set').'"', false)
+                ->assertDontSee('Save password');
+            $this->flushSession();
+        }
     }
 
     public function test_the_page_has_its_own_heading_and_links_back_home(): void
