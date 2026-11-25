@@ -56,6 +56,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Trusted Proxies
+    |--------------------------------------------------------------------------
+    |
+    | A comma-separated list of the addresses of the proxies (such as nginx)
+    | that sit in front of the app and report the visitor's address, scheme
+    | and host in X-Forwarded-* headers. Left empty, no proxy is trusted and
+    | those headers are ignored. "*" trusts every sender and must be set
+    | explicitly.
+    |
+    */
+
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

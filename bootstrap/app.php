@@ -4,9 +4,11 @@ use App\Http\Middleware\EnsureAccountIsSecure;
 use App\Http\Middleware\HideRateLimitHeaders;
 use App\Http\Middleware\NormalizeEmailAddress;
 use App\Http\Middleware\RecordLastSeen;
+use App\Http\Middleware\TrustConfiguredProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Session\TokenMismatchException;
@@ -25,6 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) use ($expiredFormMessage): void {
         // A second layer behind the site address Laravel uses for links (AppServiceProvider::useSiteAddress()): a request sent to any other host name is refused. Laravel skips this check in tests and in the local environment. Read from config(), not env(), so it works once the configuration is cached.
         $middleware->trustHosts(at: fn () => ['^'.preg_quote((string) parse_url((string) config('app.url'), PHP_URL_HOST)).'$'], subdomains: false);
+
+        // Which proxies are trusted to report the visitor's address, scheme and host comes from the TRUSTED_PROXIES setting, none by default (see TrustConfiguredProxies). Laravel's own middleware is swapped for it because the configuration isn't loaded yet when this callback runs.
+        $middleware->replace(TrustProxies::class, TrustConfiguredProxies::class);
 
         $middleware->web(append: [
             EnsureAccountIsSecure::class,
