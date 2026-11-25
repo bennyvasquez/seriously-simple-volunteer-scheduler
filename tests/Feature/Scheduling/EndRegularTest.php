@@ -185,8 +185,8 @@ class EndRegularTest extends TestCase
     {
         $slot = $this->slot();
         $casey = User::factory()->create(['name' => 'Casey Example']);
-        $robinRegular = app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-01', null, SlotFrequency::EveryOtherWeek, '2026-10-15');
-        app(AddRegular::class)->handle(null, $slot, $casey, '2026-10-01', null, SlotFrequency::EveryOtherWeek, '2026-10-22');
+        $robinRegular = app(AddRegular::class)->handle(null, $slot, $this->robin, '2026-10-14', null, SlotFrequency::EveryOtherWeek, '2026-10-15');
+        app(AddRegular::class)->handle(null, $slot, $casey, '2026-10-14', null, SlotFrequency::EveryOtherWeek, '2026-10-22');
         $caseyBefore = $this->datesFor($casey);
 
         app(EndRegular::class)->handle($this->coordinator(), $robinRegular, '2026-10-22');
@@ -199,7 +199,7 @@ class EndRegularTest extends TestCase
     public function test_end_date_rules(): void
     {
         $slot = $this->slot();
-        $regular = $this->regular($slot, '2026-10-01', null, '2026-11-12');
+        $regular = $this->regular($slot, '2026-10-14', null, '2026-11-12');
         $coordinator = $this->coordinator();
 
         try {
@@ -223,7 +223,7 @@ class EndRegularTest extends TestCase
         $this->assertSame('2026-10-22', $regular->fresh()->ends_on->toDateString());
 
         // An end date that has already passed can be moved earlier too.
-        $old = $this->regular($slot, '2026-09-01', User::factory()->create(['name' => 'Casey Example']), '2026-10-07');
+        $old = SlotRegular::query()->create(['weekly_slot_id' => $slot->id, 'user_id' => User::factory()->create(['name' => 'Casey Example'])->id, 'frequency' => SlotFrequency::Weekly, 'starts_on' => '2026-09-01', 'ends_on' => '2026-10-07']);
         app(EndRegular::class)->handle($coordinator, $old, '2026-09-23');
         $this->assertSame('2026-09-23', $old->fresh()->ends_on->toDateString());
     }
@@ -231,7 +231,7 @@ class EndRegularTest extends TestCase
     public function test_a_regular_added_again_later_is_not_removed_by_ending_the_first(): void
     {
         $slot = $this->slot();
-        $first = $this->regular($slot, '2026-10-01', null, '2026-10-29');
+        $first = $this->regular($slot, '2026-10-14', null, '2026-10-29');
         $this->regular($slot, '2026-11-12');
 
         app(EndRegular::class)->handle($this->coordinator(), $first, '2026-10-15');
@@ -443,7 +443,7 @@ class EndRegularTest extends TestCase
     public function test_end_own_refuses_a_past_date(): void
     {
         $slot = $this->slot();
-        $regular = $this->regular($slot, '2026-10-01');
+        $regular = $this->regular($slot, '2026-10-14');
 
         try {
             app(EndRegular::class)->endOwn($this->robin, $regular, '2026-10-12', fn () => null);

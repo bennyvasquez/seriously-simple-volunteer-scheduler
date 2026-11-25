@@ -9,6 +9,7 @@ use App\Enums\SlotFrequency;
 use App\Models\Area;
 use App\Models\Assignment;
 use App\Models\ChangeLogEntry;
+use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
@@ -35,7 +36,7 @@ use InvalidArgumentException;
  *
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on, and a `skipped_full` attribute listing the dates a self-claim left out because they already have the people they need (always empty otherwise).
  *
- * A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
+ * The first date can't be before today in the organization's time zone, so a regular is never added backwards. A person who acts (not the system) has to be able to manage the slot's area. Rotation slots have no regulars, and a person who has been turned off can't be made one (checked again under the slot lock). The refusals are written to be shown on screen. The new regular is emailed after the response.
  *
  * A volunteer taking a slot for themselves (TakeShift, decision 15) passes `$selfClaim`: the actor has to be the person, the manager check is skipped, the person must be cleared for regular shifts (CoverEligibility::NOT_CLEARED, checked on the row read under the locks), the slot must have no regular on or after the start date ("You can take this date only."), and a generated shift that already has the people it needs (counting everyone on it, one-time places included) is left out, the way overlapping dates are, instead of asking to confirm. When that full date is the start date (the one being taken), ShiftAlreadyTaken is thrown instead. overDates() isn't consulted for a self-claim: it counts only regulars, a self-claim is refused whenever the slot has any regular from that date on, and people needed is at least 1, so it could never find a date. Its assignment.added entries carry `via` "take", and no "now a regular" email is sent, since TakeShift sends the person one email for the whole take. `$onPutOn` is called inside the transaction, after everything is logged, with the locked shifts the person was put on and every locked candidate shift, so TakeShift can check the date taken and fill its cover request in the same transaction.
  */
@@ -73,6 +74,11 @@ class AddRegular
 
         $startsOn = CarbonImmutable::parse($startsOn)->toDateString();
         $endsOn = $endsOn === null ? null : CarbonImmutable::parse($endsOn)->toDateString();
+
+        if ($startsOn < Organization::current()->today()->toDateString()) {
+            throw new DomainException('The first date can\'t be before today.');
+        }
+
         // Only every-other-week regulars count weeks from an anchor.
         $anchorDate = $anchorDate === null || $frequency === SlotFrequency::Weekly ? null : CarbonImmutable::parse($anchorDate)->toDateString();
 

@@ -71,9 +71,9 @@ class AddRegularScreenTest extends TestCase
         $user = User::factory()->create(['name' => $name]);
 
         if ($every === 'other') {
-            app(AddRegular::class)->handle(null, $slot, $user, '2026-10-01', null, SlotFrequency::EveryOtherWeek, $from);
+            app(AddRegular::class)->handle(null, $slot, $user, '2026-10-14', null, SlotFrequency::EveryOtherWeek, $from);
         } else {
-            app(AddRegular::class)->handle(null, $slot, $user, $from);
+            app(AddRegular::class)->handle(null, $slot, $user, '2026-10-14');
         }
 
         return $user;
