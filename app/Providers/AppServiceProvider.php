@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\Events\NotificationFailed;
 use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Notifications\Events\NotificationSent;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
@@ -86,6 +87,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->useSiteAddress();
+
+        // migrate:fresh, migrate:refresh, migrate:reset and db:wipe delete every table, so they refuse on a real server, with or without --force. They run only in the local and testing environments, the same rule as the example seeder.
+        DB::prohibitDestructiveCommands(! $this->app->environment('local', 'testing'));
 
         // Laravel's mail layout puts the app name in each email's header, under "Regards," and in the footer, and the sender's name comes from the mail settings. Before an email goes out, both become the organization's name from Settings, so volunteers see who's writing to them rather than "SSVS". The address stays the one in MAIL_FROM_ADDRESS.
         Event::listen(NotificationSending::class, function (NotificationSending $event) {

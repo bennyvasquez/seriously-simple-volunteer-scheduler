@@ -9,10 +9,12 @@ use App\Http\Middleware\TrustConfiguredProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Session\TokenMismatchException;
+use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -23,7 +25,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
-        health: '/up',
+        then: function (): void {
+            // Our own plain health check, outside the web group so it sets no session cookie. It answers during maintenance mode too.
+            Route::middleware([])->group(__DIR__.'/../routes/health.php');
+            PreventRequestsDuringMaintenance::except('up');
+        },
     )
     ->withMiddleware(function (Middleware $middleware) use ($expiredFormMessage): void {
         // A second layer behind the site address Laravel uses for links (AppServiceProvider::useSiteAddress()): a request sent to any other host name is refused. Laravel skips this check in tests and in the local environment. Read from config(), not env(), so it works once the configuration is cached.

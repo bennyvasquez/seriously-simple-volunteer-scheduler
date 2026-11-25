@@ -4,6 +4,7 @@ namespace App\Actions\Accounts;
 
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use App\Support\EmailAddress;
 use App\Support\PersonName;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -34,6 +35,10 @@ class CreatePerson
         }
 
         // A backstop for the invite form and the import, which refuse it first.
+        if (! EmailAddress::isPlain($email)) {
+            throw new DomainException(EmailAddress::REFUSAL);
+        }
+
         if (User::isUnusableEmail($email)) {
             throw new DomainException('That email address can\'t be used.');
         }

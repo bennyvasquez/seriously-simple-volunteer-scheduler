@@ -222,6 +222,8 @@ class AccessMatrixTest extends TestCase
         // Resetting someone's two-factor, on their security page: admins only.
         'GET people.security' => ['params' => ['user' => '@regular_a'], 'expect' => self::ADMINS],
         'POST people.two-factor.reset' => ['params' => ['user' => '@regular_a'], 'expect' => self::ADMINS],
+        // The health check for monitors: open to everyone and showing nothing.
+        'GET health' => ['expect' => ['guest' => 'ok', 'not_invited' => 'ok', 'turned_off' => 'ok', 'volunteer' => 'ok', 'cleared' => 'ok', 'lead_own' => 'ok', 'lead_other' => 'ok', 'coordinator' => 'ok', 'admin' => 'ok', 'in_setup' => 'ok']],
         // The change log: coordinators and admins.
         'GET change-log.index' => ['expect' => self::COORDINATORS],
     ];
@@ -232,8 +234,6 @@ class AccessMatrixTest extends TestCase
         'dusk.login', 'dusk.logout', 'dusk.user',
         // Laravel's local disk serving routes, turned off in a later security batch.
         'storage.local', 'storage.local.upload',
-        // The health check, open to everyone and showing nothing.
-        'GET /up',
     ];
 
     /**
