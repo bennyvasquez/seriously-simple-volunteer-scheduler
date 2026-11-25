@@ -23,16 +23,17 @@ class CreatePerson
         }
 
         $email = Str::lower(trim($email));
-        $name = PersonName::clean($name);
 
-        // A backstop for the invite form and the import, which refuse these first.
-        if ($name === '') {
+        // A backstop for the invite form and the import, which refuse these first. The name is checked as typed, because cleaning removes control characters.
+        if (PersonName::clean($name) === '') {
             throw new DomainException('Enter their name.');
         }
 
-        if (PersonName::problem($name) !== null) {
-            throw new DomainException(PersonName::REFUSAL);
+        if (($problem = PersonName::problem($name)) !== null) {
+            throw new DomainException($problem);
         }
+
+        $name = PersonName::clean($name);
 
         // A backstop for the invite form and the import, which refuse it first.
         if (! EmailAddress::isPlain($email)) {

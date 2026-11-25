@@ -34,7 +34,7 @@ class InviteController extends Controller
         $options = $this->startOptions($viewer);
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255', fn ($attribute, $value, $fail) => is_string($value) && PersonName::problem($value) === null ? null : $fail(PersonName::REFUSAL)],
+            'name' => ['required', 'string', 'max:255', fn ($attribute, $value, $fail) => ! is_string($value) || ($problem = PersonName::problem($value)) === null ? null : $fail($problem)],
             'email' => ['required', 'email:rfc', 'max:255'],
             'starts_as' => ['required', 'in:'.implode(',', array_keys($options))],
         ], [

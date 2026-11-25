@@ -167,8 +167,8 @@ class ImportPeople
             return 'No name';
         }
 
-        if (PersonName::problem($row->name) !== null) {
-            return PersonName::REFUSAL;
+        if (($problem = PersonName::problem($row->name)) !== null) {
+            return $problem;
         }
 
         if (mb_strlen($row->name) > 255) {

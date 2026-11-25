@@ -48,7 +48,7 @@ class SetupCommand extends Command
         $validator = Validator::make($answers, [
             'organization' => ['required', 'string', 'max:255', new NoWebAddress],
             'timezone' => ['required', Rule::in(DateTimeZone::listIdentifiers())],
-            'admin_name' => ['required', 'string', 'max:255', fn ($attribute, $value, $fail) => PersonName::problem((string) $value) === null ? null : $fail(PersonName::REFUSAL)],
+            'admin_name' => ['required', 'string', 'max:255', fn ($attribute, $value, $fail) => ($problem = PersonName::problem((string) $value)) === null ? null : $fail($problem)],
             'admin_email' => ['required', 'email', 'max:255', fn ($attribute, $value, $fail) => EmailAddress::isPlain($value) ? null : $fail(EmailAddress::REFUSAL)],
         ], [
             'timezone.in' => 'That isn\'t a time zone this server knows. Use a name like America/Detroit.',

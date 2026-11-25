@@ -15,6 +15,7 @@ use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -103,6 +104,27 @@ class ImportPeopleTest extends TestCase
             'Matches someone by email, but their membership ID is different',
         ], $preview->problems->pluck('reason')->all());
         $this->assertCount(0, $preview->add);
+    }
+
+    public function test_a_name_with_control_characters_is_skipped_and_never_printed_raw(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'ssvs');
+        file_put_contents($path, "Full name,Email,Profile ID\nBlake \e[2KExample,blake@example.org,b1\nAvery\x07 Example,avery@example.org,b2\n");
+
+        try {
+            $preview = app(ImportPeople::class)->preview(HelloClubExport::read($path), null);
+            $this->assertSame(["This name has characters we can't use.", "This name has characters we can't use."], $preview->problems->pluck('reason')->all());
+            $this->assertCount(0, $preview->add);
+
+            Artisan::call('ssvs:import-people', ['file' => $path, '--as' => 'admin@example.org']);
+        } finally {
+            unlink($path);
+        }
+
+        $output = Artisan::output();
+        $this->assertStringContainsString("This name has characters we can't use.", $output);
+        $this->assertStringNotContainsString("\e", $output);
+        $this->assertStringNotContainsString("\x07", $output);
     }
 
     public function test_applying_creates_people_without_email_and_makes_shift_leads(): void

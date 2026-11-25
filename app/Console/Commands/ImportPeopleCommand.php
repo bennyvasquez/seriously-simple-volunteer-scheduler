@@ -66,14 +66,14 @@ class ImportPeopleCommand extends Command
         }
 
         // Names and email addresses only. Nothing else from the file is shown.
-        $this->showGroup("Will be added ({$preview->add->count()})", ['Name', 'Email', 'Cleared'], $preview->add->map(fn ($item) => [$item->row->name, $item->row->email.($item->makeLead ? ' (leads '.$leadArea->name.')' : ''), $item->clear ? 'Yes' : '']));
-        $this->showGroup("Already here, left alone ({$preview->leftAlone()->count()})", ['Name', 'Email'], $preview->leftAlone()->map(fn ($item) => [$item->row->name, $item->row->email.($item->fillMemberId ? ' (membership ID will be added)' : '')]));
+        $this->showGroup("Will be added ({$preview->add->count()})", ['Name', 'Email', 'Cleared'], $preview->add->map(fn ($item) => [$this->plain($item->row->name), $this->plain($item->row->email).($item->makeLead ? ' (leads '.$leadArea->name.')' : ''), $item->clear ? 'Yes' : '']));
+        $this->showGroup("Already here, left alone ({$preview->leftAlone()->count()})", ['Name', 'Email'], $preview->leftAlone()->map(fn ($item) => [$this->plain($item->row->name), $this->plain($item->row->email).($item->fillMemberId ? ' (membership ID will be added)' : '')]));
 
         if ($preview->movedBack->isNotEmpty()) {
-            $this->showGroup("Moved back to shadowing, left alone ({$preview->movedBack->count()})", ['Name', 'Email'], $preview->movedBack->map(fn ($item) => [$item->row->name, $item->row->email]));
+            $this->showGroup("Moved back to shadowing, left alone ({$preview->movedBack->count()})", ['Name', 'Email'], $preview->movedBack->map(fn ($item) => [$this->plain($item->row->name), $this->plain($item->row->email)]));
         }
 
-        $this->showGroup("Skipped ({$preview->problems->count()})", ['Name', 'Email', 'Why'], $preview->problems->map(fn ($item) => [$item->row->name, $item->row->email, $item->reason]));
+        $this->showGroup("Skipped ({$preview->problems->count()})", ['Name', 'Email', 'Why'], $preview->problems->map(fn ($item) => [$this->plain($item->row->name), $this->plain($item->row->email), $item->reason]));
 
         $fills = $preview->existing->where('fillMemberId', true)->count();
         $clears = $preview->clearExisting->count();
@@ -82,7 +82,7 @@ class ImportPeopleCommand extends Command
             $this->newLine();
             $this->line($clears === 1 ? '1 person already here will be cleared.' : "{$clears} people already here will be cleared.");
             $fillingIds = $preview->existing->where('fillMemberId', true)->map(fn ($item) => $item->user->id)->all();
-            $this->table(['Name', 'Email'], $preview->clearExisting->map(fn ($item) => [$item->row->name, $item->row->email.(in_array($item->user->id, $fillingIds, true) ? ' (membership ID will be added)' : '')])->all());
+            $this->table(['Name', 'Email'], $preview->clearExisting->map(fn ($item) => [$this->plain($item->row->name), $this->plain($item->row->email).(in_array($item->user->id, $fillingIds, true) ? ' (membership ID will be added)' : '')])->all());
         }
 
         if ($preview->add->isEmpty() && $fills === 0 && $clears === 0) {
@@ -158,5 +158,11 @@ class ImportPeopleCommand extends Command
         if ($rows->isNotEmpty()) {
             $this->table($headers, $rows->all());
         }
+    }
+
+    /** Text from the file with control characters (such as escape sequences that move the cursor or erase lines) removed, so what's shown is what's there. */
+    private function plain(string $text): string
+    {
+        return preg_replace('/\p{Cc}/u', '', $text) ?? $text;
     }
 }

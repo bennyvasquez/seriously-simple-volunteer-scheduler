@@ -26,4 +26,17 @@ class NoWebAddressTest extends TestCase
         // A known false positive the email editor already had.
         $this->assertTrue(NoWebAddress::check('awww. sorry'));
     }
+
+    public function test_look_alike_punctuation_counts_as_the_real_thing(): void
+    {
+        foreach (["https\u{FF1A}//evil.example", "www\u{FF0E}evil.example", "www\u{3002}evil.example", "ww\u{3164}w.evil.example", "ww\u{115F}w.evil.example", "ww\u{FFA0}w.evil.example", "https\u{FF1A}\u{FF0F}\u{FF0F}evil.example"] as $text) {
+            $this->assertTrue(NoWebAddress::check($text), $text);
+        }
+    }
+
+    public function test_ordinary_punctuation_is_still_fine(): void
+    {
+        $this->assertFalse(NoWebAddress::check('Meet at 6:30. Bring gloves.'));
+        $this->assertFalse(NoWebAddress::check('Front desk / Woodshop'));
+    }
 }
