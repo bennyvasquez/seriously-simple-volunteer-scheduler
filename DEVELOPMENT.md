@@ -20,6 +20,10 @@ Run `docker compose exec app php artisan ssvs:setup`. It asks for the organizati
 
 Signing out of all devices relies on `SESSION_DRIVER=database`, which `.env.example` sets, so keep it on any server.
 
+## What production refuses
+
+When `APP_ENV=production`, the app turns `APP_DEBUG` off at start-up (and logs one critical line), because the debug page shows request bodies, headers and SQL, and it refuses to send email through the `log` mailer, because that would write login links and codes to the log file. Neither applies to local development or the tests, which use Mailpit and the array mailer. A production `.env` needs the values listed at the top of `.env.example`.
+
 ## Email in development
 
 Every email the app sends lands in Mailpit at http://localhost:8025, not in real inboxes. Login links, invitations and two-factor codes show up there.

@@ -16,12 +16,14 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Http\Request;
+use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Notifications\Events\NotificationFailed;
 use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
@@ -35,6 +37,7 @@ use Laravel\Fortify\Events\RecoveryCodesGenerated;
 use Laravel\Fortify\Events\TwoFactorAuthenticationConfirmed;
 use Laravel\Fortify\Events\TwoFactorAuthenticationDisabled;
 use Laravel\Fortify\Events\ValidTwoFactorAuthenticationCodeProvided;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -87,6 +90,21 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->useSiteAddress();
+
+        if ($this->app->isProduction()) {
+            // The debug page shows request bodies (passwords included), headers and SQL, so a real server never runs with it on, even if .env still says APP_DEBUG=true. The site keeps working, and the log says what was changed.
+            if (config('app.debug')) {
+                config(['app.debug' => false]);
+                Log::critical('APP_DEBUG was true on a production server, so it was turned off for this request. Set APP_DEBUG=false in .env.');
+            }
+
+            // The log mailer writes each whole email, login links and codes included, to the log file, so a real server refuses to send through it. The event's data names the mailer actually used (Laravel's Mailer::send sets it), which covers a mailer picked by name as well as the default.
+            Event::listen(MessageSending::class, function (MessageSending $event) {
+                if (($event->data['mailer'] ?? config('mail.default')) === 'log') {
+                    throw new RuntimeException('Email can\'t be sent through the log mailer on a production server, because it would write login links and codes to the log file. Set MAIL_MAILER in .env to a real mailer such as smtp.');
+                }
+            });
+        }
 
         // migrate:fresh, migrate:refresh, migrate:reset and db:wipe delete every table, so they refuse on a real server, with or without --force. They run only in the local and testing environments, the same rule as the example seeder.
         DB::prohibitDestructiveCommands(! $this->app->environment('local', 'testing'));
