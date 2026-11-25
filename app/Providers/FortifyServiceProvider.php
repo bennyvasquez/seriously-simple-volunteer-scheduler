@@ -8,8 +8,8 @@ use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Http\Responses\FailedTwoFactorLoginResponse;
 use App\Http\Responses\NeutralPasswordResetLinkResponse;
 use App\Models\User;
-use App\Notifications\TwoFactorAttemptsNotification;
 use App\Support\EmailAddress;
+use App\Support\TwoFactorAlert;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
@@ -93,14 +93,11 @@ class FortifyServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($throttleKey);
         });
 
-        // The app code, recovery code and emailed code routes share these limits. The hourly and daily ones also tell the person, once a day, that someone is trying codes on their account. There may be no pending login (the id is null); the limits still apply, but there's no one to tell.
+        // The app code, recovery code and emailed code routes share these limits. The hourly and daily ones, and ten wrong codes in a day, also tell the person, once a day, that someone is trying codes on their account. There may be no pending login (the id is null); the limits still apply, but there's no one to tell.
         RateLimiter::for('two-factor', function (Request $request) {
             $id = $request->session()->get('login.id');
             $paused = function (Request $request, array $headers) use ($id) {
-                if (User::query()->find($id) !== null && Cache::add('two-factor-alerted|'.$id, true, now()->addDay())) {
-                    // The refusal is a 429, and deferred work is skipped after an error response unless it says it always runs.
-                    defer(fn () => User::query()->find($id)?->notify(new TwoFactorAttemptsNotification), always: true);
-                }
+                TwoFactorAlert::send($id);
 
                 throw new ThrottleRequestsException('Too Many Attempts.', null, $headers);
             };

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Security;
 
+use App\Http\Controllers\Auth\TwoFactorEmailCodeController;
 use App\Models\User;
 use App\Notifications\TwoFactorAttemptsNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -115,6 +116,66 @@ class TwoFactorLimitsTest extends TestCase
             }
         }
 
+        Notification::assertNothingSent();
+    }
+
+    public function test_ten_wrong_codes_in_a_day_send_one_alert_without_reaching_a_limit(): void
+    {
+        $this->wrongCodes(9);
+        Notification::assertNothingSent();
+
+        $this->wrongCodes(1);
+        Notification::assertSentToTimes($this->lead, TwoFactorAttemptsNotification::class, 1);
+
+        $this->wrongCodes(8);
+        Notification::assertSentToTimes($this->lead, TwoFactorAttemptsNotification::class, 1);
+    }
+
+    public function test_wrong_codes_then_hitting_the_hourly_limit_send_only_one_alert_that_day(): void
+    {
+        $this->wrongCodes(15);
+        Notification::assertSentToTimes($this->lead, TwoFactorAttemptsNotification::class, 1);
+
+        $this->travel(61)->seconds();
+        $this->wrongCodes(5);
+        $this->travel(61)->seconds();
+        $this->post(route('two-factor.login.store'), ['code' => '000000'])->assertStatus(429);
+
+        Notification::assertSentToTimes($this->lead, TwoFactorAttemptsNotification::class, 1);
+    }
+
+    public function test_wrong_emailed_codes_count_too(): void
+    {
+        for ($i = 1; $i <= 10; $i++) {
+            Cache::put(TwoFactorEmailCodeController::cacheKey($this->lead), ['hash' => hash('sha256', '123456'), 'tries' => 0, 'expires_at' => now()->addMinutes(10)->getTimestamp()], now()->addMinutes(10));
+            $this->post(route('two-factor.email.verify'), ['code' => '000000'])->assertSessionHasErrors('code');
+
+            if ($i % 4 === 0) {
+                $this->travel(61)->seconds();
+            }
+        }
+
+        Notification::assertSentToTimes($this->lead, TwoFactorAttemptsNotification::class, 1);
+    }
+
+    public function test_right_codes_do_not_count_as_wrong_ones(): void
+    {
+        $this->wrongCodes(9);
+
+        $this->post(route('two-factor.login.store'), ['code' => $this->currentCode($this->secret)])->assertRedirect();
+
+        $this->assertAuthenticatedAs($this->lead);
+        Notification::assertNothingSent();
+        $this->assertSame(9, Cache::get('two-factor-wrong|'.$this->lead->id));
+    }
+
+    public function test_the_wrong_code_count_without_a_pending_login_is_not_kept(): void
+    {
+        $this->flushSession();
+
+        $this->post(route('two-factor.login.store'), ['code' => '000000']);
+
+        $this->assertNull(Cache::get('two-factor-wrong|'));
         Notification::assertNothingSent();
     }
 

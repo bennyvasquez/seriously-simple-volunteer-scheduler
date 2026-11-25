@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
 use App\Notifications\TwoFactorCodeNotification;
+use App\Support\TwoFactorAlert;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,6 +51,7 @@ class TwoFactorEmailCodeController extends Controller
 
         if (! hash_equals($entry['hash'], hash('sha256', trim($request->input('code'))))) {
             $entry['tries']++;
+            TwoFactorAlert::wrongCode($user->id);
 
             if ($entry['tries'] >= self::MAX_TRIES) {
                 Cache::forget($key);

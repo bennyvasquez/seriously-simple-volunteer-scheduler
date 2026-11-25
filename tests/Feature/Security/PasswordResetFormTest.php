@@ -85,4 +85,14 @@ class PasswordResetFormTest extends TestCase
         $this->assertContains('throttle:password-reset', $route->gatherMiddleware());
         $this->assertContains('guest', $route->gatherMiddleware());
     }
+
+    public function test_the_password_broker_takes_at_least_750_milliseconds(): void
+    {
+        $this->assertGreaterThanOrEqual(750000, config('auth.timebox_duration'));
+
+        $broker = Password::broker();
+        $duration = (new \ReflectionProperty($broker, 'timeboxDuration'))->getValue($broker);
+
+        $this->assertGreaterThanOrEqual(750000, $duration);
+    }
 }
