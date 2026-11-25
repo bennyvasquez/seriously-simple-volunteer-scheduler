@@ -4,6 +4,7 @@ namespace App\Actions\Accounts;
 
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use App\Support\PersonName;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,16 @@ class CreatePerson
         }
 
         $email = Str::lower(trim($email));
+        $name = PersonName::clean($name);
+
+        // A backstop for the invite form and the import, which refuse these first.
+        if ($name === '') {
+            throw new DomainException('Enter their name.');
+        }
+
+        if (PersonName::problem($name) !== null) {
+            throw new DomainException(PersonName::REFUSAL);
+        }
 
         // A backstop for the invite form and the import, which refuse it first.
         if (User::isUnusableEmail($email)) {
@@ -32,7 +43,7 @@ class CreatePerson
         }
 
         return DB::transaction(function () use ($actor, $name, $email, $memberId) {
-            $person = new User(['name' => trim($name), 'email' => $email, 'password' => null]);
+            $person = new User(['name' => $name, 'email' => $email, 'password' => null]);
             $person->forceFill(['member_id' => $memberId]);
             $changes = ChangeLogEntry::changesOf($person);
             $person->save();

@@ -20,6 +20,7 @@ use App\Notifications\CoverRequestNotification;
 use App\Notifications\ShadowLeftNotification;
 use App\Notifications\ShadowSpotNotification;
 use App\Notifications\ShiftsReleasedNotification;
+use App\Rules\NoWebAddress;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -211,13 +212,17 @@ class ReleaseShifts
         return $request->setRelation('recipients', $recipients);
     }
 
-    /** The note as stored: trimmed, null when empty, and refused over NOTE_LIMIT characters. */
+    /** The note as stored: invisible formatting characters removed, trimmed, null when empty, and refused over NOTE_LIMIT characters or when it holds a web address. */
     public static function cleanNote(?string $note): ?string
     {
-        $note = $note === null ? '' : trim($note);
+        $note = $note === null ? '' : trim((string) preg_replace('/\p{Cf}/u', '', $note));
 
         if (mb_strlen($note) > self::NOTE_LIMIT) {
             throw new DomainException('Keep the note under 500 characters.');
+        }
+
+        if (NoWebAddress::check($note)) {
+            throw new DomainException(NoWebAddress::MESSAGE);
         }
 
         return $note === '' ? null : $note;

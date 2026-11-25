@@ -10,6 +10,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Area;
 use App\Models\User;
+use App\Support\PersonName;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -33,7 +34,7 @@ class InviteController extends Controller
         $options = $this->startOptions($viewer);
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255', fn ($attribute, $value, $fail) => PersonName::problem((string) $value) === null ? null : $fail(PersonName::REFUSAL)],
             'email' => ['required', 'email:rfc', 'max:255'],
             'starts_as' => ['required', 'in:'.implode(',', array_keys($options))],
         ], [

@@ -16,6 +16,7 @@ use App\Models\Assignment;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Rules\NoWebAddress;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -40,6 +41,7 @@ class ClosureController extends Controller
         'to.*' => 'Pick the last day closed.',
         'reason.required' => 'Say why it\'s closed, so volunteers know.',
         'reason.max' => 'Keep it to 200 characters or fewer.',
+        'reason.'.NoWebAddress::class => NoWebAddress::MESSAGE,
         'reason.*' => 'Say why it\'s closed, so volunteers know.',
     ];
 
@@ -87,7 +89,7 @@ class ClosureController extends Controller
             'area' => ['required', 'array'],
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
-            'reason' => ['required', 'string', 'max:200'],
+            'reason' => ['required', 'string', 'max:200', new NoWebAddress],
         ], self::MESSAGES);
 
         try {
@@ -165,7 +167,7 @@ class ClosureController extends Controller
         $request->validate([
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
-            'reason' => ['required', 'string', 'max:200'],
+            'reason' => ['required', 'string', 'max:200', new NoWebAddress],
         ], self::MESSAGES);
 
         try {

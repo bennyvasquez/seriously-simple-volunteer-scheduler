@@ -13,6 +13,7 @@ use App\Models\AreaClosure;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\WeeklySlot;
+use App\Rules\NoWebAddress;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -87,7 +88,7 @@ class AddController extends Controller
         $repeating = in_array($request->input('repeats'), ['weekly', 'every_other_week'], true);
 
         $data = $request->validate([
-            'title' => ['nullable', 'string', 'max:80'],
+            'title' => ['nullable', 'string', 'max:80', new NoWebAddress],
             'date' => ['bail', 'required', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:'.$organization->today()->toDateString()],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i', 'different:start_time'],

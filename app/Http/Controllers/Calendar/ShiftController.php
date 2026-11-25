@@ -25,6 +25,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
+use App\Rules\NoWebAddress;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -342,7 +343,7 @@ class ShiftController extends Controller
 
         try {
             $data = $request->validate([
-                'title' => ['nullable', 'string', 'max:80'],
+                'title' => ['nullable', 'string', 'max:80', new NoWebAddress],
                 'start_time' => ['required', 'date_format:H:i'],
                 'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
                 'people_needed' => ['required', 'integer', 'min:1', 'max:200'],
@@ -394,9 +395,13 @@ class ShiftController extends Controller
         $areaQuery = $this->areaQuery($request);
         $reason = trim((string) $request->input('reason'));
 
-        if ($reason === '' || mb_strlen($reason) > 200) {
+        if ($reason === '' || mb_strlen($reason) > 200 || NoWebAddress::check($reason)) {
             return redirect()->route('calendar.shift', [$shift, 'cancel' => 1] + $areaQuery)->withInput()
-                ->withErrors(['reason' => $reason === '' ? 'Say why it\'s cancelled, so the people on it know.' : 'Keep it to 200 characters or fewer.']);
+                ->withErrors(['reason' => match (true) {
+                    $reason === '' => 'Say why it\'s cancelled, so the people on it know.',
+                    NoWebAddress::check($reason) => NoWebAddress::MESSAGE,
+                    default => 'Keep it to 200 characters or fewer.',
+                }]);
         }
 
         try {

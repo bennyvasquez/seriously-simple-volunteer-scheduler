@@ -212,7 +212,7 @@ class User extends Authenticatable
             return ChangeLogEntry::REMOVED_PERSON;
         }
 
-        return explode(' ', trim($this->name))[0];
+        return $this->nameWords()[0];
     }
 
     /** First name and the first letter of the last word, "Robin E.", for showing someone to a viewer who may not see their full name. Just the first name when the name is one word. */
@@ -222,9 +222,15 @@ class User extends Authenticatable
             return ChangeLogEntry::REMOVED_PERSON;
         }
 
-        $words = preg_split('/\s+/', trim($this->name));
+        $words = $this->nameWords();
 
         return count($words) < 2 ? $words[0] : $words[0].' '.mb_strtoupper(mb_substr($words[count($words) - 1], 0, 1)).'.';
+    }
+
+    /** The words of the name, split on any whitespace (non-breaking spaces too). At least one word, empty when the name is. @return non-empty-list<string> */
+    private function nameWords(): array
+    {
+        return preg_split('/\s+/u', trim($this->name), -1, PREG_SPLIT_NO_EMPTY) ?: [''];
     }
 
     /** Cleared for regular shifts (spec section 9): only cleared people take shifts and get cover requests. Coordinators can still put anyone on a shift. */

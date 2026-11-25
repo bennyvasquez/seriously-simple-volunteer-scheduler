@@ -954,7 +954,7 @@ class ReleaseShiftsTest extends TestCase
         $assignment = Assignment::query()->where('shift_id', $shift->id)->where('user_id', $this->robin->id)->sole();
         Notification::fake();
 
-        $this->assertNull(app(ReleaseShifts::class)->one($this->robin, $shift, 'Sorry, [car](https://example.org) trouble!'));
+        $this->assertNull(app(ReleaseShifts::class)->one($this->robin, $shift, 'Sorry, [car](/trouble) trouble!'));
 
         $this->assertDatabaseMissing('assignments', ['id' => $assignment->id]);
         $this->assertSame(0, CoverRequest::query()->count());
@@ -965,8 +965,8 @@ class ReleaseShiftsTest extends TestCase
                 $text = $this->text($mail);
 
                 return $mail->subject === 'Robin E. can\'t make their shadow shift'
-                    && str_contains(html_entity_decode($text), 'Note from Robin E.: Sorry, [car](https://example.org) trouble!')
-                    && ! str_contains((string) $mail->render(), 'href="https://example.org"')
+                    && str_contains(html_entity_decode($text), 'Note from Robin E.: Sorry, [car](/trouble) trouble!')
+                    && ! str_contains((string) $mail->render(), 'href="/trouble"')
                     && str_contains($text, 'Front desk')
                     && str_contains($text, 'Thursday, October 22, 6:30 to 9:30pm')
                     && $mail->actionText === 'Open the shift'

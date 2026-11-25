@@ -6,6 +6,7 @@ use App\Actions\UpdateSettings;
 use App\Actions\UpdateShadowingSettings;
 use App\Http\Controllers\Calendar\KeepsAreaFilter;
 use App\Models\Organization;
+use App\Rules\NoWebAddress;
 use DateTimeZone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,13 +41,14 @@ class SettingsController extends Controller
         Gate::forUser($request->user())->authorize('manage-settings');
 
         $request->validate([
-            'name' => ['required', 'string', 'max:150'],
+            'name' => ['required', 'string', 'max:150', new NoWebAddress],
             'timezone' => ['required', 'string', Rule::in(DateTimeZone::listIdentifiers())],
             'weeks_ahead' => ['required', 'integer', 'between:1,26'],
             'reminder_hours' => ['required', Rule::in(['off', ...array_map('strval', Organization::REMINDER_CHOICES)])],
         ], [
             'name.required' => 'Give the organization a name.',
             'name.max' => 'Keep the name to 150 characters or fewer.',
+            'name.'.NoWebAddress::class => NoWebAddress::MESSAGE,
             'name.*' => 'Give the organization a name.',
             'timezone.*' => 'Pick a time zone from the list.',
             'weeks_ahead.*' => 'Choose a number of weeks from 1 to 26.',

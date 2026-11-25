@@ -5,6 +5,7 @@ namespace App\Actions\Scheduling;
 use App\Enums\SlotFrequency;
 use App\Models\Organization;
 use App\Models\WeeklySlot;
+use App\Rules\NoWebAddress;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -95,7 +96,7 @@ final class SlotAttributes
         }
 
         return [
-            'title' => ['nullable', 'string', 'max:80'],
+            'title' => ['nullable', 'string', 'max:80', new NoWebAddress],
             'weekday' => ['required', 'integer', 'between:0,6'],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i', 'different:start_time'],
