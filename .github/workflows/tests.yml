@@ -16,6 +16,8 @@ jobs:
     steps:
       # Pinned to a full commit hash so a moved tag can't change what runs. Dependabot updates the hash and the comment.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build the AlmaLinux 10 app image
         run: docker compose build app
@@ -31,12 +33,21 @@ jobs:
           && php artisan key:generate --no-interaction
           && php artisan test'
 
+      # The repository is bind mounted, so the vendor directory the tests step installed is still there.
+      - name: Run static analysis
+        run: docker compose run --rm -T app ./vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      - name: Check dependencies for security advisories
+        run: docker compose run --rm -T app composer audit --locked
+
   browser:
     runs-on: ubuntu-latest
     # A normal run takes a few minutes once the Selenium image is downloaded; this stops a hung build from running for hours.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build the AlmaLinux 10 app image
         run: docker compose --profile browser build dusk

@@ -239,6 +239,16 @@ class RemoveFromShiftTest extends TestCase
         $this->assertDatabaseHas('assignments', ['id' => $assignment->id]);
     }
 
+    public function test_an_empty_date_on_the_range_check_gets_the_refusal_not_a_preview(): void
+    {
+        $shift = $this->robinOn('2026-10-22');
+        $assignment = $this->assignmentOn($shift);
+
+        $page = $this->actingAs($this->coordinator())->get(route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id, 'which' => 'range', 'from' => '', 'to' => '', 'check' => 1]));
+
+        $page->assertOk()->assertSee('field-error', false)->assertDontSee('name="checked_from"', false);
+    }
+
     /** The radio buttons' markup, to check none is ticked. */
     private function radios(string $html): string
     {

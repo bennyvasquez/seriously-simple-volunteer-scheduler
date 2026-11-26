@@ -15,7 +15,16 @@ class NormalizeEmailAddress
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->routeIs('login.store', 'login-link.request', 'password.email', 'password.update', 'account.email.update', 'people.invite.store') && is_string($request->input('email'))) {
+        if (! $request->routeIs('login.store', 'login-link.request', 'password.email', 'password.update', 'account.email.update', 'people.invite.store')) {
+            return $next($request);
+        }
+
+        // A list where an address belongs is the same as no address, which the form's own rules refuse with their usual message (Fortify's reset handler would otherwise fail on it before they run).
+        if ($request->has('email') && ! is_string($request->input('email'))) {
+            $request->merge(['email' => '']);
+        }
+
+        if (is_string($request->input('email'))) {
             $address = EmailAddress::normalize($request->input('email'));
 
             $request->merge(['email' => $address]);

@@ -10,7 +10,7 @@ docker compose up -d --wait
 docker compose exec app php artisan migrate
 ```
 
-The app is at http://localhost:8000. `APP_URL` in `.env` is the address the app uses for every link it builds, emails included, whatever address a request was sent to, so keep it matching the address you open the app at (`.env.example` sets http://localhost:8000). On a real server it must be the public `https://` address. `TRUSTED_PROXIES` (empty in development) is only for an HTTP proxy or load balancer in front of the app, whose `X-Forwarded-For` and `X-Forwarded-Proto` headers the app then believes. Leave it empty otherwise, including on the standard server layout (nginx with PHP-FPM), and see spec section 13. The database isn't published to your machine, on purpose: on a real server it's reachable only from the app.
+The app is at http://localhost:8000. `APP_URL` in `.env` is the address the app uses for every link it builds, emails included, whatever address a request was sent to, so keep it matching the address you open the app at (`.env.example` sets http://localhost:8000). On a real server it must be the public `https://` address. `TRUSTED_PROXIES` (empty in development) is only for an HTTP proxy or load balancer in front of the app, whose `X-Forwarded-For` and `X-Forwarded-Proto` headers the app then believes. Leave it empty otherwise, including on the standard server layout (nginx with PHP-FPM), and see spec section 13. The database isn't published to your machine, on purpose: on a real server it's reachable only from the app. The app and Mailpit ports are bound to 127.0.0.1 in `compose.yaml`, so only this computer can reach them; other devices on your network (a café or makerspace Wi-Fi) can't. To test from a phone, change the port lines in `compose.yaml` on purpose and remember it exposes the debug page and every email the app sent. If your containers already exist, run `docker compose up -d --force-recreate app mailpit` once so the new binding applies.
 
 `docker compose up` builds the app image only when it doesn't exist yet, so after pulling a change to `docker/app/Dockerfile`, rebuild it with `docker compose up -d --build` (or `docker compose build app`). Otherwise you keep the old image, and `composer install` can fail because a PHP extension a package needs is missing. The `app` and `dusk` services share one image, `ssvs-app`, so one build serves both.
 
@@ -19,6 +19,10 @@ The app is at http://localhost:8000. `APP_URL` in `.env` is the address the app 
 Run `docker compose exec app php artisan ssvs:setup`. It asks for the organization's name and time zone and the first admin's name and email, then prints a one-time link (and emails it). That link is how the first admin logs in. Opening it asks them to choose a password and connect an authenticator app before anything else. Once you're logged in, go to http://localhost:8000/calendar to reach the coordinator calendar. Everyone who can sign in can open it (it's the Schedule tab in the Home, Schedule and Me menu), and volunteers get it read-only with no editing controls; admins and coordinators can change anything on the calendar, area leads can change their own areas, coordinators and admins change the Shadowing setting, and only admins change the other settings. Volunteers see Home at http://localhost:8000/ (their next shifts and the open shifts they can take, or, for someone not cleared for regular shifts yet, their shadow progress and the open shadow spots), "All my shifts" at /my-shifts, "Can't make it" and the take page from each shift, and an Emails page at /account/emails. Invite more people from the people list at http://localhost:8000/people (the invite form is there too). The invitation email lands in Mailpit.
 
 Signing out of all devices relies on `SESSION_DRIVER=database`, which `.env.example` sets, so keep it on any server.
+
+## What production refuses
+
+When `APP_ENV=production`, the app turns `APP_DEBUG` off at start-up (and logs a critical line every time the app starts until it's fixed; debug is turned off as the app finishes starting, so only a crash during start-up itself could still show the debug page), because the debug page shows request bodies, headers and SQL, and it refuses to send email through the `log` mailer, because that would write login links and codes to the log file. Neither applies to local development or the tests, which use Mailpit and the array mailer. A production `.env` needs the values listed at the top of `.env.example`.
 
 ## Email in development
 
@@ -42,6 +46,15 @@ docker compose exec app php artisan test
 
 Tests use a separate `ssvs_test` database, so they never touch your development data. If tests fail because the `ssvs_test` database doesn't exist, your database volume predates it: run `docker compose down -v` and start again (this deletes local development data).
 
+### Static analysis and dependency audit
+
+```bash
+docker compose exec app ./vendor/bin/phpstan analyse --memory-limit=1G
+docker compose exec app composer audit --locked
+```
+
+PHPStan (through Larastan) checks `app/` at level 5 against `phpstan-baseline.neon`, a list of the errors that existed when it was added, so only new errors fail. Fix a new error rather than adding it to the baseline. After you fix a baselined error, PHPStan reports the entry as unmatched; regenerate with `./vendor/bin/phpstan analyse --generate-baseline --memory-limit=1G` so the baseline only shrinks. If PHPStan reports a file that no longer exists or misses a new one, run `./vendor/bin/phpstan clear-result-cache`. `composer audit --locked` fails if any locked package has a known security advisory. CI runs both after the tests.
+
 ### Browser tests
 
 A few screens use JavaScript (for example the login page and the recovery codes Copy button), and PHPUnit can't run it, so those are also tested in a real browser with Laravel Dusk. Every screen still works with JavaScript off, and the feature tests prove that; browser tests add coverage on top. Run them with:
@@ -62,7 +75,7 @@ Dusk adds routes under `/_dusk` that log anyone in as any user with no password,
 
 `tests/Browser/ScheduleTest.php` also saves phone-width (390px) screenshots of the volunteer's schedule, release page and take page there on every run, so you can check by eye that the fixed bottom menu hides nothing. When a browser test fails, Dusk saves a screenshot to `tests/Browser/screenshots` and the page's HTML to `tests/Browser/source`. It also saves the browser console messages to `tests/Browser/console` for every test that logged any, passing or failing. All three are ignored by git. The app's own output from the test run is in `storage/logs/dusk-server.log`.
 
-On GitHub, the browser tests run as their own `browser` job in `.github/workflows/tests.yml`, in parallel with the PHPUnit `test` job. The job pulls the Selenium image (retrying up to three times, because Docker Hub sometimes times out), runs the same command as above, and on failure uploads the screenshots, page HTML, console messages and `dusk-server.log` as a `browser-test-failures` artifact on the workflow run. Dependabot reads `compose.yaml` and opens weekly pull requests for the Selenium and Mailpit image tags, and for MariaDB only for patch versions, so it stays on the version AlmaLinux 10 ships. When the Selenium tag changes, check that the Dusk tests still pass before merging.
+On GitHub, the browser tests run as their own `browser` job in `.github/workflows/tests.yml`, in parallel with the PHPUnit `test` job. The job pulls the Selenium image (retrying up to three times, because Docker Hub sometimes times out), runs the same command as above, and on failure uploads the screenshots, page HTML, console messages and `dusk-server.log` as a `browser-test-failures` artifact on the workflow run. Dependabot reads `compose.yaml` and opens weekly pull requests for the Selenium and Mailpit image tags, and for MariaDB only for patch versions, so it stays on the version AlmaLinux 10 ships. It also reads `docker/app/Dockerfile` and opens pull requests when the AlmaLinux 10 or Composer base image digests change (they are pinned by digest, so a moved tag can't change a build unnoticed). When the Selenium tag changes, check that the Dusk tests still pass before merging.
 
 ### Accessibility checks
 

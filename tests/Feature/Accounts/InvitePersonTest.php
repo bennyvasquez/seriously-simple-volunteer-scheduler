@@ -96,6 +96,14 @@ class InvitePersonTest extends TestCase
         $this->invite('ROBIN@example.org');
     }
 
+    public function test_a_name_with_control_characters_is_refused(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('This name has characters we can\'t use.');
+
+        app(CreatePerson::class)->handle(null, "Robin \e[2K Example", 'robin@example.org');
+    }
+
     public function test_a_volunteer_cannot_invite_people(): void
     {
         $this->expectException(AuthorizationException::class);

@@ -10,6 +10,8 @@ use App\Http\Controllers\Auth\LoginLinkController;
 use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\ConfirmItsYouNotification;
+use App\Support\Input;
+use App\Support\RememberedDevice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -118,7 +120,7 @@ class EmailChangeController extends Controller
 
         // The app code is checked before the address is looked up or anything is sent.
         if ($needsCode) {
-            $valid = app(TwoFactorAuthenticationProvider::class)->verify(Fortify::currentEncrypter()->decrypt($user->two_factor_secret), (string) $request->input('code'));
+            $valid = app(TwoFactorAuthenticationProvider::class)->verify(Fortify::currentEncrypter()->decrypt($user->two_factor_secret), Input::string($request, 'code'));
 
             if (! $valid) {
                 throw ValidationException::withMessages(['code' => 'That code didn\'t work. Check your app and try the newest code.']);
@@ -145,7 +147,7 @@ class EmailChangeController extends Controller
         // Keep this device signed in only when it's the person's own session.
         $sessionId = $link !== null && $link->user->is($request->user()) ? $request->session()->getId() : null;
         $guard = Auth::guard('web');
-        $wasRemembered = $sessionId !== null && ($guard->viaRemember() || $request->cookies->has($guard->getRecallerName()));
+        $wasRemembered = $sessionId !== null && RememberedDevice::belongsTo($request, $link->user);
 
         if ($link === null || ! $confirmEmailChange->handle($token, $sessionId)) {
             return view('account.email', ['step' => 'expired']);

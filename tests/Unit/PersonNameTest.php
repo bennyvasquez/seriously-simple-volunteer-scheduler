@@ -42,10 +42,12 @@ class PersonNameTest extends TestCase
         $this->assertSame('ab', PersonName::clean("a\u{200E}b"));
     }
 
-    public function test_stray_tabs_and_control_characters_are_not_a_problem(): void
+    public function test_stray_tabs_and_line_breaks_are_not_a_problem_but_control_characters_are(): void
     {
         $this->assertNull(PersonName::problem("Sam\tExample"));
-        $this->assertNull(PersonName::problem("Sam\x07 Example"));
+        $this->assertNull(PersonName::problem("Sam\r\nExample"));
+        $this->assertSame(PersonName::CONTROL_REFUSAL, PersonName::problem("Sam\x07 Example"));
+        $this->assertSame(PersonName::CONTROL_REFUSAL, PersonName::problem("Sam \e[2K Example"));
         $this->assertSame(PersonName::REFUSAL, PersonName::problem("[x]\t(y)"));
     }
 }

@@ -7,7 +7,7 @@
 <form method="POST" action="{{ route('password.update') }}">
 @csrf
 <input type="hidden" name="token" value="{{ $request->route('token') }}">
-<x-field name="email" type="email" label="Email address" autocomplete="email" :value="old('email', $request->query('email'))" readonly />
+<x-field name="email" type="email" label="Email address" autocomplete="email" :value="\App\Support\Input::text(old('email', $request->query('email')))" readonly />
 <x-field name="password" type="password" label="New password" autocomplete="new-password" hint="At least 10 characters. A few unrelated words, like a short phrase, are easy to remember and hard to guess." />
 <x-field name="password_confirmation" type="password" label="Type it again" autocomplete="new-password" />
 <button type="submit" class="btn btn-primary">Save my new password</button>

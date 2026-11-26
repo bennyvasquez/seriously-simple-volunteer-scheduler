@@ -11,6 +11,7 @@ use App\Models\LoginLink;
 use App\Models\User;
 use App\Notifications\LoginLinkNotification;
 use App\Support\EmailAddress;
+use App\Support\Input;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -49,7 +50,7 @@ class LoginLinkController extends Controller
     {
         $request->validate(['email' => ['required', 'email']]);
 
-        $user = User::query()->where('email', Str::lower($request->input('email')))->first();
+        $user = User::query()->where('email', Str::lower(Input::string($request, 'email')))->first();
 
         // Read now: the deferred closure runs after the response, when the session may already be saved.
         $destination = LoginLink::safeDestination($request->session()->get('url.intended'));

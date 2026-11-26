@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
+use App\Support\Input;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -63,11 +64,11 @@ class ReleaseController extends Controller
             'dayName' => $shift->local_date->format('l, F j'),
             'regular' => $shadow ? null : $this->regular($user, $shift),
             'values' => [
-                'scope' => (string) $request->old('scope', ''),
-                'from' => (string) $request->old('from', $date),
-                'to' => (string) $request->old('to', $date),
-                'starting' => (string) $request->old('starting', $date),
-                'note' => (string) $request->old('note', ''),
+                'scope' => Input::text($request->old('scope', '')),
+                'from' => Input::text($request->old('from', $date)),
+                'to' => Input::text($request->old('to', $date)),
+                'starting' => Input::text($request->old('starting', $date)),
+                'note' => Input::text($request->old('note', '')),
             ],
         ]);
     }
@@ -89,7 +90,7 @@ class ReleaseController extends Controller
 
         $back = fn (string $field, string $message) => redirect()->route('shifts.release', $shift)->withInput($request->only($fields))->withErrors([$field => $message]);
         $shift->load(['area', 'weeklySlot']);
-        $note = (string) $request->input('note', '');
+        $note = Input::string($request, 'note', '');
 
         try {
             $note = ReleaseShifts::cleanNote($note);
@@ -104,7 +105,7 @@ class ReleaseController extends Controller
         }
 
         $isShadow = $assignment->type === AssignmentType::Shadow;
-        $scope = $isShadow ? 'one' : (string) $request->input('scope');
+        $scope = $isShadow ? 'one' : Input::string($request, 'scope');
         $confirmed = $request->boolean('confirm');
 
         if ($scope === 'one') {
@@ -118,8 +119,8 @@ class ReleaseController extends Controller
         }
 
         if ($scope === 'range') {
-            $from = trim((string) $request->input('from'));
-            $to = trim((string) $request->input('to'));
+            $from = trim(Input::string($request, 'from'));
+            $to = trim(Input::string($request, 'to'));
 
             try {
                 $preview = $releaseShifts->rangePreview($user, $from, $to);
@@ -158,7 +159,7 @@ class ReleaseController extends Controller
 
         if ($scope === 'slot') {
             $regular = $this->regular($user, $shift);
-            $starting = trim((string) $request->input('starting'));
+            $starting = trim(Input::string($request, 'starting'));
 
             if ($regular === null) {
                 return $back('scope', 'That isn\'t your weekly slot.');

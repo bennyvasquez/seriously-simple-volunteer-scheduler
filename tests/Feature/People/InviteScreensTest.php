@@ -77,6 +77,17 @@ class InviteScreensTest extends TestCase
         $this->assertSame(1, User::query()->where('email', $this->coordinator->email)->count());
     }
 
+    public function test_the_form_shows_the_name_problem_for_control_characters_and_makes_no_one(): void
+    {
+        $this->actingAs($this->coordinator)->from(route('people.invite'))
+            ->followingRedirects()
+            ->post(route('people.invite.store'), ['name' => "Robin\x07", 'email' => 'robin@example.org', 'starts_as' => 'volunteer'])
+            ->assertSee("This name has characters we can't use.")
+            ->assertSee('name="name"', false);
+
+        $this->assertFalse(User::query()->where('email', 'robin@example.org')->exists());
+    }
+
     public function test_a_start_that_is_not_on_the_list_makes_no_one(): void
     {
         $this->actingAs($this->coordinator)->post(route('people.invite.store'), ['name' => 'Robin', 'email' => 'robin@example.org', 'starts_as' => 'area_lead:9999'])

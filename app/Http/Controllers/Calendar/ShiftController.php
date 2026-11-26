@@ -26,6 +26,7 @@ use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Rules\NoWebAddress;
+use App\Support\Input;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -70,11 +71,11 @@ class ShiftController extends Controller
         // Only people in a regular place are left out. A shadow is listed as "Shadowing", and putting them on moves them to a regular place (#21).
         $regularIds = $shift->assignments->where('type', AssignmentType::Regular)->pluck('user_id');
         $shadowIds = $shift->assignments->where('type', AssignmentType::Shadow)->pluck('user_id');
-        $search = PersonSearch::find($user, (string) $request->query('q', ''), $byEmail, $regularIds, $canPut);
+        $search = PersonSearch::find($user, Input::string($request, 'q', ''), $byEmail, $regularIds, $canPut);
         $search['matches']->each(fn (User $match) => $match->setAttribute('shadowing', $shadowIds->contains($match->id)));
         $canEdit = $open && Gate::forUser($user)->allows('update', $shift);
         $canEditSlot = $canEdit && $shift->weeklySlot !== null && Gate::forUser($user)->allows('manageSchedule', $shift->area);
-        $edit = $canEdit ? (string) $request->query('edit', '') : '';
+        $edit = $canEdit ? Input::string($request, 'edit', '') : '';
 
         if ($edit === 'following' && $canEditSlot) {
             return redirect()->route('calendar.slots.edit', [$shift->weeklySlot, 'from' => $shift->local_date->toDateString()] + $this->areaQuery($request));
@@ -95,7 +96,10 @@ class ShiftController extends Controller
 
         // One query for every notice on this shift: the heading uses the newest of them, and each row the person's newest one that hasn't ended.
         $notices = ChangeNotice::query()->where('shift_id', $shift->id)->orderByDesc('id')->get();
-        $answers = $notices->whereNull('ended_at')->unique('user_id')->mapWithKeys(fn (ChangeNotice $notice) => [$notice->user_id => $notice->confirmed_at === null ? 'waiting' : 'confirmed']);
+        // Who answered is only for the people who manage this shift's area (spec section 6), so everyone else gets none.
+        $answers = Gate::forUser($user)->allows('manageSchedule', $shift->area)
+            ? $notices->whereNull('ended_at')->unique('user_id')->mapWithKeys(fn (ChangeNotice $notice) => [$notice->user_id => $notice->confirmed_at === null ? 'waiting' : 'confirmed'])
+            : collect();
 
         return view('calendar.shift', $calendar->week($request)->getData() + [
             'shift' => $shift,
@@ -122,11 +126,11 @@ class ShiftController extends Controller
             'canEditSlot' => $canEditSlot,
             'editing' => $editing,
             'editValues' => [
-                'start_time' => (string) $request->old('start_time', $shift->starts_at->setTimezone(Organization::current()->timezone)->format('H:i')),
-                'end_time' => (string) $request->old('end_time', $shift->ends_at->setTimezone(Organization::current()->timezone)->format('H:i')),
-                'people_needed' => (string) $request->old('people_needed', $shift->people_needed),
-                'shadow_spots' => (string) $request->old('shadow_spots', $shift->shadow_spots),
-                'title' => (string) $request->old('title', (string) $shift->title),
+                'start_time' => Input::text($request->old('start_time', $shift->starts_at->setTimezone(Organization::current()->timezone)->format('H:i'))),
+                'end_time' => Input::text($request->old('end_time', $shift->ends_at->setTimezone(Organization::current()->timezone)->format('H:i'))),
+                'people_needed' => Input::text($request->old('people_needed', $shift->people_needed)),
+                'shadow_spots' => Input::text($request->old('shadow_spots', $shift->shadow_spots)),
+                'title' => Input::text($request->old('title', (string) $shift->title)),
             ],
             'search' => $search,
             'byEmail' => $byEmail,
@@ -261,10 +265,10 @@ class ShiftController extends Controller
         $date = $shift->local_date->toDateString();
         $request->query->set('date', $date);
 
-        $which = in_array($request->query('which'), ['this', 'range'], true) ? (string) $request->query('which') : '';
+        $which = in_array($request->query('which'), ['this', 'range'], true) ? Input::string($request, 'which') : '';
         $values = [
-            'from' => (string) $request->query('from', $date),
-            'to' => (string) $request->query('to', $date),
+            'from' => Input::string($request, 'from', $date),
+            'to' => Input::string($request, 'to', $date),
         ];
         $preview = null;
         $error = null;
@@ -302,9 +306,9 @@ class ShiftController extends Controller
         }
 
         $person = $assignment->user;
-        $which = (string) $request->input('which');
-        $from = trim((string) $request->input('from'));
-        $to = trim((string) $request->input('to'));
+        $which = Input::string($request, 'which');
+        $from = trim(Input::string($request, 'from'));
+        $to = trim(Input::string($request, 'to'));
         $back = fn (array $extra = []) => redirect()->route('calendar.shift.remove-person', [$shift, 'assignment' => $assignment->id, 'which' => $which, 'from' => $from, 'to' => $to] + $extra + $areaQuery);
 
         if (! in_array($which, ['this', 'range'], true)) {
@@ -393,7 +397,7 @@ class ShiftController extends Controller
         Gate::forUser($request->user())->authorize('cancel', $shift);
 
         $areaQuery = $this->areaQuery($request);
-        $reason = trim((string) $request->input('reason'));
+        $reason = trim(Input::string($request, 'reason'));
 
         if ($reason === '' || mb_strlen($reason) > 200 || NoWebAddress::check($reason)) {
             return redirect()->route('calendar.shift', [$shift, 'cancel' => 1] + $areaQuery)->withInput()

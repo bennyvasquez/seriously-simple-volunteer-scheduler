@@ -14,6 +14,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\WeeklySlot;
 use App\Rules\NoWebAddress;
+use App\Support\Input;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -44,16 +45,16 @@ class AddController extends Controller
 
         $values = [
             'area' => $areas->contains('id', $areaId) ? $areaId : $areas->first()->id,
-            'title' => (string) $request->old('title', ''),
-            'date' => (string) $request->old('date', $date),
-            'start_time' => (string) $request->old('start_time', '18:00'),
-            'end_time' => (string) $request->old('end_time', '21:00'),
-            'repeats' => (string) $request->old('repeats', 'none'),
-            'people_needed' => (string) $request->old('people_needed', '1'),
-            'shadow_spots' => (string) $request->old('shadow_spots', '0'),
-            'ends' => (string) $request->old('ends', 'never'),
-            'ends_on' => (string) $request->old('ends_on', ''),
-            'fills_by' => (string) $request->old('fills_by', 'regulars'),
+            'title' => Input::text($request->old('title', '')),
+            'date' => Input::text($request->old('date', $date)),
+            'start_time' => Input::text($request->old('start_time', '18:00')),
+            'end_time' => Input::text($request->old('end_time', '21:00')),
+            'repeats' => Input::text($request->old('repeats', 'none')),
+            'people_needed' => Input::text($request->old('people_needed', '1')),
+            'shadow_spots' => Input::text($request->old('shadow_spots', '0')),
+            'ends' => Input::text($request->old('ends', 'never')),
+            'ends_on' => Input::text($request->old('ends_on', '')),
+            'fills_by' => Input::text($request->old('fills_by', 'regulars')),
         ];
 
         $weekday = $this->weekdayName($values['date']);
@@ -136,16 +137,16 @@ class AddController extends Controller
 
         $values = [
             'area' => $areas->contains('id', $areaId) ? $areaId : $areas->first()->id,
-            'title' => (string) $request->query('title', ''),
+            'title' => Input::string($request, 'title', ''),
             'weekday' => (string) CarbonImmutable::parse($date, 'UTC')->dayOfWeek,
-            'start_time' => (string) $request->query('start_time', '18:00'),
-            'end_time' => (string) $request->query('end_time', '21:00'),
-            'people_needed' => (string) $request->query('people_needed', '1'),
-            'shadow_spots' => (string) $request->query('shadow_spots', '0'),
+            'start_time' => Input::string($request, 'start_time', '18:00'),
+            'end_time' => Input::string($request, 'end_time', '21:00'),
+            'people_needed' => Input::string($request, 'people_needed', '1'),
+            'shadow_spots' => Input::string($request, 'shadow_spots', '0'),
             'frequency' => $repeats,
             'fills_by' => $request->query('fills_by') === 'rotation' ? 'rotation' : 'regulars',
             'valid_from' => $date,
-            'valid_until' => $request->query('ends') === 'on' ? (string) $request->query('ends_on', '') : '',
+            'valid_until' => $request->query('ends') === 'on' ? Input::string($request, 'ends_on', '') : '',
         ];
 
         return $this->slotForm($request, $areas, $values, null);
@@ -486,13 +487,7 @@ class AddController extends Controller
 
     private function isDate(mixed $value): bool
     {
-        if (! is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) !== 1) {
-            return false;
-        }
-
-        $date = CarbonImmutable::createFromFormat('!Y-m-d', $value, 'UTC');
-
-        return $date !== false && $date->toDateString() === $value;
+        return Input::date($value) !== null;
     }
 
     private function weekdayName(string $date): string

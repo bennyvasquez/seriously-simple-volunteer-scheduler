@@ -41,14 +41,14 @@ class SetupCommand extends Command
         $answers = [
             'organization' => $this->option('organization') ?? $this->ask('What is the organization called?'),
             'timezone' => $this->option('timezone') ?? $this->anticipate('Which time zone is it in? (for example America/Detroit)', DateTimeZone::listIdentifiers()),
-            'admin_name' => PersonName::clean((string) ($this->option('admin-name') ?? $this->ask('Your name, as volunteers will see it'))),
+            'admin_name' => (string) ($this->option('admin-name') ?? $this->ask('Your name, as volunteers will see it')),
             'admin_email' => EmailAddress::normalize((string) ($this->option('admin-email') ?? $this->ask('Your email address'))),
         ];
 
         $validator = Validator::make($answers, [
             'organization' => ['required', 'string', 'max:255', new NoWebAddress],
             'timezone' => ['required', Rule::in(DateTimeZone::listIdentifiers())],
-            'admin_name' => ['required', 'string', 'max:255', fn ($attribute, $value, $fail) => PersonName::problem((string) $value) === null ? null : $fail(PersonName::REFUSAL)],
+            'admin_name' => ['required', 'string', 'max:255', fn ($attribute, $value, $fail) => ($problem = PersonName::problem((string) $value)) !== null ? $fail($problem) : (PersonName::clean((string) $value) === '' ? $fail('Enter your name.') : null)],
             'admin_email' => ['required', 'email', 'max:255', fn ($attribute, $value, $fail) => EmailAddress::isPlain($value) ? null : $fail(EmailAddress::REFUSAL)],
         ], [
             'timezone.in' => 'That isn\'t a time zone this server knows. Use a name like America/Detroit.',
@@ -61,6 +61,9 @@ class SetupCommand extends Command
 
             return self::FAILURE;
         }
+
+        // The name was validated as typed (cleaning would hide control characters); it's stored cleaned.
+        $answers['admin_name'] = PersonName::clean($answers['admin_name']);
 
         [$admin, $url] = DB::transaction(function () use ($answers, $grantRole, $issueLoginLink) {
             $organization = new Organization(['name' => $answers['organization'], 'timezone' => $answers['timezone']]);

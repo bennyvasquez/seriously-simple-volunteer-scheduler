@@ -29,7 +29,7 @@ class TwoFactorEmailCodeController extends Controller
         $expiresAt = now()->addMinutes(self::LIFETIME_MINUTES);
 
         Cache::put(self::cacheKey($user), ['hash' => hash('sha256', $code), 'tries' => 0, 'expires_at' => $expiresAt->getTimestamp()], $expiresAt);
-        $user->notify(new TwoFactorCodeNotification($code));
+        defer(fn () => $user->notify(new TwoFactorCodeNotification($code)));
         // The waiting code is per person, so this marks the login that asked for it. Only that login opens on the email form.
         $request->session()->put('login.email_code_sent', true);
 

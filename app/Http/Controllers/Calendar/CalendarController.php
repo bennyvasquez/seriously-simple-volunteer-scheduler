@@ -10,6 +10,7 @@ use App\Models\Area;
 use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
+use App\Support\Input;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -133,16 +134,7 @@ class CalendarController extends Controller
     /** The date asked for, as a plain date, or today in the organization's time zone when it's missing or not a real date. */
     private function dateAsked(Request $request, Organization $organization): CarbonImmutable
     {
-        $value = $request->query('date');
-
-        if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
-            $date = CarbonImmutable::createFromFormat('!Y-m-d', $value, 'UTC');
-            if ($date !== false && $date->toDateString() === $value) {
-                return $date;
-            }
-        }
-
-        return CarbonImmutable::parse($organization->today()->toDateString(), 'UTC');
+        return Input::date($request->query('date')) ?? CarbonImmutable::parse($organization->today()->toDateString(), 'UTC');
     }
 
     private function monthAsked(Request $request, Organization $organization): CarbonImmutable

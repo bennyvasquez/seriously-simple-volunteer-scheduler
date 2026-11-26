@@ -5,6 +5,7 @@ namespace App\Actions\Fortify;
 use App\Actions\Accounts\SignOutEverywhere;
 use App\Models\ChangeLogEntry;
 use App\Models\User;
+use App\Support\RememberedDevice;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -28,7 +29,7 @@ class UpdateUserPassword implements UpdatesUserPasswords
     public function update(User $user, array $input): void
     {
         Validator::make($input, [
-            'current_password' => ['required', 'string', 'current_password:web'],
+            'current_password' => ['bail', 'required', 'string', 'current_password:web'],
             'password' => $this->passwordRules(),
         ], [
             'current_password.current_password' => __('The provided password does not match your current password.'),
@@ -36,7 +37,7 @@ class UpdateUserPassword implements UpdatesUserPasswords
 
         $request = request();
         $guard = Auth::guard('web');
-        $wasRemembered = $guard->viaRemember() || $request->cookies->has($guard->getRecallerName());
+        $wasRemembered = RememberedDevice::belongsTo($request, $user);
 
         DB::transaction(function () use ($user, $input, $request) {
             $user->forceFill(['password' => Hash::make($input['password'])]);

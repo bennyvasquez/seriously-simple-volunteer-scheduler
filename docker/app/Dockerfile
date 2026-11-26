@@ -1,5 +1,10 @@
 # Development image for SSVS. Matches the production server: AlmaLinux 10 with PHP from AppStream.
-FROM almalinux:10
+# Both base images are pinned by digest so a moved tag can't change a build. Dependabot reads FROM lines and updates the digests, so the comment above each one repeats the tag for people reading the file.
+# composer:2
+FROM composer:2@sha256:0049ce90b432795bf413a738b073963ada1a689e1a8708104684baafe94586ec AS composer
+
+# almalinux:10 (this is the last stage, so it's the app image)
+FROM almalinux:10@sha256:ccf217024b3d5e268cc208d1edb384a1edee6359370cf6ea1ecbc42254e57375
 
 RUN dnf -y install \
         php-cli php-common php-mbstring php-mysqlnd php-pdo php-xml \
@@ -11,7 +16,7 @@ RUN dnf -y install \
 RUN dnf -y install php-pecl-zip \
     && dnf clean all
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY --from=composer /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 

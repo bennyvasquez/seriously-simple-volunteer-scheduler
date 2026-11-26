@@ -21,6 +21,7 @@ class SecurityHeaders
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('Referrer-Policy', 'same-origin');
+        $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
 
         // Only where the site is really served over HTTPS, so a local install over plain HTTP isn't told to insist on it.

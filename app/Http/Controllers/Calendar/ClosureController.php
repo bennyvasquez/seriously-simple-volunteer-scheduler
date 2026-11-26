@@ -17,6 +17,7 @@ use App\Models\Organization;
 use App\Models\Shift;
 use App\Models\User;
 use App\Rules\NoWebAddress;
+use App\Support\Input;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -93,7 +94,7 @@ class ClosureController extends Controller
         ], self::MESSAGES);
 
         try {
-            $closures = $createClosure->handle($request->user(), $values['area'], $values['from'], $values['to'], (string) $request->input('reason'));
+            $closures = $createClosure->handle($request->user(), $values['area'], $values['from'], $values['to'], Input::string($request, 'reason'));
         } catch (DomainException $e) {
             return redirect()->route('calendar.closures.create', $areaQuery)->withErrors(['closure' => $e->getMessage()])->withInput();
         }
@@ -171,7 +172,7 @@ class ClosureController extends Controller
         ], self::MESSAGES);
 
         try {
-            $saved = $updateClosure->handle($request->user(), $closure, $values['from'], $values['to'], (string) $request->input('reason'));
+            $saved = $updateClosure->handle($request->user(), $closure, $values['from'], $values['to'], Input::string($request, 'reason'));
         } catch (DomainException $e) {
             return redirect()->route('calendar.closures.edit', ['closure' => $closure] + $areaQuery)->withErrors(['closure' => $e->getMessage()])->withInput();
         }

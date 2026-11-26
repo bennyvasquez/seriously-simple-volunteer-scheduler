@@ -7,6 +7,7 @@ use App\Actions\UpdateShadowingSettings;
 use App\Http\Controllers\Calendar\KeepsAreaFilter;
 use App\Models\Organization;
 use App\Rules\NoWebAddress;
+use App\Support\Input;
 use DateTimeZone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,7 +56,7 @@ class SettingsController extends Controller
             'reminder_hours.*' => 'Choose when reminders go out from the list.',
         ]);
 
-        $updateSettings->handle($request->user(), (string) $request->input('name'), (string) $request->input('timezone'), (int) $request->input('weeks_ahead'), $request->input('reminder_hours') === 'off' ? null : (int) $request->input('reminder_hours'));
+        $updateSettings->handle($request->user(), Input::string($request, 'name'), Input::string($request, 'timezone'), (int) $request->input('weeks_ahead'), $request->input('reminder_hours') === 'off' ? null : (int) $request->input('reminder_hours'));
 
         return redirect()->route('settings', $this->areaQuery($request))->with('status', 'Saved the settings.');
     }

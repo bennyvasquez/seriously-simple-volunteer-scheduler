@@ -47,12 +47,14 @@ final class PersonSearch
 
         // A trailing period is ignored, so "Robin E." finds the same people as "Robin E". The database reads candidates by the first word only, so a short name ("Ana C." for "Ana de la Cruz") can still match; the checks below decide who really matches.
         $firstWord = preg_split('/\s+/u', rtrim($query, '. '), 2)[0];
-        $nameLike = '%'.addcslashes($firstWord, '%_\\').'%';
+        $escapedFirstWord = addcslashes($firstWord, '%_\\');
+        $nameLike = '%'.$escapedFirstWord.'%';
         $like = '%'.addcslashes(rtrim($query, '. '), '%_\\').'%';
         $candidates = User::query()->whereNull('deactivated_at')
             ->whereNotIn('id', collect($excludeIds)->all())
             ->where(fn ($q) => $q->where('name', 'like', $nameLike)->when($byEmail, fn ($q) => $q->orWhere('email', 'like', $like)))
-            ->orderBy('name')->limit(self::CANDIDATES)->get(['id', 'name', 'email', 'cleared_at']);
+            // Names that start with the first word are read first, so a common short word can't fill the 50 with names that only contain it.
+            ->orderByRaw('name LIKE ? DESC', [$escapedFirstWord.'%'])->orderBy('name')->limit(self::CANDIDATES)->get(['id', 'name', 'email', 'cleared_at']);
 
         $visibleIds = $viewer->visiblePeople()->whereIn('users.id', $candidates->modelKeys())->pluck('users.id')->all();
         // A person the viewer can see matches on any part of their full name (or email, for coordinators); anyone matches on the start of their short name.

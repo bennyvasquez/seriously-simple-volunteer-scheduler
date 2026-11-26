@@ -33,7 +33,8 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Nothing in SSVS serves stored files, so Laravel's signed file download and upload routes stay off.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

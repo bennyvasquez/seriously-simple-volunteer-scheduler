@@ -16,3 +16,8 @@ updates:
     ignore:
       - dependency-name: mariadb
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+  # Reads docker/app/Dockerfile, so the digests that pin the AlmaLinux 10 and Composer base images get update pull requests.
+  - package-ecosystem: docker
+    directory: /docker/app
+    schedule:
+      interval: weekly

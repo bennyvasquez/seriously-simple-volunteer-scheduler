@@ -11,9 +11,15 @@ class PersonName
 {
     public const REFUSAL = 'Names can\'t include web addresses or the characters [ ] < >.';
 
-    /** Null when the name, as clean() would store it, is fine; otherwise what's wrong with it, in words for the person typing. Stray tabs, newlines and control characters aren't a problem: clean() tidies them. */
+    public const CONTROL_REFUSAL = 'This name has characters we can\'t use.';
+
+    /** Null when the name is fine; otherwise what's wrong with it, in words for the person typing. Pass the name as typed, not cleaned: control characters (other than tabs and line breaks, which clean() turns into spaces) are refused, because they can move the cursor or erase text in an admin's terminal. The link characters and web addresses are checked on the name as clean() would store it. */
     public static function problem(string $name): ?string
     {
+        if (preg_match('/(?![\t\n\r])\p{Cc}/u', $name) === 1) {
+            return self::CONTROL_REFUSAL;
+        }
+
         $name = self::clean($name);
 
         if (preg_match('/[\[\]<>]/u', $name) === 1 || NoWebAddress::check($name)) {

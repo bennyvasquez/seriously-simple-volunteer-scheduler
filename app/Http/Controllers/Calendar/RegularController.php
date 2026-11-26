@@ -13,6 +13,7 @@ use App\Models\Shift;
 use App\Models\SlotRegular;
 use App\Models\User;
 use App\Models\WeeklySlot;
+use App\Support\Input;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -42,13 +43,13 @@ class RegularController extends Controller
         $byEmail = PersonSearch::byEmail($viewer);
         $current = $this->currentRegulars($slot, $today);
         $person = $this->person($request, $viewer);
-        $search = PersonSearch::find($viewer, (string) $request->query('q', ''), $byEmail, $current->pluck('user_id'));
+        $search = PersonSearch::find($viewer, Input::string($request, 'q', ''), $byEmail, $current->pluck('user_id'));
         $firstDate = $this->nextSlotDate($slot, $today);
         $values = [
-            'frequency' => (string) $request->old('frequency', $request->query('frequency', 'weekly')),
-            'weeks' => (string) $request->old('weeks', $request->query('weeks', '')),
-            'starts_on' => (string) $request->old('starts_on', $request->query('starts_on', $firstDate)),
-            'ends_on' => (string) $request->old('ends_on', $request->query('ends_on', '')),
+            'frequency' => Input::text($request->old('frequency', Input::string($request, 'frequency', 'weekly'))),
+            'weeks' => Input::text($request->old('weeks', Input::string($request, 'weeks'))),
+            'starts_on' => Input::text($request->old('starts_on', Input::string($request, 'starts_on', $firstDate))),
+            'ends_on' => Input::text($request->old('ends_on', Input::string($request, 'ends_on'))),
         ];
         $overDates = $request->boolean('over') && $person !== null ? $this->overDates($slot, $person, $values) : [];
 
@@ -109,11 +110,13 @@ class RegularController extends Controller
             $anchor = $weeks === 'pick' ? $data['starts_on'] : $weeks;
             $weekday = $slot->weekdayName();
 
-            if ($weeks === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $anchor)) {
+            $anchorDate = Input::date($anchor);
+
+            if ($weeks === '' || $anchorDate === null) {
                 return $back($person)->withErrors(['weeks' => 'Pick which weeks.']);
             }
 
-            if (CarbonImmutable::parse($anchor, 'UTC')->dayOfWeek !== $slot->weekday) {
+            if ($anchorDate->dayOfWeek !== $slot->weekday) {
                 return $back($person)->withErrors([$weeks === 'pick' ? 'starts_on' : 'weeks' => 'Pick a '.$weekday.'.']);
             }
         }
@@ -150,7 +153,10 @@ class RegularController extends Controller
     {
         $this->checkEnd($request, $slot, $regular);
         $date = $this->dateParam($request);
-        $lastDate = (string) $request->old('last_date', $request->query('last_date', CarbonImmutable::parse($date, 'UTC')->subDay()->toDateString()));
+        $dayBefore = CarbonImmutable::parse($date, 'UTC')->subDay()->toDateString();
+        $asked = Input::text($request->old('last_date', Input::string($request, 'last_date', $dayBefore)));
+        // A field sent empty stays empty; anything else that isn't a real date gets the day before.
+        $lastDate = $asked === '' || Input::date($asked) !== null ? $asked : $dayBefore;
 
         return $this->endView($request, $calendar, $slot, $regular, $date, $lastDate);
     }
@@ -204,9 +210,9 @@ class RegularController extends Controller
     /** The date of the shift the page was opened from, today when it's missing or isn't a date. */
     private function dateParam(Request $request): string
     {
-        $date = (string) $request->input('date', $request->query('date', ''));
+        $date = Input::string($request, 'date');
 
-        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : Organization::current()->today()->toDateString();
+        return Input::date($date) !== null ? $date : Organization::current()->today()->toDateString();
     }
 
     /** @param  Collection<int, Shift>  $past */
@@ -235,7 +241,7 @@ class RegularController extends Controller
      */
     private function overDates(WeeklySlot $slot, User $person, array $values): array
     {
-        $dateFormat = fn (string $value) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1;
+        $dateFormat = fn (string $value) => Input::date($value) !== null;
 
         if (! $dateFormat($values['starts_on']) || ($values['ends_on'] !== '' && (! $dateFormat($values['ends_on']) || $values['ends_on'] < $values['starts_on']))) {
             return [];
@@ -244,7 +250,7 @@ class RegularController extends Controller
         $everyOther = $slot->frequency === SlotFrequency::Weekly && $values['frequency'] === 'every_other_week';
         $anchor = $values['weeks'] === 'pick' ? $values['starts_on'] : $values['weeks'];
 
-        if ($everyOther && (! $dateFormat($anchor) || CarbonImmutable::parse($anchor, 'UTC')->dayOfWeek !== $slot->weekday)) {
+        if ($everyOther && Input::date($anchor)?->dayOfWeek !== $slot->weekday) {
             return [];
         }
 
