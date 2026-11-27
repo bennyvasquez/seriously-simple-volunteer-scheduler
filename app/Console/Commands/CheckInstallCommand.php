@@ -128,7 +128,7 @@ class CheckInstallCommand extends Command
             DB::connection()->getPdo();
 
             $ran = $migrator->repositoryExists() ? $migrator->getRepository()->getRan() : [];
-            $files = array_keys($migrator->getMigrationFiles($migrator->paths() + [database_path('migrations')]));
+            $files = array_keys($migrator->getMigrationFiles(array_merge([database_path('migrations')], $migrator->paths())));
             $pending = count(array_diff($files, $ran));
         } catch (Throwable $e) {
             $this->fix('Database', "Can't reach the database: ".$e->getMessage().'.');

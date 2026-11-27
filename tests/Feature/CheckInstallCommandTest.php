@@ -114,6 +114,17 @@ class CheckInstallCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_pending_migrations_still_count_when_a_package_adds_a_migration_path(): void
+    {
+        $this->goodInstall();
+        DB::table('migrations')->orderByDesc('id')->limit(1)->delete();
+        app('migrator')->path(sys_get_temp_dir());
+
+        $this->artisan('ssvs:check-install')
+            ->expectsOutputToContain("1 migration hasn't run. Run php artisan migrate --force.")
+            ->assertExitCode(1);
+    }
+
     public function test_no_organization_fails(): void
     {
         $this->goodInstall();
