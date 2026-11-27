@@ -22,7 +22,7 @@ class ForgedRequestTest extends TestCase
 {
     use InteractsWithTwoFactor, RefreshDatabase;
 
-    /** What bootstrap/app.php shows when a form's token check fails and the address has a page to go back to (#80). */
+    /** What bootstrap/app.php shows when a form's token check fails and the address has a page to go back to. */
     private const EXPIRED = 'This page was open too long, so nothing was saved. Please try again.';
 
     /** Stands in for every record in an address. No seeded record has it, so a request that got through would find nothing. */

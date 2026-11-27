@@ -413,7 +413,7 @@ class EmailChangeTest extends TestCase
         $robin = User::factory()->create(['email' => 'robin@example.org']);
         $token = $this->emailChangeTokenFor($sam, 'sam.new@example.org');
 
-        // Sam opens the link on a shared computer where Robin is logged in. The page mustn't send Sam to Robin's login and security page (issue #14).
+        // Sam opens the link on a shared computer where Robin is logged in. The page mustn't send Sam to Robin's login and security page.
         $this->actingAs($robin)->post(route('account.email.confirm', $token))->assertOk()
             ->assertSee('Your email address is now sam.new@example.org')
             ->assertDontSee('Back to login and security')

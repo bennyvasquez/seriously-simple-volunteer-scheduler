@@ -30,7 +30,7 @@ class LoginScreensTest extends TestCase
         // Without JavaScript both buttons still submit the one form, the password button to the password login.
         $this->assertStringContainsString('<button type="submit" class="btn btn-primary" id="send-link">Email me a link</button>', $html);
         $this->assertStringContainsString('formaction="'.route('login').'"', $html);
-        // With it, "Email me a link" doesn't send a typed password along (issue #14).
+        // With it, "Email me a link" doesn't send a typed password along.
         $this->assertStringContainsString('<script src="'.asset('js/login.js').'" defer></script>', $html);
         $this->assertMatchesRegularExpression("/submitter.*'send-link'.*password/s", file_get_contents(public_path('js/login.js')));
     }

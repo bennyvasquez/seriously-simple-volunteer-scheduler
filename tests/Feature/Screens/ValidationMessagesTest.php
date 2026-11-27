@@ -9,7 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
-/** Field errors are plain language that says what to do next, like the rest of the sign-in screens (issue #9). */
+/** Field errors are plain language that says what to do next, like the rest of the sign-in screens. */
 class ValidationMessagesTest extends TestCase
 {
     use RefreshDatabase;

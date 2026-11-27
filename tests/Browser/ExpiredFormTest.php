@@ -8,7 +8,7 @@ use Laravel\Dusk\Browser;
 use Tests\DuskTestCase;
 
 /**
- * A form pressed after its page was open longer than the session (#80), in a real browser: the session cookie is deleted to stand in for the expiry.
+ * A form pressed after its page was open longer than the session, in a real browser: the session cookie is deleted to stand in for the expiry.
  */
 class ExpiredFormTest extends DuskTestCase
 {

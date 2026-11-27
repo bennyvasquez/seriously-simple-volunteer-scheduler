@@ -39,7 +39,7 @@ class LayoutTest extends TestCase
 
     public function test_the_font_covers_latin_extended_letters_only_when_needed(): void
     {
-        // Names like "Łucja" or "Ştefan" stay in one font, and the browser downloads the extra file only for pages that need those letters (issue #16).
+        // Names like "Łucja" or "Ştefan" stay in one font, and the browser downloads the extra file only for pages that need those letters.
         $css = file_get_contents(public_path('css/app.css'));
 
         foreach ([400, 700] as $weight) {
