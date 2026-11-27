@@ -32,21 +32,45 @@ fi
 
 name="ssvs-$(date +%Y-%m-%d-%H%M).sql.gz.gpg"
 tmp="$SSVS_BACKUP_DIR/.$name.partial"
-trap 'rm -f "$tmp"' EXIT
+fifo="$SSVS_BACKUP_DIR/.$name.fifo"
+countfile="$SSVS_BACKUP_DIR/.$name.count"
+lastfile="$SSVS_BACKUP_DIR/.$name.last"
+counter=""
+cleanup() {
+    [[ -z "$counter" ]] || kill "$counter" 2> /dev/null || true
+    rm -f "$tmp" "$fifo" "$countfile" "$lastfile"
+}
+trap cleanup EXIT
+
+# A side branch of the pipe counts the plain dump's bytes and keeps its last line, so the checks look at the dump itself and not at the encrypted file.
+mkfifo -m 0600 "$fifo"
+LC_ALL=C awk -v cf="$countfile" -v lf="$lastfile" '{ n += length($0) + 1; last = $0 } END { print n + 0 > cf; print last > lf }' < "$fifo" &
+counter=$!
 
 echo "ssvs-backup: dumping, compressing and encrypting the ssvs database for $SSVS_BACKUP_RECIPIENT."
 mariadb-dump --single-transaction --routines --triggers --default-character-set=utf8mb4 ssvs \
+    | tee "$fifo" \
     | gzip \
     | gpg --batch --yes --trust-model always --encrypt --recipient "$SSVS_BACKUP_RECIPIENT" > "$tmp"
 
-size="$(stat -c %s "$tmp")"
+# The side branch finishes after the pipe does, so wait for it before reading its results.
+wait "$counter"
+counter=""
+
+size="$(< "$countfile")"
+last="$(< "$lastfile")"
 if (( size < 1024 )); then
-    echo "ssvs-backup: the backup is only $size bytes, which is too small to be a real dump. Nothing was kept." >&2
+    echo "ssvs-backup: the dump is only $size bytes, which is too small to be a real dump. Nothing was kept." >&2
+    exit 1
+fi
+if [[ "$last" != "-- Dump completed"* ]]; then
+    echo "ssvs-backup: the dump doesn't end with a '-- Dump completed' line, so it's incomplete. Nothing was kept." >&2
     exit 1
 fi
 
 mv "$tmp" "$SSVS_BACKUP_DIR/$name"
-echo "ssvs-backup: wrote $SSVS_BACKUP_DIR/$name ($size bytes)."
+echo "ssvs-backup: wrote $SSVS_BACKUP_DIR/$name"
+echo "ssvs-backup: the dump was $size bytes before compression and encryption."
 
 find "$SSVS_BACKUP_DIR" -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' -mtime "+$SSVS_BACKUP_KEEP_DAYS" -delete
 echo "ssvs-backup: removed backups older than $SSVS_BACKUP_KEEP_DAYS days."

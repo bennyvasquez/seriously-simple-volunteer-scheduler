@@ -36,6 +36,12 @@ if [[ ! -t 0 ]]; then
     exit 1
 fi
 
+echo "ssvs-restore: checking that $file can be read."
+if ! gpg --batch --decrypt "$file" | gunzip -t; then
+    echo "ssvs-restore: $file can't be read. Either there's no private key for it in root's keyring, or the file is damaged. Nothing was changed." >&2
+    exit 1
+fi
+
 echo "This replaces the whole ssvs database with the contents of $file."
 echo "Everything entered since that backup was made will be lost."
 read -r -p "To go ahead, type the database name (ssvs): " answer
@@ -48,18 +54,36 @@ cd "$APP"
 
 runuser -u ssvs -- php artisan down
 
+rollback=""
 failed() {
     echo >&2
     echo "ssvs-restore: FAILED at: $BASH_COMMAND" >&2
     echo "The site is still in maintenance mode and the database may be half restored. Fix the problem, run the restore again, or bring the site back with: cd $APP && runuser -u ssvs -- php artisan up" >&2
+    if [[ -n "$rollback" ]]; then
+        echo "A backup of the database as it was before this restore is at: $rollback (restore that file to go back)." >&2
+    fi
 }
 trap failed ERR
+
+echo "ssvs-restore: making a rollback backup of the current database first."
+rollback_log="$(/usr/local/sbin/ssvs-backup)"
+echo "$rollback_log"
+rollback="$(printf '%s\n' "$rollback_log" | sed -n 's/^ssvs-backup: wrote //p' | head -n 1)"
+if [[ -z "$rollback" ]]; then
+    echo "ssvs-restore: couldn't find the rollback backup's path in ssvs-backup's output, so nothing was dropped." >&2
+    false
+fi
+echo "ssvs-restore: rollback backup is $rollback."
 
 mariadb -e 'DROP DATABASE ssvs; CREATE DATABASE ssvs CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
 gpg --batch --decrypt "$file" | gunzip | mariadb ssvs
 runuser -u ssvs -- php artisan migrate --force
 runuser -u ssvs -- php artisan up
 trap - ERR
-runuser -u ssvs -- php artisan ssvs:check-install
 
-echo "ssvs-restore: done. The .env in $APP must be the one with the same APP_KEY the backup was made under, or two-factor secrets won't decrypt."
+echo "ssvs-restore: the site is back up. The .env in $APP must be the one with the same APP_KEY the backup was made under, or two-factor secrets won't decrypt."
+if ! runuser -u ssvs -- php artisan ssvs:check-install; then
+    echo "ssvs-restore: the site is back up, but the install check found problems to fix (listed above)." >&2
+    exit 1
+fi
+echo "ssvs-restore: done."

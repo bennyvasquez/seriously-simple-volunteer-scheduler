@@ -226,6 +226,54 @@ class DeployFilesTest extends TestCase
         $this->assertStringContainsString('still in maintenance mode', $script);
     }
 
+    public function test_restore_proves_the_backup_reads_before_anything_changes(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+
+        $verify = strpos($script, 'gunzip -t');
+        $confirm = strpos($script, 'read -r');
+        $down = strpos($script, 'artisan down');
+        $rollback = strpos($script, '/usr/local/sbin/ssvs-backup');
+        $drop = strpos($script, 'DROP DATABASE');
+
+        foreach ([$verify, $confirm, $down, $rollback, $drop] as $position) {
+            $this->assertNotFalse($position);
+        }
+
+        $this->assertStringContainsString('gpg --batch --decrypt "$file" | gunzip -t', $script);
+        $this->assertLessThan($confirm, $verify);
+        $this->assertLessThan($drop, $verify);
+        $this->assertLessThan($rollback, $down);
+        $this->assertLessThan($drop, $rollback);
+        $this->assertStringContainsString('ssvs-backup: wrote ', $script);
+        $this->assertStringContainsString('$rollback', substr($script, (int) strpos($script, 'failed()'), 600));
+    }
+
+    public function test_restore_prints_the_key_reminder_before_the_install_check(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+
+        $this->assertLessThan(
+            strpos($script, 'ssvs:check-install'),
+            strpos($script, 'APP_KEY'),
+        );
+        $this->assertStringContainsString('the install check found problems', $script);
+    }
+
+    public function test_the_backup_checks_the_dump_itself_before_keeping_it(): void
+    {
+        $script = $this->deploy('bin/ssvs-backup');
+
+        $mv = strpos($script, 'mv "$tmp"');
+        $this->assertNotFalse($mv);
+        $this->assertStringContainsString('tee "$fifo"', $script);
+        $this->assertStringContainsString('-- Dump completed', $script);
+        $this->assertLessThan($mv, strpos($script, '-- Dump completed'));
+        $this->assertLessThan($mv, strpos($script, '1024'));
+        $this->assertLessThan($mv, strpos($script, 'wait "$counter"'));
+        $this->assertStringNotContainsString('stat -c', $script);
+    }
+
     public function test_backups_are_encrypted_before_they_touch_disk(): void
     {
         $script = $this->deploy('bin/ssvs-backup');
@@ -249,6 +297,7 @@ class DeployFilesTest extends TestCase
 
         $this->assertStringContainsString('Type=oneshot', $service);
         $this->assertStringContainsString('ExecStart=/usr/local/sbin/ssvs-backup', $service);
+        $this->assertStringContainsString('Environment=GNUPGHOME=/root/.gnupg', $service);
         $this->assertStringContainsString('OnCalendar=*-*-* 02:30:00', $timer);
         $this->assertStringContainsString('RandomizedDelaySec=15m', $timer);
         $this->assertStringContainsString('Persistent=true', $timer);
