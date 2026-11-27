@@ -27,6 +27,7 @@ class DeployFilesTest extends TestCase
         $this->assertStringContainsString('root /var/www/ssvs/public;', $this->deploy('nginx/ssvs.conf'));
         $this->assertStringContainsString('WorkingDirectory=/var/www/ssvs', $this->deploy('systemd/ssvs-scheduler.service'));
         $this->assertStringContainsString('/var/www/ssvs', $this->deploy('env.production.example'));
+        $this->assertStringContainsString('APP=/var/www/ssvs', $this->deploy('bin/ssvs-restore'));
     }
 
     public function test_neither_nginx_file_mentions_a_certbot_webroot(): void
@@ -202,9 +203,75 @@ class DeployFilesTest extends TestCase
         }
     }
 
+    public function test_restore_asks_before_dropping(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+
+        $drop = strpos($script, 'DROP DATABASE');
+        $this->assertNotFalse($drop, 'The restore script should drop the database.');
+        $this->assertSame(1, substr_count($script, 'DROP DATABASE'));
+
+        $tty = strpos($script, '! -t 0');
+        $confirm = strpos($script, 'read -r');
+        $down = strpos($script, 'artisan down');
+
+        $this->assertNotFalse($tty, 'The restore script should refuse without a terminal.');
+        $this->assertNotFalse($confirm, 'The restore script should read a typed confirmation.');
+        $this->assertNotFalse($down, 'The restore script should put the site in maintenance mode.');
+        $this->assertLessThan($drop, $tty);
+        $this->assertLessThan($drop, $confirm);
+        $this->assertLessThan($drop, $down);
+        $this->assertLessThan($down, $confirm);
+        $this->assertStringContainsString('artisan up', $script);
+        $this->assertStringContainsString('still in maintenance mode', $script);
+    }
+
+    public function test_backups_are_encrypted_before_they_touch_disk(): void
+    {
+        $script = $this->deploy('bin/ssvs-backup');
+
+        $this->assertStringContainsString('set -euo pipefail', $script);
+        $this->assertMatchesRegularExpression('/mariadb-dump .*?\| gzip .*?\| gpg .*?--encrypt/s', $script);
+        $this->assertStringContainsString('--recipient "$SSVS_BACKUP_RECIPIENT"', $script);
+        $this->assertStringContainsString('umask 077', $script);
+        $this->assertStringContainsString('.sql.gz.gpg', $script);
+        $this->assertStringNotContainsString('.sql"', $script);
+        $this->assertStringNotContainsString('.sql ', $script);
+        $this->assertStringContainsString('> "$tmp"', $script);
+        $this->assertStringNotContainsString('rclone', $script);
+        $this->assertStringContainsString('-mtime', $script);
+    }
+
+    public function test_the_backup_service_and_timer(): void
+    {
+        $service = $this->deploy('systemd/ssvs-backup.service');
+        $timer = $this->deploy('systemd/ssvs-backup.timer');
+
+        $this->assertStringContainsString('Type=oneshot', $service);
+        $this->assertStringContainsString('ExecStart=/usr/local/sbin/ssvs-backup', $service);
+        $this->assertStringContainsString('OnCalendar=*-*-* 02:30:00', $timer);
+        $this->assertStringContainsString('RandomizedDelaySec=15m', $timer);
+        $this->assertStringContainsString('Persistent=true', $timer);
+    }
+
+    public function test_the_backup_files_agree_on_the_app_and_the_settings(): void
+    {
+        $config = Dotenv::parse($this->deploy('backup.conf.example'));
+        $this->assertSame('/var/backups/ssvs', $config['SSVS_BACKUP_DIR']);
+        $this->assertSame('14', $config['SSVS_BACKUP_KEEP_DAYS']);
+        $this->assertArrayHasKey('SSVS_BACKUP_RECIPIENT', $config);
+
+        foreach (['bin/ssvs-backup', 'bin/ssvs-restore'] as $file) {
+            $script = $this->deploy($file);
+            $this->assertStringContainsString('/etc/ssvs/backup.conf', $script);
+        }
+
+        $this->assertStringContainsString('runuser -u ssvs --', $this->deploy('bin/ssvs-restore'));
+    }
+
     public function test_no_deploy_file_uses_an_em_or_en_dash(): void
     {
-        foreach (['env.production.example', 'nginx/ssvs-http.conf', 'nginx/ssvs.conf', 'php-fpm/ssvs.conf', 'systemd/ssvs-scheduler.service', 'systemd/ssvs-scheduler.timer'] as $file) {
+        foreach (['env.production.example', 'nginx/ssvs-http.conf', 'nginx/ssvs.conf', 'php-fpm/ssvs.conf', 'systemd/ssvs-scheduler.service', 'systemd/ssvs-scheduler.timer', 'systemd/ssvs-backup.service', 'systemd/ssvs-backup.timer', 'backup.conf.example', 'bin/ssvs-backup', 'bin/ssvs-restore'] as $file) {
             $this->assertDoesNotMatchRegularExpression('/[\x{2013}\x{2014}]/u', $this->deploy($file), $file);
         }
     }

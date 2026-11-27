@@ -1,0 +1,7 @@
+[Unit]
+Description=SSVS nightly encrypted database backup
+After=mariadb.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ssvs-backup

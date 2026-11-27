@@ -1,0 +1,56 @@
+#!/bin/bash
+# Makes an encrypted backup of the SSVS database. It runs as root from ssvs-backup.timer.
+# root reaches MariaDB through unix_socket authentication (the 10.11 default), so mariadb-dump needs no password.
+# The dump is compressed and encrypted in one pipe, so an unencrypted copy never touches the disk.
+set -euo pipefail
+
+CONF=/etc/ssvs/backup.conf
+
+if [[ ! -r "$CONF" ]]; then
+    echo "ssvs-backup: $CONF is missing or unreadable. Copy deploy/backup.conf.example there and fill it in." >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$CONF"
+
+if [[ -z "${SSVS_BACKUP_RECIPIENT:-}" ]]; then
+    echo "ssvs-backup: SSVS_BACKUP_RECIPIENT is empty in $CONF." >&2
+    exit 1
+fi
+
+SSVS_BACKUP_DIR="${SSVS_BACKUP_DIR:-/var/backups/ssvs}"
+SSVS_BACKUP_KEEP_DAYS="${SSVS_BACKUP_KEEP_DAYS:-14}"
+
+umask 077
+[[ -d "$SSVS_BACKUP_DIR" ]] || install -d -m 0700 "$SSVS_BACKUP_DIR"
+
+first_backup=yes
+if [[ -n "$(find "$SSVS_BACKUP_DIR" -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' -print -quit)" ]]; then
+    first_backup=no
+fi
+
+name="ssvs-$(date +%Y-%m-%d-%H%M).sql.gz.gpg"
+tmp="$SSVS_BACKUP_DIR/.$name.partial"
+trap 'rm -f "$tmp"' EXIT
+
+echo "ssvs-backup: dumping, compressing and encrypting the ssvs database for $SSVS_BACKUP_RECIPIENT."
+mariadb-dump --single-transaction --routines --triggers --default-character-set=utf8mb4 ssvs \
+    | gzip \
+    | gpg --batch --yes --trust-model always --encrypt --recipient "$SSVS_BACKUP_RECIPIENT" > "$tmp"
+
+size="$(stat -c %s "$tmp")"
+if (( size < 1024 )); then
+    echo "ssvs-backup: the backup is only $size bytes, which is too small to be a real dump. Nothing was kept." >&2
+    exit 1
+fi
+
+mv "$tmp" "$SSVS_BACKUP_DIR/$name"
+echo "ssvs-backup: wrote $SSVS_BACKUP_DIR/$name ($size bytes)."
+
+find "$SSVS_BACKUP_DIR" -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' -mtime "+$SSVS_BACKUP_KEEP_DAYS" -delete
+echo "ssvs-backup: removed backups older than $SSVS_BACKUP_KEEP_DAYS days."
+
+if [[ "$first_backup" == yes ]]; then
+    echo "ssvs-backup: reminder: keep a copy of /var/www/ssvs/.env somewhere safe off this server. It holds APP_KEY, which protects two-factor secrets, and a backup can't be used without it."
+fi

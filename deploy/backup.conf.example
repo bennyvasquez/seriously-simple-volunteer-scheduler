@@ -1,0 +1,7 @@
+# Copy this file to /etc/ssvs/backup.conf. The backup and restore scripts read it.
+# The gpg key's email address or fingerprint. The public key must be imported into root's keyring.
+SSVS_BACKUP_RECIPIENT=backups@example.org
+# The folder the encrypted backups are written to (created with mode 0700 if it's missing).
+SSVS_BACKUP_DIR=/var/backups/ssvs
+# Backups older than this many days are deleted from the folder.
+SSVS_BACKUP_KEEP_DAYS=14
