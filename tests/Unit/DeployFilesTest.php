@@ -18,26 +18,139 @@ class DeployFilesTest extends TestCase
 
     public function test_the_socket_path_matches(): void
     {
-        $this->assertStringContainsString('/run/php-fpm/ssvs.sock', $this->deploy('nginx/ssvs.conf'));
-        $this->assertStringContainsString('/run/php-fpm/ssvs.sock', $this->deploy('php-fpm/ssvs.conf'));
+        $this->assertStringContainsString('fastcgi_pass unix:/run/php-fpm/ssvs.sock;', $this->deploy('nginx/ssvs.conf'));
+        $this->assertStringContainsString('listen = /run/php-fpm/ssvs.sock', $this->deploy('php-fpm/ssvs.conf'));
     }
 
     public function test_the_app_folder_matches(): void
     {
-        $this->assertStringContainsString('/var/www/ssvs/public', $this->deploy('nginx/ssvs.conf'));
+        $this->assertStringContainsString('root /var/www/ssvs/public;', $this->deploy('nginx/ssvs.conf'));
         $this->assertStringContainsString('WorkingDirectory=/var/www/ssvs', $this->deploy('systemd/ssvs-scheduler.service'));
+        $this->assertStringContainsString('/var/www/ssvs', $this->deploy('env.production.example'));
     }
 
-    public function test_unknown_hosts_get_444(): void
+    public function test_neither_nginx_file_mentions_a_certbot_webroot(): void
+    {
+        foreach (['nginx/ssvs-http.conf', 'nginx/ssvs.conf'] as $file) {
+            $this->assertStringNotContainsString('/var/www/certbot', $this->deploy($file));
+            $this->assertStringNotContainsString('acme-challenge', $this->deploy($file));
+        }
+    }
+
+    /** The text of the server block that contains the given line. */
+    private function serverBlockWith(string $nginx, string $line): string
+    {
+        foreach (preg_split('/(?=^server \{)/m', $nginx) as $block) {
+            if (str_contains($block, $line)) {
+                return $block;
+            }
+        }
+
+        $this->fail("No server block contains {$line}");
+    }
+
+    public function test_unknown_hosts_get_444_on_both_ports(): void
+    {
+        $nginx = $this->deploy('nginx/ssvs-http.conf');
+
+        $port80 = $this->serverBlockWith($nginx, 'listen 80 default_server;');
+        $this->assertStringContainsString('return 444;', $port80);
+
+        $port443 = $this->serverBlockWith($nginx, 'listen 443 ssl default_server;');
+        $this->assertStringContainsString('return 444;', $port443);
+        $this->assertStringContainsString('ssl_reject_handshake on;', $port443);
+
+        $this->assertSame(1, substr_count($nginx, 'listen 80 default_server;'));
+        $this->assertSame(1, substr_count($nginx, 'listen 443 ssl default_server;'));
+    }
+
+    public function test_the_http_file_needs_no_certificate(): void
+    {
+        $this->assertStringNotContainsString('ssl_certificate', $this->deploy('nginx/ssvs-http.conf'));
+    }
+
+    public function test_the_https_file_has_the_site_hardening(): void
     {
         $nginx = $this->deploy('nginx/ssvs.conf');
 
-        foreach (['listen 80 default_server;', 'listen 443 ssl default_server;'] as $listen) {
-            $this->assertStringContainsString($listen, $nginx);
-        }
+        $this->assertStringContainsString('server_tokens off;', $nginx);
+        $this->assertStringContainsString('location ~ /\.(?!well-known) {', $nginx);
+        $this->assertStringContainsString('deny all;', $nginx);
+        $this->assertStringNotContainsString('default_server', $nginx);
+        $this->assertStringContainsString('ssl_certificate /etc/letsencrypt/live/ssvs.example.org/fullchain.pem;', $nginx);
+        $this->assertStringContainsString('ssl_certificate_key /etc/letsencrypt/live/ssvs.example.org/privkey.pem;', $nginx);
+    }
 
-        $this->assertSame(2, substr_count($nginx, 'return 444;'));
-        $this->assertStringContainsString('ssl_reject_handshake on;', $nginx);
+    public function test_the_nginx_server_names_match_the_app_url(): void
+    {
+        $env = Dotenv::parse($this->deploy('env.production.example'));
+        $host = parse_url($env['APP_URL'], PHP_URL_HOST);
+
+        $this->assertSame('ssvs.example.org', $host);
+
+        $this->assertStringContainsString("server_name {$host};", $this->deploy('nginx/ssvs.conf'));
+        $redirect = $this->serverBlockWith($this->deploy('nginx/ssvs-http.conf'), 'return 301 https://$host$request_uri;');
+        $this->assertStringContainsString("server_name {$host};", $redirect);
+        $this->assertStringContainsString("/live/{$host}/", $this->deploy('nginx/ssvs.conf'));
+    }
+
+    public function test_the_template_from_address_is_one_check_install_rejects(): void
+    {
+        $env = Dotenv::parse($this->deploy('env.production.example'));
+
+        // The same pattern as CheckInstallCommand::checkEmail(), so an admin who forgets this line is told.
+        $this->assertMatchesRegularExpression('/@(example\.org|example\.com|localhost)$/i', $env['MAIL_FROM_ADDRESS']);
+    }
+
+    public function test_the_template_leaves_unfilled_secrets_empty_or_obviously_fake(): void
+    {
+        $env = Dotenv::parse($this->deploy('env.production.example'));
+
+        $this->assertSame('', $env['APP_KEY']);
+        $this->assertSame('', $env['MAIL_USERNAME']);
+        $this->assertSame('', $env['MAIL_PASSWORD']);
+        $this->assertStringStartsWith('CHANGE-ME', $env['DB_PASSWORD']);
+    }
+
+    public function test_every_development_key_is_in_the_production_template_or_deliberately_left_out(): void
+    {
+        // Keys that .env.example has and production doesn't need, each with the reason.
+        $notNeededInProduction = [
+            'PHP_CLI_SERVER_WORKERS', // Only for `php artisan serve` in development.
+            'APP_MAINTENANCE_STORE', // Only used when APP_MAINTENANCE_DRIVER is cache or database.
+            'CACHE_PREFIX', // The default prefix is fine for one install per server.
+            'DB_PORT', // The database is reached through its socket, not TCP (Transmission Control Protocol).
+            'MEMCACHED_HOST', // Memcached isn't used.
+            'REDIS_CLIENT', // Redis isn't used.
+            'REDIS_HOST',
+            'REDIS_PASSWORD',
+            'REDIS_PORT',
+            'AWS_ACCESS_KEY_ID', // S3 storage isn't used.
+            'AWS_SECRET_ACCESS_KEY',
+            'AWS_DEFAULT_REGION',
+            'AWS_BUCKET',
+            'AWS_USE_PATH_STYLE_ENDPOINT',
+            'VITE_APP_NAME', // There's no build step.
+        ];
+
+        $root = dirname(__DIR__, 2);
+        $developmentFile = (string) file_get_contents($root.'/.env.example');
+        $development = array_keys(Dotenv::parse($developmentFile));
+        preg_match_all('/^# ([A-Z][A-Z0-9_]*)=/m', $developmentFile, $developmentCommented);
+        $development = array_merge($development, $developmentCommented[1]);
+        $production = array_keys(Dotenv::parse($this->deploy('env.production.example')));
+        // Commented-out keys count too, because they're documented there (TRUSTED_PROXIES).
+        preg_match_all('/^# ([A-Z][A-Z0-9_]*)=/m', $this->deploy('env.production.example'), $commented);
+        $production = array_merge($production, $commented[1]);
+
+        $missing = array_diff($development, $production, $notNeededInProduction);
+
+        $this->assertSame([], array_values($missing), 'A key in .env.example is neither in deploy/env.production.example nor in the not-needed list.');
+
+        // Keys only production sets: the database socket and the secure cookie flag.
+        $onlyInProduction = array_values(array_diff($production, $development));
+        sort($onlyInProduction);
+        $this->assertSame(['DB_SOCKET', 'SESSION_SECURE_COOKIE'], $onlyInProduction);
     }
 
     public function test_the_production_template_has_production_values(): void
@@ -91,7 +204,7 @@ class DeployFilesTest extends TestCase
 
     public function test_no_deploy_file_uses_an_em_or_en_dash(): void
     {
-        foreach (['env.production.example', 'nginx/ssvs.conf', 'php-fpm/ssvs.conf', 'systemd/ssvs-scheduler.service', 'systemd/ssvs-scheduler.timer'] as $file) {
+        foreach (['env.production.example', 'nginx/ssvs-http.conf', 'nginx/ssvs.conf', 'php-fpm/ssvs.conf', 'systemd/ssvs-scheduler.service', 'systemd/ssvs-scheduler.timer'] as $file) {
             $this->assertDoesNotMatchRegularExpression('/[\x{2013}\x{2014}]/u', $this->deploy($file), $file);
         }
     }
