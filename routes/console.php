@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\SchedulerHeartbeat;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -19,3 +20,6 @@ Schedule::command('ssvs:change-heads-ups')->everyTenMinutes()->withoutOverlappin
 
 // Remind people of their shifts, the number of hours before each that the organization chose in Settings (Off sends nothing). Safe to run often: each place on a shift is handled once.
 Schedule::command('ssvs:shift-reminders')->everyTenMinutes()->withoutOverlapping();
+
+// Records that the scheduler is running, so ssvs:check-install can tell a server whose timer was never turned on. It lives in the cache so the timer's user and a check run as root see the same value.
+Schedule::call(fn () => SchedulerHeartbeat::beat())->everyMinute()->name('ssvs:heartbeat');
