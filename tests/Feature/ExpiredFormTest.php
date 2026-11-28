@@ -10,7 +10,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 /**
- * A form posted after its page sat open past the session (#80): the feature test kernel skips CSRF checks, so these hand the exception handler a stale post directly.
+ * A form posted after its page sat open past the session: the feature test kernel skips CSRF checks, so these hand the exception handler a stale post directly.
  */
 class ExpiredFormTest extends TestCase
 {

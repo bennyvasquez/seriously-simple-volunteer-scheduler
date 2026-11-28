@@ -32,7 +32,7 @@ use InvalidArgumentException;
  *
  * The transaction locks the area, then the slot, then reads the regulars and locks the shifts, the same order EndRegular uses, so the two can't interleave.
  *
- * Shifts that have started, are cancelled, or where this person already has a regular place (for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift. On a shift the person is shadowing, their shadow place becomes a regular place instead (#21), through PutOnShift::makeRegular(), which logs assignment.type_changed; it counts as a new regular place everywhere a new one would, in the self-claim's full check, the shifts counted and the cover requests filled. Each of those shifts' oldest open cover request is filled through CoverFill::fillForRegularsLocked(), so a slot someone gave up stops asking for cover when a coordinator adds a new regular; the releasers get one "is covering" email each, listing their dates, and the leads aren't told.
+ * Shifts that have started, are cancelled, or where this person already has a regular place (for that one date) are left alone, and so are dates where the person is on another active shift at an overlapping time. Each shift the person is put on gets its own assignment.added entry, with the shift as the subject, the same as PutOnShift. On a shift the person is shadowing, their shadow place becomes a regular place instead (issue #8), through PutOnShift::makeRegular(), which logs assignment.type_changed; it counts as a new regular place everywhere a new one would, in the self-claim's full check, the shifts counted and the cover requests filled. Each of those shifts' oldest open cover request is filled through CoverFill::fillForRegularsLocked(), so a slot someone gave up stops asking for cover when a coordinator adds a new regular; the releasers get one "is covering" email each, listing their dates, and the leads aren't told.
  *
  * The returned regular carries an `added_to_shifts` attribute with the number of existing shifts the person was put on, a `skipped_overlaps` attribute listing the dates (Y-m-d) left out because they overlap another shift the person is on, and a `skipped_full` attribute listing the dates a self-claim left out because they already have the people they need (always empty otherwise).
  *
@@ -163,7 +163,7 @@ class AddRegular
                 $date = $shift->local_date->toDateString();
                 $mine = $on->firstWhere('user_id', $user->id);
 
-                // Someone already in a regular place (for that one date) keeps it. A shadow place is turned into a regular one below (#21).
+                // Someone already in a regular place (for that one date) keeps it. A shadow place is turned into a regular one below (issue #8).
                 if ($shift->cancelled_at !== null || ! $regular->activeOn($date) || $mine?->type === AssignmentType::Regular) {
                     continue;
                 }

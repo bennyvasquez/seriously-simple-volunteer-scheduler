@@ -226,7 +226,7 @@ final class CalendarWeek
         $open = $shift->openPlaces();
         $urgent = $shift->isUrgent($now);
         $tools = $this->hasTools($viewer);
-        // A volunteer can't fill a place on a shift that has started, so it doesn't ask them to (issue 72). People with the tools still see it.
+        // A volunteer can't fill a place on a shift that has started, so it doesn't ask them to. People with the tools still see it.
         $askable = $tools || $shift->starts_at->greaterThan($now);
 
         $cancelled = $shift->cancelled_at !== null;

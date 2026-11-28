@@ -1,0 +1,9 @@
+[Unit]
+Description=SSVS nightly encrypted database backup
+After=mariadb.service
+
+[Service]
+Type=oneshot
+# Without User=, systemd doesn't set HOME, so tell gpg where root's keyring is.
+Environment=GNUPGHOME=/root/.gnupg
+ExecStart=/usr/local/sbin/ssvs-backup

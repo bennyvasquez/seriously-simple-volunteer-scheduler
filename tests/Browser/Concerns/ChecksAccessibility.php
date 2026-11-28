@@ -50,7 +50,7 @@ trait ChecksAccessibility
 
         Assert::assertEmpty($violations, "Accessibility violations on {$browser->driver->getCurrentURL()}:\n{$report}");
 
-        // Screen reader users jump to the h1 first, and axe's "page has a heading one" check is a best-practice rule outside the tags above (#60), so it's checked here for every whole page.
+        // Screen reader users jump to the h1 first, and axe's "page has a heading one" check is a best-practice rule outside the tags above, so it's checked here for every whole page.
         if ($within === null) {
             Assert::assertSame(1, $browser->driver->executeScript("return document.querySelectorAll('h1').length;"), "{$browser->driver->getCurrentURL()} should have exactly one h1.");
         }

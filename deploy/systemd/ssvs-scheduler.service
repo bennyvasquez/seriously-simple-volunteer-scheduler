@@ -1,0 +1,10 @@
+[Unit]
+Description=SSVS scheduled tasks (php artisan schedule:run)
+After=network.target mariadb.service
+
+[Service]
+Type=oneshot
+User=ssvs
+Group=ssvs
+WorkingDirectory=/var/www/ssvs
+ExecStart=/usr/bin/php artisan schedule:run

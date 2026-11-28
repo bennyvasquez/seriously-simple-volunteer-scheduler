@@ -68,7 +68,7 @@ class ShiftController extends Controller
         $canAddRegular = $shift->weeklySlot !== null && ! $shift->weeklySlot->is_rotation && Gate::forUser($user)->allows('manageSchedule', $shift->area);
         // A regular can always be put on (past the people needed after a confirmation), so putting someone on is open to anyone who can assign.
         $canPut = $canAssign;
-        // Only people in a regular place are left out. A shadow is listed as "Shadowing", and putting them on moves them to a regular place (#21).
+        // Only people in a regular place are left out. A shadow is listed as "Shadowing", and putting them on moves them to a regular place (issue #8).
         $regularIds = $shift->assignments->where('type', AssignmentType::Regular)->pluck('user_id');
         $shadowIds = $shift->assignments->where('type', AssignmentType::Shadow)->pluck('user_id');
         $search = PersonSearch::find($user, Input::string($request, 'q', ''), $byEmail, $regularIds, $canPut);

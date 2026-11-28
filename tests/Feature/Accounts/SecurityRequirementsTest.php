@@ -109,7 +109,7 @@ class SecurityRequirementsTest extends TestCase
         $coordinator = $this->coordinator();
         $hash = $coordinator->password;
 
-        // A coordinator still in setup goes straight back to the setup screen, so the message isn't lost on a second redirect (issue #14).
+        // A coordinator still in setup goes straight back to the setup screen, so the message isn't lost on a second redirect.
         $this->actingAs($coordinator)
             ->post(route('account.password.set'), ['password' => 'a long enough password', 'password_confirmation' => 'a long enough password'])
             ->assertRedirect(route('account.security'));
@@ -158,7 +158,7 @@ class SecurityRequirementsTest extends TestCase
 
         $this->post('/login', ['email' => 'coordinator@example.org', 'password' => 'correct horse battery'])->assertRedirect();
 
-        // They just typed their password, so "Set up the app" doesn't ask for it again (issue #7).
+        // They just typed their password, so "Set up the app" doesn't ask for it again.
         $this->from(route('account.security'))->post(route('two-factor.enable'))->assertRedirect(route('account.security'));
         $this->assertNotNull($coordinator->fresh()->two_factor_secret);
     }

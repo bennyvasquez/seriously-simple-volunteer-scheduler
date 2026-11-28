@@ -8,7 +8,7 @@ Good notes cover:
 - **Areas:** the areas you schedule and which phase each starts in.
 - **Schedule shape:** the days and blocks you staff, how many people each block needs, closures, and how many shadow shifts a new volunteer does.
 - **Integrations:** your membership system, chat, email provider and calendar, and how your membership categories map to SSVS (for example, the `--lead-tag` and `--cleared-tag` values for `ssvs:import-people`).
-- **Hosting:** the server, the database, and where backups go.
+- **Hosting:** the server, the database, and where backups go. How to install SSVS is in [docs/install.md](../install.md); your notes only need what's particular to your server, such as its name, your host's snapshot backups and where the backup key is kept.
 - **Launch plan:** the steps from a test copy to inviting everyone.
 
 Never write passwords, API keys or the `.env` file into the notes.

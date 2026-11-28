@@ -1,0 +1,85 @@
+#!/bin/bash
+# Makes an encrypted backup of the SSVS database. It runs as root from ssvs-backup.timer.
+# root reaches MariaDB through unix_socket authentication (the 10.11 default), so mariadb-dump needs no password.
+# The dump is compressed and encrypted in one pipe, so an unencrypted copy never touches the disk.
+set -euo pipefail
+
+CONF=/etc/ssvs/backup.conf
+
+if [[ ! -r "$CONF" ]]; then
+    echo "ssvs-backup: $CONF is missing or unreadable. Copy deploy/backup.conf.example there and fill it in." >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$CONF"
+
+if [[ -z "${SSVS_BACKUP_RECIPIENT:-}" ]]; then
+    echo "ssvs-backup: SSVS_BACKUP_RECIPIENT is empty in $CONF." >&2
+    exit 1
+fi
+
+SSVS_BACKUP_DIR="${SSVS_BACKUP_DIR:-/var/backups/ssvs}"
+SSVS_BACKUP_KEEP_DAYS="${SSVS_BACKUP_KEEP_DAYS:-14}"
+
+umask 077
+[[ -d "$SSVS_BACKUP_DIR" ]] || install -d -m 0700 "$SSVS_BACKUP_DIR"
+
+first_backup=yes
+if [[ -n "$(find "$SSVS_BACKUP_DIR" -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' -print -quit)" ]]; then
+    first_backup=no
+fi
+
+# The seconds keep two backups in the same minute apart, such as the rollback backup ssvs-restore makes right after a backup it's restoring.
+name="ssvs-$(date +%Y-%m-%d-%H%M%S).sql.gz.gpg"
+if [[ -e "$SSVS_BACKUP_DIR/$name" ]]; then
+    echo "ssvs-backup: $SSVS_BACKUP_DIR/$name already exists, so nothing was overwritten. Try again in a second." >&2
+    exit 1
+fi
+tmp="$SSVS_BACKUP_DIR/.$name.partial"
+fifo="$SSVS_BACKUP_DIR/.$name.fifo"
+countfile="$SSVS_BACKUP_DIR/.$name.count"
+lastfile="$SSVS_BACKUP_DIR/.$name.last"
+counter=""
+cleanup() {
+    [[ -z "$counter" ]] || kill "$counter" 2> /dev/null || true
+    rm -f "$tmp" "$fifo" "$countfile" "$lastfile"
+}
+trap cleanup EXIT
+
+# A side branch of the pipe counts the plain dump's bytes and keeps its last line, so the checks look at the dump itself and not at the encrypted file.
+mkfifo -m 0600 "$fifo"
+LC_ALL=C awk -v cf="$countfile" -v lf="$lastfile" '{ n += length($0) + 1; last = $0 } END { print n + 0 > cf; print last > lf }' < "$fifo" &
+counter=$!
+
+echo "ssvs-backup: dumping, compressing and encrypting the ssvs database for $SSVS_BACKUP_RECIPIENT."
+mariadb-dump --single-transaction --routines --triggers --default-character-set=utf8mb4 ssvs \
+    | tee "$fifo" \
+    | gzip \
+    | gpg --batch --yes --trust-model always --encrypt --recipient "$SSVS_BACKUP_RECIPIENT" > "$tmp"
+
+# The side branch finishes after the pipe does, so wait for it before reading its results.
+wait "$counter"
+counter=""
+
+size="$(< "$countfile")"
+last="$(< "$lastfile")"
+if (( size < 1024 )); then
+    echo "ssvs-backup: the dump is only $size bytes, which is too small to be a real dump. Nothing was kept." >&2
+    exit 1
+fi
+if [[ "$last" != "-- Dump completed"* ]]; then
+    echo "ssvs-backup: the dump doesn't end with a '-- Dump completed' line, so it's incomplete. Nothing was kept." >&2
+    exit 1
+fi
+
+mv "$tmp" "$SSVS_BACKUP_DIR/$name"
+echo "ssvs-backup: wrote $SSVS_BACKUP_DIR/$name"
+echo "ssvs-backup: the dump was $size bytes before compression and encryption."
+
+find "$SSVS_BACKUP_DIR" -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' -mtime "+$SSVS_BACKUP_KEEP_DAYS" -delete
+echo "ssvs-backup: removed backups older than $SSVS_BACKUP_KEEP_DAYS days."
+
+if [[ "$first_backup" == yes ]]; then
+    echo "ssvs-backup: reminder: keep a copy of /var/www/ssvs/.env somewhere safe off this server. It holds APP_KEY, which protects two-factor secrets, and a backup can't be used without it."
+fi
