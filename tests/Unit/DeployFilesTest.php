@@ -320,8 +320,82 @@ class DeployFilesTest extends TestCase
 
     public function test_no_deploy_file_uses_an_em_or_en_dash(): void
     {
-        foreach (['env.production.example', 'nginx/ssvs-http.conf', 'nginx/ssvs.conf', 'php-fpm/ssvs.conf', 'systemd/ssvs-scheduler.service', 'systemd/ssvs-scheduler.timer', 'systemd/ssvs-backup.service', 'systemd/ssvs-backup.timer', 'backup.conf.example', 'bin/ssvs-backup', 'bin/ssvs-restore'] as $file) {
+        foreach (['env.production.example', 'nginx/ssvs-http.conf', 'nginx/ssvs.conf', 'php-fpm/ssvs.conf', 'systemd/ssvs-scheduler.service', 'systemd/ssvs-scheduler.timer', 'systemd/ssvs-backup.service', 'systemd/ssvs-backup.timer', 'backup.conf.example', 'bin/ssvs-backup', 'bin/ssvs-restore', 'test/smoke.sh'] as $file) {
             $this->assertDoesNotMatchRegularExpression('/[\x{2013}\x{2014}]/u', $this->deploy($file), $file);
         }
+
+        $this->assertDoesNotMatchRegularExpression('/[\x{2013}\x{2014}]/u', $this->guide(), 'docs/install.md');
+    }
+
+    public function test_backup_names_have_seconds_and_never_overwrite(): void
+    {
+        $script = $this->deploy('bin/ssvs-backup');
+
+        // ssvs-restore makes its rollback backup moments after the backup an admin may be restoring, so two backups in one minute must get different names.
+        $this->assertStringContainsString('date +%Y-%m-%d-%H%M%S', $script);
+        $this->assertLessThan(strpos($script, 'mariadb-dump --single-transaction'), strpos($script, 'already exists, so nothing was overwritten'));
+    }
+
+    public function test_every_command_in_the_guide_is_run_by_the_smoke_test(): void
+    {
+        $smoke = $this->deploy('test/smoke.sh');
+
+        // The guide's commands that a container can't run as written, each with the reason. Everything else in a code block must appear in deploy/test/smoke.sh exactly.
+        $skipped = [
+            // firewalld doesn't run in a container.
+            'systemctl enable --now firewalld',
+            'firewall-cmd --permanent --add-service=https --add-service=http --add-service=ssh',
+            'firewall-cmd --permanent --remove-service=cockpit',
+            'firewall-cmd --reload',
+            'firewall-cmd --list-services',
+            // The smoke test puts its generated password in place of the placeholder.
+            "CREATE USER 'ssvs'@'localhost' IDENTIFIED BY 'CHANGE-ME-database-password';",
+            // The smoke test clones the mounted repository instead of GitHub.
+            'runuser -u ssvs -- git clone https://github.com/bennyvasquez/seriously-simple-volunteer-scheduler.git /var/www/ssvs',
+            // SELinux isn't on in a container.
+            "semanage fcontext -a -t httpd_sys_rw_content_t '/var/www/ssvs/(storage|bootstrap/cache)(/.*)?'",
+            'restorecon -R /var/www/ssvs',
+            'setsebool -P httpd_can_sendmail 1',
+            'ausearch -m avc -ts recent',
+            // Let's Encrypt can't issue a certificate for ssvs.example.org; the smoke test makes a self-signed one at the same path.
+            'certbot certonly --nginx -d ssvs.example.org --deploy-hook "systemctl reload nginx"',
+            'certbot renew --dry-run',
+            // There's no terminal for the passphrase, so the smoke test passes it with loopback in these two.
+            'gpg --quick-generate-key "SSVS backups <backups@example.org>" default default never',
+            'gpg --armor --export-secret-keys backups@example.org > ssvs-backups-private.asc',
+            // The smoke test keeps the template's backup settings, which is what nano would leave.
+            'nano /etc/ssvs/backup.conf',
+            // The smoke test uses the key's real fingerprint.
+            'gpg --batch --yes --delete-secret-keys FINGERPRINT',
+        ];
+
+        preg_match_all('/^ *```\n(.*?)^ *```$/ms', $this->guide(), $blocks);
+        $this->assertNotEmpty($blocks[1]);
+
+        $checked = 0;
+        foreach ($blocks[1] as $block) {
+            foreach (explode("\n", $block) as $line) {
+                $command = trim($line);
+                if ($command === '' || in_array($command, $skipped, true)) {
+                    continue;
+                }
+                $this->assertStringContainsString($command, $smoke, "docs/install.md runs this, but deploy/test/smoke.sh doesn't: {$command}");
+                $checked++;
+            }
+        }
+        $this->assertGreaterThan(50, $checked);
+
+        foreach ($skipped as $command) {
+            $this->assertStringContainsString($command, $this->guide(), "This skipped command is no longer in docs/install.md, so take it off the list: {$command}");
+        }
+    }
+
+    private function guide(): string
+    {
+        $contents = file_get_contents(dirname(__DIR__, 2).'/docs/install.md');
+
+        $this->assertIsString($contents, 'docs/install.md should exist and be readable.');
+
+        return $contents;
     }
 }

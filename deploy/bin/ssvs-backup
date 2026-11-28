@@ -30,7 +30,12 @@ if [[ -n "$(find "$SSVS_BACKUP_DIR" -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' -print
     first_backup=no
 fi
 
-name="ssvs-$(date +%Y-%m-%d-%H%M).sql.gz.gpg"
+# The seconds keep two backups in the same minute apart, such as the rollback backup ssvs-restore makes right after a backup it's restoring.
+name="ssvs-$(date +%Y-%m-%d-%H%M%S).sql.gz.gpg"
+if [[ -e "$SSVS_BACKUP_DIR/$name" ]]; then
+    echo "ssvs-backup: $SSVS_BACKUP_DIR/$name already exists, so nothing was overwritten. Try again in a second." >&2
+    exit 1
+fi
 tmp="$SSVS_BACKUP_DIR/.$name.partial"
 fifo="$SSVS_BACKUP_DIR/.$name.fifo"
 countfile="$SSVS_BACKUP_DIR/.$name.count"
