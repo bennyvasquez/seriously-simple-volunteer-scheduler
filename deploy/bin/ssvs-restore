@@ -59,37 +59,85 @@ fi
 
 cd "$APP"
 
+# Note how the scheduler was before anything changes, so the restore puts it back the same way. A spare server that skipped the scheduler step has no timer at all.
+scheduler_was_on=no
+if systemctl is-active -q ssvs-scheduler.timer; then
+    scheduler_was_on=yes
+fi
+scheduler_state="isn't installed"
+if systemctl cat ssvs-scheduler.timer > /dev/null 2>&1; then
+    scheduler_state="wasn't running"
+fi
+
 stage=""
 dropped=no
+restored=no
+in_maintenance=no
 timer_stopped=no
+locks_cleared=no
+ran_once=no
 rollback=""
+scheduler_note() {
+    if [[ "$timer_stopped" == yes ]]; then
+        echo "The scheduler timer is stopped. Once the site is back up, start it with: systemctl start ssvs-scheduler.timer" >&2
+    elif [[ "$scheduler_was_on" == no ]]; then
+        echo "The scheduler timer is off, as it was before the restore (ssvs-scheduler.timer $scheduler_state)." >&2
+    else
+        echo "The scheduler timer is running." >&2
+    fi
+}
 failed() {
     echo >&2
     echo "ssvs-restore: FAILED while $stage." >&2
     if [[ "$dropped" == no ]]; then
         echo "Nothing in the database was changed. Bringing the site back up." >&2
-        runuser -u ssvs -- php artisan up >&2 || echo "ssvs-restore: couldn't bring the site back up. Run: cd $APP && runuser -u ssvs -- php artisan up" >&2
-        if [[ "$timer_stopped" == yes ]]; then
-            systemctl start ssvs-scheduler.timer || echo "ssvs-restore: couldn't start the scheduler timer again. Run: systemctl start ssvs-scheduler.timer" >&2
+        if [[ "$in_maintenance" == yes ]]; then
+            runuser -u ssvs -- php artisan up >&2 || echo "ssvs-restore: couldn't bring the site back up. Run: cd $APP && runuser -u ssvs -- php artisan up" >&2
         fi
+        if [[ "$timer_stopped" == yes ]]; then
+            if systemctl start ssvs-scheduler.timer; then
+                timer_stopped=no
+            else
+                echo "ssvs-restore: couldn't start the scheduler timer again." >&2
+            fi
+        fi
+        scheduler_note
+    elif [[ "$restored" == yes ]]; then
+        echo "The backup is restored. To finish by hand:" >&2
+        if [[ "$locks_cleared" == no ]]; then
+            echo "  cd $APP && runuser -u ssvs -- php artisan schedule:clear-cache" >&2
+        fi
+        if [[ "$in_maintenance" == yes ]]; then
+            echo "  cd $APP && runuser -u ssvs -- php artisan up    (the site is still in maintenance mode)" >&2
+        else
+            echo "  (the site is back up already)" >&2
+        fi
+        if [[ "$timer_stopped" == yes ]]; then
+            echo "  systemctl start ssvs-scheduler.timer" >&2
+        fi
+        if [[ "$scheduler_was_on" == yes && "$ran_once" == no ]]; then
+            echo "  systemctl start ssvs-scheduler.service    (runs the scheduler once, so the install check sees it)" >&2
+        fi
+        echo "Then run: cd $APP && runuser -u ssvs -- php artisan ssvs:check-install" >&2
     else
         echo "The site is still in maintenance mode and the database may be half restored. Fix the problem, run the restore again, or bring the site back with: cd $APP && runuser -u ssvs -- php artisan up" >&2
         if [[ -n "$rollback" ]]; then
             echo "A backup of the database as it was before this restore is at: $rollback (restore that file to go back). The key may need unlocking again first (docs/install.md, section 9, the unlock step)." >&2
         fi
-        if [[ "$timer_stopped" == yes ]]; then
-            echo "The scheduler timer is stopped. Once the site is back, start it with: systemctl start ssvs-scheduler.timer" >&2
-        fi
+        scheduler_note
     fi
 }
 trap failed ERR
 
 # Scheduled jobs stay off until the restored database is ready, as in an update (docs/install.md, section 11).
-stage="stopping the scheduler timer"
-systemctl stop ssvs-scheduler.timer
-timer_stopped=yes
+if [[ "$scheduler_was_on" == yes ]]; then
+    stage="stopping the scheduler timer"
+    systemctl stop ssvs-scheduler.timer
+    timer_stopped=yes
+fi
 
 stage="putting the site in maintenance mode"
+in_maintenance=yes
 runuser -u ssvs -- php artisan down
 
 stage="making the rollback backup"
@@ -112,21 +160,29 @@ gpg --batch --decrypt "$file" | gunzip | mariadb ssvs
 
 stage="running the migrations"
 runuser -u ssvs -- php artisan migrate --force
+restored=yes
 
 # The backup carries the old server's scheduler locks (withoutOverlapping, held for up to 24 hours), which would otherwise stop cover requests and reminders.
 stage="clearing the scheduler's old locks"
 runuser -u ssvs -- php artisan schedule:clear-cache
+locks_cleared=yes
 
 stage="bringing the site back up"
 runuser -u ssvs -- php artisan up
+in_maintenance=no
 
-stage="starting the scheduler timer"
-systemctl start ssvs-scheduler.timer
-timer_stopped=no
+if [[ "$scheduler_was_on" == yes ]]; then
+    stage="starting the scheduler timer"
+    systemctl start ssvs-scheduler.timer
+    timer_stopped=no
 
-# The scheduler skipped its runs during maintenance mode, and the backup brought back its old heartbeat, so run it once now for the install check to see.
-stage="running the scheduler once"
-systemctl start ssvs-scheduler.service
+    # The scheduler skipped its runs during maintenance mode, and the backup brought back its old heartbeat, so run it once now for the install check to see.
+    stage="running the scheduler once"
+    systemctl start ssvs-scheduler.service
+    ran_once=yes
+else
+    echo "ssvs-restore: the scheduler was left off, as it was before the restore (ssvs-scheduler.timer $scheduler_state), so the install check's scheduler line is expected to fail here."
+fi
 trap - ERR
 
 echo "ssvs-restore: the site is back up. The .env in $APP must be the one with the same APP_KEY the backup was made under, or two-factor secrets won't decrypt."

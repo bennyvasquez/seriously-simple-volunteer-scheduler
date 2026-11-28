@@ -246,7 +246,7 @@ class DeployFilesTest extends TestCase
         $this->assertLessThan($rollback, $down);
         $this->assertLessThan($drop, $rollback);
         $this->assertStringContainsString('ssvs-backup: wrote ', $script);
-        $this->assertStringContainsString('$rollback', substr($script, (int) strpos($script, 'failed()'), 2000));
+        $this->assertStringContainsString('$rollback', $this->restoreFailureHandler());
     }
 
     public function test_the_http_file_hides_the_nginx_version_at_http_level(): void
@@ -276,7 +276,7 @@ class DeployFilesTest extends TestCase
     public function test_restore_says_whether_the_database_was_changed_when_it_fails(): void
     {
         $script = $this->deploy('bin/ssvs-restore');
-        $failed = substr($script, (int) strpos($script, 'failed()'), 2000);
+        $failed = $this->restoreFailureHandler();
 
         $this->assertStringContainsString('dropped=yes', $script);
         $this->assertLessThan(strpos($script, 'DROP DATABASE'), strpos($script, 'dropped=yes'));
@@ -314,13 +314,63 @@ class DeployFilesTest extends TestCase
         $this->assertLessThan($check, $once);
     }
 
+    /** The text of ssvs-restore's failure handler, from its definition to the line that sets it as the ERR trap. */
+    private function restoreFailureHandler(): string
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+        $start = strpos($script, 'failed() {');
+        $end = strpos($script, 'trap failed ERR');
+        $this->assertNotFalse($start);
+        $this->assertNotFalse($end);
+        $this->assertLessThan($end, $start);
+
+        return substr($script, $start, $end - $start);
+    }
+
+    public function test_restore_leaves_a_scheduler_that_was_off_alone(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+        $main = (int) strpos($script, 'trap failed ERR');
+
+        $asked = strpos($script, 'systemctl is-active -q ssvs-scheduler.timer');
+        $this->assertNotFalse($asked);
+        $this->assertLessThan(strpos($script, 'systemctl stop ssvs-scheduler.timer', $main), $asked);
+        $this->assertLessThan(strpos($script, 'artisan down', $main), $asked);
+        $this->assertMatchesRegularExpression('/if \[\[ "\$scheduler_was_on" == yes \]\]; then\s+stage="stopping the scheduler timer"\s+systemctl stop ssvs-scheduler\.timer/', $script);
+        $this->assertMatchesRegularExpression('/if \[\[ "\$scheduler_was_on" == yes \]\]; then\s+stage="starting the scheduler timer"\s+systemctl start ssvs-scheduler\.timer/', $script);
+        $this->assertStringContainsString('the scheduler was left off, as it was before the restore', $script);
+        $this->assertStringContainsString('scheduler line is expected to fail', $script);
+    }
+
+    public function test_restore_failures_after_the_import_say_the_backup_is_restored(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+        $handler = $this->restoreFailureHandler();
+
+        $this->assertLessThan(strpos($script, 'restored=yes'), strpos($script, 'runuser -u ssvs -- php artisan migrate --force', (int) strpos($script, 'trap failed ERR')));
+        $this->assertStringContainsString('The backup is restored', $handler);
+        $this->assertStringContainsString('runuser -u ssvs -- php artisan schedule:clear-cache', $handler);
+        $this->assertStringContainsString('systemctl start ssvs-scheduler.service', $handler);
+        $this->assertStringContainsString('in_maintenance', $handler);
+
+        // The rollback is offered only while the database may be half restored, never once the backup is in.
+        $from = strpos($handler, 'restored" == yes');
+        $this->assertNotFalse($from);
+        $to = strpos($handler, "\n    else\n", $from);
+        $this->assertNotFalse($to);
+        $restoredBranch = substr($handler, $from, $to - $from);
+        $this->assertStringNotContainsString('$rollback', $restoredBranch);
+    }
+
     public function test_restore_prints_the_key_reminder_before_the_install_check(): void
     {
         $script = $this->deploy('bin/ssvs-restore');
+        // The main flow, after the failure handler (which also names the check, in its finish-by-hand steps).
+        $main = (int) strpos($script, 'trap failed ERR');
 
         $this->assertLessThan(
-            strpos($script, 'ssvs:check-install'),
-            strpos($script, 'APP_KEY'),
+            strpos($script, 'ssvs:check-install', $main),
+            strpos($script, 'APP_KEY', $main),
         );
         $this->assertStringContainsString('the install check found problems', $script);
     }

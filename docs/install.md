@@ -478,7 +478,13 @@ The backup has to be decrypted on the server, so the private key has to be there
    ssvs-restore /root/ssvs-restore/ssvs-2026-11-27-023000.sql.gz.gpg
    ```
 
-   If the backup can't be read (most often because the key isn't unlocked), it stops before changing anything. If something fails after the site goes into maintenance mode, it says what failed and where the rollback backup is.
+   If the backup can't be read (most often because the key isn't unlocked), it stops before changing anything. If something fails, it says which step failed and what to do:
+
+   - Before the database is dropped, nothing in the database has changed, and it brings the site back up.
+   - After the database is dropped but before the backup is fully in, the site stays in maintenance mode and it names the rollback backup, which you can restore to go back (unlock the key again first, as in step 3).
+   - After the backup is restored, it says so and lists the steps left to finish by hand, such as bringing the site back up.
+
+   It puts the scheduler back the way it was: if the scheduler timer was running, it's paused during the restore and started again afterward; if it was off (or never set up, as on a spare server), it stays off, and the install check's scheduler line will say so.
 
 5. Remove the private key from the server again. `gpg --list-secret-keys backups@example.org` shows its fingerprint, the long line of letters and numbers; use it in place of `FINGERPRINT`:
 
