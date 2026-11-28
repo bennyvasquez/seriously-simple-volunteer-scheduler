@@ -23,6 +23,7 @@ class CheckInstallCommandTest extends TestCase
             'app.url' => 'https://volunteers.example.net',
             'app.trusted_proxies' => null,
             'mail.default' => 'smtp',
+            'mail.mailers.smtp.host' => 'smtp.example.net',
             'mail.from.address' => 'volunteers@makers.test',
             'session.driver' => 'database',
             'session.secure' => true,
@@ -120,6 +121,35 @@ class CheckInstallCommandTest extends TestCase
         $this->artisan('ssvs:check-install')
             ->expectsOutputToContain('MAIL_FROM_ADDRESS is "hello@example.com". Set it to an address your organization reads.')
             ->assertExitCode(1);
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function mailHosts(): array
+    {
+        return [
+            'the template host' => ['smtp.example.org', false],
+            'example.com itself' => ['example.com', false],
+            'a non-example host (control)' => ['smtp.example.net', true],
+        ];
+    }
+
+    #[DataProvider('mailHosts')]
+    public function test_an_example_mail_host_fails(string $host, bool $passes): void
+    {
+        $this->goodInstall();
+        config(['mail.mailers.smtp.host' => $host]);
+
+        $fix = 'MAIL_HOST is "'.$host.'", an example address. Set it to your email provider\'s SMTP server.';
+
+        if ($passes) {
+            $this->artisan('ssvs:check-install')
+                ->doesntExpectOutputToContain('FIX')
+                ->assertExitCode(0);
+        } else {
+            $this->artisan('ssvs:check-install')
+                ->expectsOutputToContain('FIX Email: '.$fix)
+                ->assertExitCode(1);
+        }
     }
 
     public function test_sessions_must_be_database_and_secure(): void

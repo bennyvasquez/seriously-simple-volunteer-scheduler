@@ -80,8 +80,7 @@ class CheckInstallCommand extends Command
         }
 
         // The production template ships with https://ssvs.example.org, which has the right shape, so the example domains are refused on their own.
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        if (preg_match('/(^|\.)example\.(org|com)$/', $host) === 1) {
+        if ($this->isExampleHost((string) parse_url($url, PHP_URL_HOST))) {
             $this->fix('Site address', 'APP_URL is "'.$url.'", an example address. Set it to the site\'s public address.');
 
             return;
@@ -101,6 +100,13 @@ class CheckInstallCommand extends Command
             $this->fix('Email', 'MAIL_MAILER is "'.$mailer.'". Set it to smtp and fill in MAIL_HOST, MAIL_PORT, MAIL_USERNAME and MAIL_PASSWORD.');
         }
 
+        // The production template's placeholder host has the right shape, so it's refused by name, by the same rule as APP_URL's host.
+        $host = (string) config('mail.mailers.smtp.host');
+        if ($this->isExampleHost($host)) {
+            $good = false;
+            $this->fix('Email', 'MAIL_HOST is "'.$host.'", an example address. Set it to your email provider\'s SMTP server.');
+        }
+
         if (preg_match('/@(example\.org|example\.com|localhost)$/i', $address) === 1) {
             $good = false;
             $this->fix('Email', 'MAIL_FROM_ADDRESS is "'.$address.'". Set it to an address your organization reads.');
@@ -109,6 +115,12 @@ class CheckInstallCommand extends Command
         if ($good) {
             $this->ok('Email is set up to send from '.$address);
         }
+    }
+
+    /** Whether a host name is example.org or example.com, or a name under either, the placeholders the production template ships with. */
+    private function isExampleHost(string $host): bool
+    {
+        return preg_match('/(^|\.)example\.(org|com)$/', strtolower($host)) === 1;
     }
 
     private function checkSessions(): void
