@@ -259,6 +259,8 @@ check "the site isn't in maintenance mode" test ! -e /var/www/ssvs/storage/frame
 check "the rollback backup didn't replace the server's own backup" test "$(find /var/backups/ssvs -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' | wc -l)" = 2
 # A second restore with the scheduler timer stopped beforehand: the restore has to leave it stopped and say so. The key may still be unlocked from the first restore, in which case gpg doesn't ask and the piped passphrase has nowhere to go, so the unlock's exit status is ignored (the restore's own readability checks would catch a locked key).
 systemctl stop ssvs-scheduler.timer
+# TEST ONLY: change the name again, so this restore has something of its own to undo.
+mariadb -e "UPDATE ssvs.organizations SET name = 'Changed Before The Second Restore'"
 (sleep 3; echo "$passphrase"; sleep 3) | script -qec "gpg --pinentry-mode loopback --decrypt /root/ssvs-restore/ssvs-2026-11-27-023000.sql.gz.gpg > /dev/null" /dev/null > /tmp/unlock2.log 2>&1 || true
 set +e
 printf 'ssvs\n' | script -qec "ssvs-restore /root/ssvs-restore/ssvs-2026-11-27-023000.sql.gz.gpg" /dev/null > /tmp/restore-off.log 2>&1
@@ -268,7 +270,9 @@ tr -d '\r' < /tmp/restore-off.log | grep -E '^ssvs-restore|^FIX|^OK  Scheduler' 
 check "a restore with the scheduler off says it left it off" grep -q "the scheduler was left off, as it was before the restore (ssvs-scheduler.timer wasn't running), so the install check's scheduler line is expected to fail here." /tmp/restore-off.log
 check "and leaves the timer stopped" test "$(systemctl is-active ssvs-scheduler.timer || true)" = inactive
 check "and still restores (exit 1 from the install check)" test "$restore_off_status" = 1
-check "and the old name is still there" test "$(mariadb -N -e 'SELECT name FROM ssvs.organizations')" = "$original_name"
+check "and gets to the end, not the failure handler" grep -q "ssvs-restore: the site is back up" /tmp/restore-off.log
+check "and doesn't report a failure" test "$(grep -c 'FAILED while' /tmp/restore-off.log)" = 0
+check "and brings the old name back again" test "$(mariadb -N -e 'SELECT name FROM ssvs.organizations')" = "$original_name"
 systemctl start ssvs-scheduler.timer
 # TEST ONLY: one scheduler run now, so step 10's check doesn't depend on how old the restored heartbeat is.
 systemctl start ssvs-scheduler.service

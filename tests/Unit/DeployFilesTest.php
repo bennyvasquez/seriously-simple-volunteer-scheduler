@@ -342,6 +342,23 @@ class DeployFilesTest extends TestCase
         $this->assertStringContainsString('scheduler line is expected to fail', $script);
     }
 
+    public function test_restore_failure_handler_only_says_it_brings_the_site_up_when_it_does(): void
+    {
+        $handler = $this->restoreFailureHandler();
+
+        $this->assertStringNotContainsString('Nothing in the database was changed. Bringing the site back up.', $handler);
+        $this->assertMatchesRegularExpression('/if \[\[ "\$in_maintenance" == yes \]\]; then\s+echo "Bringing the site back up\." >&2\s+runuser -u ssvs -- php artisan up/', $handler);
+    }
+
+    public function test_restore_failures_after_the_import_say_when_the_scheduler_was_off(): void
+    {
+        $handler = $this->restoreFailureHandler();
+        $restored = substr($handler, (int) strpos($handler, 'The backup is restored'));
+        $restored = substr($restored, 0, (int) strpos($restored, "\n    else\n"));
+
+        $this->assertMatchesRegularExpression('/if \[\[ "\$scheduler_was_on" == no \]\]; then\s+scheduler_note/', $restored);
+    }
+
     public function test_restore_failures_after_the_import_say_the_backup_is_restored(): void
     {
         $script = $this->deploy('bin/ssvs-restore');

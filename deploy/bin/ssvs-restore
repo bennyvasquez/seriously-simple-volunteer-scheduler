@@ -90,8 +90,9 @@ failed() {
     echo >&2
     echo "ssvs-restore: FAILED while $stage." >&2
     if [[ "$dropped" == no ]]; then
-        echo "Nothing in the database was changed. Bringing the site back up." >&2
+        echo "Nothing in the database was changed." >&2
         if [[ "$in_maintenance" == yes ]]; then
+            echo "Bringing the site back up." >&2
             runuser -u ssvs -- php artisan up >&2 || echo "ssvs-restore: couldn't bring the site back up. Run: cd $APP && runuser -u ssvs -- php artisan up" >&2
         fi
         if [[ "$timer_stopped" == yes ]]; then
@@ -119,6 +120,10 @@ failed() {
             echo "  systemctl start ssvs-scheduler.service    (runs the scheduler once, so the install check sees it)" >&2
         fi
         echo "Then run: cd $APP && runuser -u ssvs -- php artisan ssvs:check-install" >&2
+        if [[ "$scheduler_was_on" == no ]]; then
+            scheduler_note
+            echo "So the install check's scheduler line is expected to fail." >&2
+        fi
     else
         echo "The site is still in maintenance mode and the database may be half restored. Fix the problem, run the restore again, or bring the site back with: cd $APP && runuser -u ssvs -- php artisan up" >&2
         if [[ -n "$rollback" ]]; then
