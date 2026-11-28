@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * Remembers when the scheduler last ran, so `ssvs:check-install` can say whether the timer is on. It's sign-in-style machinery rather than data people change, so it has no change log entry.
+ *
+ * It lives in the cache (the database cache in production), so the timer's user and a check run as root see the same value. A database restore brings back the value from when the backup was made, which is why `ssvs-restore` runs the scheduler once before its install check.
  */
 class SchedulerHeartbeat
 {

@@ -388,7 +388,13 @@ The backups are encrypted with a GnuPG key whose private half stays on your own 
 
    Keep `ssvs-backups-private.asc` somewhere safe that isn't the server, such as your password manager or an encrypted drive, and make sure a second person in your organization can reach it. Without it, nobody can read the backups.
 
-3. Copy only the public half to the server, for example with `scp ssvs-backups-public.asc root@ssvs.example.org:/root/`.
+3. Copy only the public half to the server. You log in as your own user, not root, so copy it to your home folder first, for example with `scp ssvs-backups-public.asc jordan@ssvs.example.org:` (with your own login name in place of jordan). Then, on the server as root, move it into root's folder:
+
+   ```
+   mv /home/jordan/ssvs-backups-public.asc /root/
+   ```
+
+   Copy any other file to the server the same way: to your home folder with `scp`, then `mv` as root.
 
 ### Set up the backups, on the server
 
@@ -443,11 +449,11 @@ The backups stay on the server for now. A copy off the server is recommended, no
 
 ## 9. Restoring
 
-`ssvs-restore` replaces the whole database with a backup. It checks the backup can be read before it changes anything, asks you to type `ssvs` to confirm, puts the site in maintenance mode, makes a rollback backup of the database as it is, then restores, runs any new migrations, brings the site back and runs the install check.
+`ssvs-restore` replaces the whole database with a backup. It checks the backup can be read, asks you to type `ssvs` to confirm, and checks the backup again in case the key locked while it waited. Then it stops the scheduler timer, puts the site in maintenance mode, makes a rollback backup of the database as it is, restores, runs any new migrations, clears the scheduler's old locks that came back with the backup, brings the site back, starts the scheduler again (running it once right away), and runs the install check. If a step fails before the database is dropped, it says nothing in the database was changed and brings the site back up.
 
 The backup has to be decrypted on the server, so the private key has to be there while you restore, and only then.
 
-1. Copy `ssvs-backups-private.asc` to the server's `/root`, and import it. GnuPG asks for the key's passphrase:
+1. Copy `ssvs-backups-private.asc` to the server's `/root` (through your home folder, as in step 8), and import it. GnuPG asks for the key's passphrase:
 
    ```
    gpg --pinentry-mode loopback --import /root/ssvs-backups-private.asc
@@ -486,7 +492,7 @@ The `.env` on the server has to have the same `APP_KEY` the backup was made unde
 
 Do a restore once on a spare server before launch, as the spec asks (section 13), so you know the steps and the key work before you need them. Your test copy (step 13) is a good spare server, since you need one for it anyway: make a backup there with `systemctl start ssvs-backup.service`, change something you'll notice (the organization's name in Settings, say), restore that backup, and check the change is gone.
 
-If you ever practice on a fresh spare server instead, follow steps 1 to 8 there, use the `APP_KEY` from your off-server copy of `.env`, and leave the scheduler timer off and the mail settings unfilled, so it sends nobody any email. Afterward, shut it down and delete it, so its copy of the data and the key don't linger.
+If you ever practice on a fresh spare server instead, follow steps 1 to 6 and 8 there, skipping step 7 so its scheduler never runs, use the `APP_KEY` from your off-server copy of `.env`, and leave the mail settings unfilled, so it sends nobody any email. Afterward, shut it down and delete it, so its copy of the data and the key don't linger.
 
 ## 10. Checking the install
 
@@ -524,10 +530,11 @@ Read the release notes first. They call out security fixes and anything about th
 cd /var/www/ssvs
 systemctl stop ssvs-scheduler.timer
 runuser -u ssvs -- php artisan down
+systemctl start ssvs-backup.service
 runuser -u ssvs -- git pull
 runuser -u ssvs -- composer install --no-dev --optimize-autoloader
-runuser -u ssvs -- php artisan migrate --force
 runuser -u ssvs -- php artisan config:cache
+runuser -u ssvs -- php artisan migrate --force
 runuser -u ssvs -- php artisan route:cache
 runuser -u ssvs -- php artisan view:cache
 systemctl reload php-fpm
@@ -535,7 +542,7 @@ runuser -u ssvs -- php artisan up
 systemctl start ssvs-scheduler.timer
 ```
 
-The order matters. The migrations have to run before anything else uses the new code, because every email reads its wording from the database and fails if the code is newer than the tables. Stopping the scheduler timer first and starting it last keeps a scheduled job from sending email in between. Reloading PHP-FPM makes it pick up the new code.
+The order matters. The backup right after maintenance mode starts is your way back if the update goes wrong. The settings are cached before the migrations so they run with the new code's settings. The migrations have to run before anything else uses the new code, because every email reads its wording from the database and fails if the code is newer than the tables. Stopping the scheduler timer first and starting it last keeps a scheduled job from sending email in between. Reloading PHP-FPM makes it pick up the new code.
 
 If the release notes say a file in `deploy/` changed, copy it again the way its step did, and change ssvs.example.org to your name again where it appears.
 
@@ -551,8 +558,23 @@ The spec's launch plan (section 17) has coordinators enter the real schedule in 
 
 1. Install the live server with steps 1 to 8, but skip `ssvs:setup` in step 4, because the test copy's database already has the organization and its admins.
 2. In the live server's `.env`, replace the `APP_KEY` line with the one from the test copy's `.env`, then run `cd /var/www/ssvs` and `runuser -u ssvs -- php artisan config:cache`.
-3. On the test copy, make a fresh backup with `systemctl start ssvs-backup.service`, and copy the new file from its `/var/backups/ssvs` to the live server's `/root/ssvs-restore`.
-4. Restore it on the live server, as in step 9.
-5. Sign in on the live site and check the schedule and people are there.
-6. Copy the live server's `.env` to your safe place off the server, replacing your old copy (step 8), and make a first live backup with `systemctl start ssvs-backup.service` on the live server. Do this before the next step, because the next step deletes the test copy's `.env`.
-7. Then shut the test copy down and delete its database and `.env`, so the key that protects two-factor secrets lives only on the live install and in your off-server copy of its `.env`.
+3. On the test copy, stop the scheduler and put the site in maintenance mode, so nobody edits anything and no email goes out after the backup, then make the final backup:
+
+   ```
+   cd /var/www/ssvs
+   systemctl stop ssvs-scheduler.timer
+   runuser -u ssvs -- php artisan down
+   systemctl start ssvs-backup.service
+   ```
+
+4. On the live server, make the folder for it:
+
+   ```
+   install -d -m 0700 /root/ssvs-restore
+   ```
+
+   Then copy the new file from the test copy's `/var/backups/ssvs` into `/root/ssvs-restore` on the live server (through your home folder, as in step 8).
+5. Restore it on the live server, as in step 9.
+6. Sign in on the live site and check the schedule and people are there.
+7. Copy the live server's `.env` to your safe place off the server, replacing your old copy (step 8), and make a first live backup with `systemctl start ssvs-backup.service` on the live server. Do this before the next step, because the next step deletes the test copy's `.env`.
+8. Then shut the test copy down and delete its database and `.env`, so the key that protects two-factor secrets lives only on the live install and in your off-server copy of its `.env`.

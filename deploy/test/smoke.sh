@@ -6,6 +6,7 @@
 #   - dnf is told to answer yes, and the other interactive answers (mariadb-secure-installation, editing .env with nano, gpg's passphrase, typing ssvs at the restore prompt) are piped in, through a pseudo-terminal from script where the program needs one. The CREATE USER line has the password openssl made in place of the placeholder, and the key's fingerprint stands in for FINGERPRINT.
 #   - "Your own computer" is a second gpg keyring in /root/own-computer, so only the public key is on the server until the restore imports the private one.
 #   - Certbot can't get a certificate for ssvs.example.org, so a self-signed one is written to the path Certbot would use and trusted, and the container gets the guide's example IP address (203.0.113.10) so the "another name" checks run as written.
+#   - The admin's own login is a user called jordan, and the file scp would copy is put in its home folder.
 #   - SELinux and firewalld don't work inside a container, so those steps are skipped. The guide marks them as checked on a real server separately.
 # Set SMOKE_KEEP=1 to keep the container afterward for poking at.
 set -euo pipefail
@@ -53,7 +54,11 @@ EOF
     exit $?
 fi
 
-# Everything below runs inside the container, as root.
+# Everything below runs inside the container, as root. It changes the whole system it runs on, so it refuses to run anywhere but a container.
+if ! systemd-detect-virt -c -q; then
+    echo "smoke: --inside only runs inside the smoke test's container. Run bash deploy/test/smoke.sh instead." >&2
+    exit 1
+fi
 
 failures=0
 step() { printf '\n=== %s\n' "$*"; }
@@ -186,9 +191,14 @@ passphrase=smoke-test-passphrase
 GNUPGHOME="$own" gpg --batch --pinentry-mode loopback --passphrase "$passphrase" --quick-generate-key "SSVS backups <backups@example.org>" default default never 2> /dev/null
 cd /root
 GNUPGHOME="$own" gpg --armor --export backups@example.org > ssvs-backups-public.asc
+# TEST ONLY: the admin's own login, jordan, and the scp into its home folder.
+useradd jordan
+install -o jordan -g jordan -m 0644 ssvs-backups-public.asc /home/jordan/
+rm ssvs-backups-public.asc
 GNUPGHOME="$own" gpg --batch --pinentry-mode loopback --passphrase "$passphrase" --armor --export-secret-keys backups@example.org > ssvs-backups-private.asc
 mv ssvs-backups-private.asc "$own/"
 # From here on, the server's own commands, as the guide gives them.
+mv /home/jordan/ssvs-backups-public.asc /root/
 gpg --import /root/ssvs-backups-public.asc
 gpg --list-keys backups@example.org
 check "the server has no private key" test -z "$(gpg --list-secret-keys 2> /dev/null)"
@@ -198,6 +208,9 @@ install -m 0755 /var/www/ssvs/deploy/bin/ssvs-backup /var/www/ssvs/deploy/bin/ss
 cp /var/www/ssvs/deploy/systemd/ssvs-backup.service /var/www/ssvs/deploy/systemd/ssvs-backup.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now ssvs-backup.timer
+# TEST ONLY: take every withoutOverlapping lock the scheduler uses, as if the server had been mid-run, so the backup carries them and the restore has to clear them.
+(cd /var/www/ssvs && runuser -u ssvs -- php artisan tinker --execute='foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) { if ($event->withoutOverlapping) { $event->mutex->create($event); } }')
+check "the scheduler's locks are held before the backup" test "$(mariadb -N -e 'SELECT COUNT(*) FROM ssvs.cache_locks')" -gt 0
 systemctl start ssvs-backup.service
 journalctl -u ssvs-backup.service -n 20
 ls -l /var/backups/ssvs
@@ -238,6 +251,9 @@ check "the restore asked for confirmation" grep -q "type the database name" /tmp
 check "the restore made a rollback backup" grep -q "rollback backup is /var/backups/ssvs/" /tmp/restore.log
 check "the restore brought the site back up" grep -q "the site is back up" /tmp/restore.log
 check "the restore ended with the install check's findings (exit 1)" test "$restore_status" = 1
+check "the restore ran the scheduler, so the install check saw its heartbeat" grep -q '^OK  Scheduler' /tmp/restore.log
+check "the restore cleared the backup's scheduler locks" test "$(mariadb -N -e 'SELECT COUNT(*) FROM ssvs.cache_locks')" = 0
+check "the restore started the scheduler timer again" systemctl is-active -q ssvs-scheduler.timer
 check "the restore brought the old name back" test "$(mariadb -N -e 'SELECT name FROM ssvs.organizations')" = "$original_name"
 check "the site isn't in maintenance mode" test ! -e /var/www/ssvs/storage/framework/down
 check "the rollback backup didn't replace the server's own backup" test "$(find /var/backups/ssvs -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' | wc -l)" = 2
@@ -254,8 +270,9 @@ runuser -u ssvs -- php artisan ssvs:check-install > /tmp/check.log
 check_status=$?
 set -e
 cat /tmp/check.log
-check "ssvs:check-install fails (the test keeps the example address and has no SMTP)" test "$check_status" = 1
+check "ssvs:check-install fails (the test keeps the example addresses and has no SMTP)" test "$check_status" = 1
 check "the only FIX lines are the site address and email" test -z "$(grep '^FIX' /tmp/check.log | grep -v -e '^FIX Email:' -e '^FIX Site address:')"
+check "it refuses the example mail host" grep -q '^FIX Email: MAIL_HOST is "smtp.example.org", an example address. Set it to your email provider'"'"'s SMTP server.$' /tmp/check.log
 check "it asks for a real from address" grep -q '^FIX Email: MAIL_FROM_ADDRESS' /tmp/check.log
 check "it refuses the example site address" grep -q '^FIX Site address: APP_URL is "https://ssvs.example.org", an example address. Set it to the site'"'"'s public address.$' /tmp/check.log
 for line in "Environment is production" "App key is set" "Sessions are in the database with secure cookies" "Database is reachable and up to date" "Organization is set up" "storage and bootstrap/cache are writable" "Scheduler ran at"; do
@@ -294,10 +311,11 @@ step "11. Updating"
 cd /var/www/ssvs
 systemctl stop ssvs-scheduler.timer
 runuser -u ssvs -- php artisan down
+systemctl start ssvs-backup.service
 runuser -u ssvs -- git pull
 runuser -u ssvs -- composer install --no-dev --optimize-autoloader
-runuser -u ssvs -- php artisan migrate --force
 runuser -u ssvs -- php artisan config:cache
+runuser -u ssvs -- php artisan migrate --force
 runuser -u ssvs -- php artisan route:cache
 runuser -u ssvs -- php artisan view:cache
 systemctl reload php-fpm

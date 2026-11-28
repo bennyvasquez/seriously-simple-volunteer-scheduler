@@ -50,21 +50,49 @@ if [[ "$answer" != "ssvs" ]]; then
     exit 1
 fi
 
+# The key can lock again (gpg-agent forgets the passphrase after a few minutes) while the prompt waits, so check once more now, before anything changes.
+echo "ssvs-restore: checking again that $file can be read."
+if ! gpg --batch --decrypt "$file" | gunzip -t; then
+    echo "ssvs-restore: $file can't be read now, most often because the key locked again while the prompt waited. Unlock it again (docs/install.md, section 9) and rerun the restore. Nothing was changed." >&2
+    exit 1
+fi
+
 cd "$APP"
 
-runuser -u ssvs -- php artisan down
-
+stage=""
+dropped=no
+timer_stopped=no
 rollback=""
 failed() {
     echo >&2
-    echo "ssvs-restore: FAILED at: $BASH_COMMAND" >&2
-    echo "The site is still in maintenance mode and the database may be half restored. Fix the problem, run the restore again, or bring the site back with: cd $APP && runuser -u ssvs -- php artisan up" >&2
-    if [[ -n "$rollback" ]]; then
-        echo "A backup of the database as it was before this restore is at: $rollback (restore that file to go back)." >&2
+    echo "ssvs-restore: FAILED while $stage." >&2
+    if [[ "$dropped" == no ]]; then
+        echo "Nothing in the database was changed. Bringing the site back up." >&2
+        runuser -u ssvs -- php artisan up >&2 || echo "ssvs-restore: couldn't bring the site back up. Run: cd $APP && runuser -u ssvs -- php artisan up" >&2
+        if [[ "$timer_stopped" == yes ]]; then
+            systemctl start ssvs-scheduler.timer || echo "ssvs-restore: couldn't start the scheduler timer again. Run: systemctl start ssvs-scheduler.timer" >&2
+        fi
+    else
+        echo "The site is still in maintenance mode and the database may be half restored. Fix the problem, run the restore again, or bring the site back with: cd $APP && runuser -u ssvs -- php artisan up" >&2
+        if [[ -n "$rollback" ]]; then
+            echo "A backup of the database as it was before this restore is at: $rollback (restore that file to go back). The key may need unlocking again first (docs/install.md, section 9, the unlock step)." >&2
+        fi
+        if [[ "$timer_stopped" == yes ]]; then
+            echo "The scheduler timer is stopped. Once the site is back, start it with: systemctl start ssvs-scheduler.timer" >&2
+        fi
     fi
 }
 trap failed ERR
 
+# Scheduled jobs stay off until the restored database is ready, as in an update (docs/install.md, section 11).
+stage="stopping the scheduler timer"
+systemctl stop ssvs-scheduler.timer
+timer_stopped=yes
+
+stage="putting the site in maintenance mode"
+runuser -u ssvs -- php artisan down
+
+stage="making the rollback backup"
 echo "ssvs-restore: making a rollback backup of the current database first."
 rollback_log="$(/usr/local/sbin/ssvs-backup)"
 echo "$rollback_log"
@@ -75,10 +103,30 @@ if [[ -z "$rollback" ]]; then
 fi
 echo "ssvs-restore: rollback backup is $rollback."
 
+stage="dropping and recreating the database"
+dropped=yes
 mariadb -e 'DROP DATABASE ssvs; CREATE DATABASE ssvs CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
+
+stage="decrypting and importing the backup"
 gpg --batch --decrypt "$file" | gunzip | mariadb ssvs
+
+stage="running the migrations"
 runuser -u ssvs -- php artisan migrate --force
+
+# The backup carries the old server's scheduler locks (withoutOverlapping, held for up to 24 hours), which would otherwise stop cover requests and reminders.
+stage="clearing the scheduler's old locks"
+runuser -u ssvs -- php artisan schedule:clear-cache
+
+stage="bringing the site back up"
 runuser -u ssvs -- php artisan up
+
+stage="starting the scheduler timer"
+systemctl start ssvs-scheduler.timer
+timer_stopped=no
+
+# The scheduler skipped its runs during maintenance mode, and the backup brought back its old heartbeat, so run it once now for the install check to see.
+stage="running the scheduler once"
+systemctl start ssvs-scheduler.service
 trap - ERR
 
 echo "ssvs-restore: the site is back up. The .env in $APP must be the one with the same APP_KEY the backup was made under, or two-factor secrets won't decrypt."

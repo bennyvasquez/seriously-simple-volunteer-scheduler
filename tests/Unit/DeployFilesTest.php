@@ -246,7 +246,72 @@ class DeployFilesTest extends TestCase
         $this->assertLessThan($rollback, $down);
         $this->assertLessThan($drop, $rollback);
         $this->assertStringContainsString('ssvs-backup: wrote ', $script);
-        $this->assertStringContainsString('$rollback', substr($script, (int) strpos($script, 'failed()'), 600));
+        $this->assertStringContainsString('$rollback', substr($script, (int) strpos($script, 'failed()'), 2000));
+    }
+
+    public function test_the_http_file_hides_the_nginx_version_at_http_level(): void
+    {
+        $nginx = $this->deploy('nginx/ssvs-http.conf');
+
+        // conf.d files are included inside nginx's http block, so a directive before the first server block applies to every server, the port 80 redirect included.
+        $this->assertStringContainsString("\nserver_tokens off;\n", $nginx);
+        $this->assertLessThan(strpos($nginx, 'server {'), strpos($nginx, 'server_tokens off;'));
+    }
+
+    public function test_restore_checks_the_backup_again_after_the_confirmation(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+
+        $confirm = strpos($script, 'read -r');
+        $down = strpos($script, 'artisan down');
+        $this->assertNotFalse($confirm);
+        $this->assertNotFalse($down);
+        $this->assertSame(2, substr_count($script, 'gpg --batch --decrypt "$file" | gunzip -t'));
+
+        $second = strrpos($script, 'gpg --batch --decrypt "$file" | gunzip -t');
+        $this->assertGreaterThan($confirm, $second);
+        $this->assertLessThan($down, $second);
+    }
+
+    public function test_restore_says_whether_the_database_was_changed_when_it_fails(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+        $failed = substr($script, (int) strpos($script, 'failed()'), 2000);
+
+        $this->assertStringContainsString('dropped=yes', $script);
+        $this->assertLessThan(strpos($script, 'DROP DATABASE'), strpos($script, 'dropped=yes'));
+        $this->assertStringContainsString('Nothing in the database was changed', $failed);
+        $this->assertStringContainsString('runuser -u ssvs -- php artisan up', $failed);
+        $this->assertStringContainsString('unlock', $failed);
+        $this->assertStringContainsString('systemctl start ssvs-scheduler.timer', $failed);
+        $this->assertStringContainsString('decrypting and importing the backup', $script);
+        $this->assertStringNotContainsString('$BASH_COMMAND', $script);
+    }
+
+    public function test_restore_pauses_the_scheduler_and_clears_old_locks(): void
+    {
+        $script = $this->deploy('bin/ssvs-restore');
+        // Positions in the main flow, after the failure handler.
+        $main = (int) strpos($script, 'trap failed ERR');
+
+        $stop = strpos($script, 'systemctl stop ssvs-scheduler.timer', $main);
+        $down = strpos($script, 'artisan down', $main);
+        $import = strpos($script, '| mariadb ssvs', $main);
+        $clear = strpos($script, 'runuser -u ssvs -- php artisan schedule:clear-cache', $main);
+        $up = strpos($script, 'runuser -u ssvs -- php artisan up', $main);
+        $start = strpos($script, 'systemctl start ssvs-scheduler.timer', $main);
+        $once = strpos($script, 'systemctl start ssvs-scheduler.service', $main);
+        $check = strpos($script, 'php artisan ssvs:check-install', $main);
+
+        foreach ([$stop, $down, $import, $clear, $up, $start, $once, $check] as $position) {
+            $this->assertNotFalse($position);
+        }
+        $this->assertLessThan($down, $stop);
+        $this->assertLessThan($clear, $import);
+        $this->assertLessThan($up, $clear);
+        $this->assertLessThan($start, $up);
+        $this->assertLessThan($once, $start);
+        $this->assertLessThan($check, $once);
     }
 
     public function test_restore_prints_the_key_reminder_before_the_install_check(): void
