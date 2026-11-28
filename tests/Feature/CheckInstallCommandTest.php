@@ -20,7 +20,7 @@ class CheckInstallCommandTest extends TestCase
         config([
             'app.env' => 'production',
             'app.key' => 'base64:'.base64_encode(str_repeat('a', 32)),
-            'app.url' => 'https://ssvs.example.org',
+            'app.url' => 'https://volunteers.example.net',
             'app.trusted_proxies' => null,
             'mail.default' => 'smtp',
             'mail.from.address' => 'volunteers@makers.test',
@@ -60,6 +60,36 @@ class CheckInstallCommandTest extends TestCase
         $this->artisan('ssvs:check-install')
             ->expectsOutputToContain('APP_URL is "'.$url.'". Set it to the site\'s public address, like https://ssvs.example.org, with no path or trailing slash.')
             ->assertExitCode(1);
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function exampleUrls(): array
+    {
+        return [
+            'the template address' => ['https://ssvs.example.org', false],
+            'example.com itself' => ['https://example.com', false],
+            'a non-example address (control)' => ['https://volunteers.example.net', true],
+        ];
+    }
+
+    #[DataProvider('exampleUrls')]
+    public function test_an_example_app_url_fails(string $url, bool $passes): void
+    {
+        $this->goodInstall();
+        config(['app.url' => $url]);
+
+        $fix = 'APP_URL is "'.$url.'", an example address. Set it to the site\'s public address.';
+
+        if ($passes) {
+            $this->artisan('ssvs:check-install')
+                ->expectsOutputToContain('OK  Site address is '.$url)
+                ->doesntExpectOutputToContain('FIX')
+                ->assertExitCode(0);
+        } else {
+            $this->artisan('ssvs:check-install')
+                ->expectsOutputToContain('FIX Site address: '.$fix)
+                ->assertExitCode(1);
+        }
     }
 
     public function test_a_missing_app_key_fails(): void

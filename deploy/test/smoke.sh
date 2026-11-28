@@ -69,10 +69,12 @@ export TERM=dumb
 # TEST ONLY: the guide's dnf commands ask before installing. Answer yes for them here.
 echo assumeyes=1 >> /etc/dnf/dnf.conf
 
-step "1. Updates (dnf-automatic only; firewalld is skipped in a container)"
+step "1. Updates (dnf-automatic, and installing firewalld; firewalld itself doesn't run in a container)"
 dnf install dnf-automatic
 sed -i -e 's/^upgrade_type = .*/upgrade_type = security/' -e 's/^apply_updates = .*/apply_updates = yes/' /etc/dnf/automatic.conf
 systemctl enable --now dnf-automatic.timer
+dnf install -y firewalld
+check "firewalld is installed" rpm -q firewalld
 check "dnf-automatic installs security updates" test "$(grep -E '^(upgrade_type|apply_updates)' /etc/dnf/automatic.conf | tr '\n' ' ')" = "upgrade_type = security apply_updates = yes "
 
 step "2. Packages"
@@ -235,7 +237,7 @@ tr -d '\r' < /tmp/restore.log
 check "the restore asked for confirmation" grep -q "type the database name" /tmp/restore.log
 check "the restore made a rollback backup" grep -q "rollback backup is /var/backups/ssvs/" /tmp/restore.log
 check "the restore brought the site back up" grep -q "the site is back up" /tmp/restore.log
-check "the restore ended with the install check's email finding (exit 1)" test "$restore_status" = 1
+check "the restore ended with the install check's findings (exit 1)" test "$restore_status" = 1
 check "the restore brought the old name back" test "$(mariadb -N -e 'SELECT name FROM ssvs.organizations')" = "$original_name"
 check "the site isn't in maintenance mode" test ! -e /var/www/ssvs/storage/framework/down
 check "the rollback backup didn't replace the server's own backup" test "$(find /var/backups/ssvs -maxdepth 1 -name 'ssvs-*.sql.gz.gpg' | wc -l)" = 2
@@ -252,10 +254,11 @@ runuser -u ssvs -- php artisan ssvs:check-install > /tmp/check.log
 check_status=$?
 set -e
 cat /tmp/check.log
-check "ssvs:check-install fails (no SMTP in the test)" test "$check_status" = 1
-check "the only FIX lines are about email" test -z "$(grep '^FIX' /tmp/check.log | grep -v '^FIX Email:')"
+check "ssvs:check-install fails (the test keeps the example address and has no SMTP)" test "$check_status" = 1
+check "the only FIX lines are the site address and email" test -z "$(grep '^FIX' /tmp/check.log | grep -v -e '^FIX Email:' -e '^FIX Site address:')"
 check "it asks for a real from address" grep -q '^FIX Email: MAIL_FROM_ADDRESS' /tmp/check.log
-for line in "Environment is production" "App key is set" "Site address is https://ssvs.example.org" "Sessions are in the database with secure cookies" "Database is reachable and up to date" "Organization is set up" "storage and bootstrap/cache are writable" "Scheduler ran at"; do
+check "it refuses the example site address" grep -q '^FIX Site address: APP_URL is "https://ssvs.example.org", an example address. Set it to the site'"'"'s public address.$' /tmp/check.log
+for line in "Environment is production" "App key is set" "Sessions are in the database with secure cookies" "Database is reachable and up to date" "Organization is set up" "storage and bootstrap/cache are writable" "Scheduler ran at"; do
     check "check-install: $line" grep -q "^OK  $line" /tmp/check.log
 done
 cacert=/etc/letsencrypt/live/ssvs.example.org/fullchain.pem

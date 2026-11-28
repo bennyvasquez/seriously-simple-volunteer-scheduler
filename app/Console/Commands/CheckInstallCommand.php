@@ -73,11 +73,21 @@ class CheckInstallCommand extends Command
     {
         $url = (string) config('app.url');
 
-        if (preg_match('#^https://[A-Za-z0-9.-]+(:\d+)?$#', $url) === 1) {
-            $this->ok('Site address is '.$url);
-        } else {
+        if (preg_match('#^https://[A-Za-z0-9.-]+(:\d+)?$#', $url) !== 1) {
             $this->fix('Site address', 'APP_URL is "'.$url.'". Set it to the site\'s public address, like https://ssvs.example.org, with no path or trailing slash.');
+
+            return;
         }
+
+        // The production template ships with https://ssvs.example.org, which has the right shape, so the example domains are refused on their own.
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if (preg_match('/(^|\.)example\.(org|com)$/', $host) === 1) {
+            $this->fix('Site address', 'APP_URL is "'.$url.'", an example address. Set it to the site\'s public address.');
+
+            return;
+        }
+
+        $this->ok('Site address is '.$url);
     }
 
     private function checkEmail(): void

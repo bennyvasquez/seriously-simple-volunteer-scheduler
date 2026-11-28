@@ -46,9 +46,10 @@ Security updates should install themselves, and the firewall should let in only 
 
    dnf-automatic never restarts the server. A kernel update only takes effect after a restart, so once a month or so run `dnf needs-restarting -r`, and if it says a reboot is needed, run `reboot` at a quiet time.
 
-4. Make sure firewalld is running, then allow HTTPS (the secure web), HTTP (plain web, which only sends visitors on to HTTPS and lets Let's Encrypt check your site when it issues certificates) and SSH:
+4. Install firewalld (some hosting companies' images leave it out; where it's already there, this does nothing), make sure it's running, then allow HTTPS (the secure web), HTTP (plain web, which only sends visitors on to HTTPS and lets Let's Encrypt check your site when it issues certificates) and SSH:
 
    ```
+   dnf install -y firewalld
    systemctl enable --now firewalld
    firewall-cmd --permanent --add-service=https --add-service=http --add-service=ssh
    ```
@@ -171,7 +172,7 @@ The app runs as its own user, `ssvs`, and lives in `/var/www/ssvs`.
    ```
 
 6. Open it with `nano .env` and change:
-   - `APP_URL` to your site's own address, like `https://ssvs.example.org` but with your name. The template's example address passes the install check, so nothing will remind you if you forget. Every link SSVS emails is built from it.
+   - `APP_URL` to your site's own address, like `https://ssvs.example.org` but with your name. Every link SSVS emails is built from it. The install check refuses example.org and example.com addresses, so it reminds you if you forget.
    - `DB_PASSWORD` to the database password from step 3.
    - The `MAIL_` lines to your SMTP provider's details: `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_FROM_ADDRESS` (an address your organization reads, not volunteers@example.org).
    - `APP_NAME`, if you'd like emails to come from your organization's name instead of "SSVS".
@@ -553,4 +554,5 @@ The spec's launch plan (section 17) has coordinators enter the real schedule in 
 3. On the test copy, make a fresh backup with `systemctl start ssvs-backup.service`, and copy the new file from its `/var/backups/ssvs` to the live server's `/root/ssvs-restore`.
 4. Restore it on the live server, as in step 9.
 5. Sign in on the live site and check the schedule and people are there.
-6. Then shut the test copy down and delete its database and `.env`, so the key that protects two-factor secrets exists in one place, the live install.
+6. Copy the live server's `.env` to your safe place off the server, replacing your old copy (step 8), and make a first live backup with `systemctl start ssvs-backup.service` on the live server. Do this before the next step, because the next step deletes the test copy's `.env`.
+7. Then shut the test copy down and delete its database and `.env`, so the key that protects two-factor secrets lives only on the live install and in your off-server copy of its `.env`.
